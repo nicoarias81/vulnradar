@@ -29,6 +29,19 @@ CREATE TABLE IF NOT EXISTS enrichments (
     FOREIGN KEY (cve_id) REFERENCES cves(cve_id)
 );
 
+-- Menciones de prensa (RSS). La PK (cve_id, url) es el anti-doble-conteo:
+-- media_count sólo sube cuando la URL es nueva para ese CVE.
+CREATE TABLE IF NOT EXISTS media_mentions (
+    cve_id TEXT NOT NULL,
+    url TEXT NOT NULL,
+    title TEXT,
+    source TEXT,
+    published TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (cve_id, url),
+    FOREIGN KEY (cve_id) REFERENCES cves(cve_id)
+);
+
 -- UNIQUE(cve_id): un solo score vigente por CVE. El scoring hace UPSERT
 -- (ON CONFLICT(cve_id) DO UPDATE) en lugar de acumular filas históricas.
 -- Ese UNIQUE ya indexa las búsquedas por CVE: no hace falta un idx aparte.

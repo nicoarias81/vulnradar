@@ -20,4 +20,5 @@ sources:
 
   github_search:
     enabled: true
-    query_template: "CVE-{cve_id}"
+    # {cve_id} se reemplaza por el CVE completo; el enrich lo lanza así tal cual.
+    query_template: "{cve_id} poc"

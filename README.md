@@ -81,6 +81,22 @@ Para tests se puede inyectar el mirror y la base:
 `sync(full=False, cve_list_path="...", db_path="...")` o `--cve-list-path`/
 `--db-path` por CLI.
 
+## Enriquecimiento
+
+`python agents/enrichment_agent.py` corre cinco señales por CVE: CISA KEV,
+EPSS, menciones de prensa (RSS de `config/sources.yaml`), PoCs en GitHub y
+`tone_score`/branding. Cada fuente escribe **sólo sus columnas**, así que KEV,
+EPSS, media, PoCs y tone conviven en la misma fila de `enrichments`.
+
+El RSS deduplica por URL en `media_mentions` (una URL nueva suma 1 a
+`media_count`); los PoCs **reemplazan** `poc_count`; y el tone/branding sale de
+un lote de 10 titulares por llamada al LLM configurable (LiteLLM en
+`config/llm.yaml` + `core/llm.py`), con fallback heurístico si el modelo no
+responde o devuelve JSON roto.
+
+Flags: `--skip-kev --skip-epss --skip-rss --skip-github --skip-llm`, más
+`--rss-only` (prueba local) y `--llm-smoke` (una llamada real al proveedor).
+
 ## Tests
 
 ```bash

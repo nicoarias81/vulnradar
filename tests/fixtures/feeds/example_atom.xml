@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Example Atom Feed</title>
+  <link href="https://atom.example.com/"/>
+  <updated>2026-01-07T08:00:00Z</updated>
+  <entry>
+    <title>Dubbed GhostBreak: CVE-2026-9100 in the wild</title>
+    <link href="https://atom.example.com/ghostbreak"/>
+    <id>urn:uuid:1</id>
+    <updated>2026-01-07T08:00:00Z</updated>
+    <summary>GhostBreak hits CVE-2026-9100.</summary>
+  </entry>
+  <entry>
+    <title>No vulnerability here</title>
+    <link href="https://atom.example.com/noise"/>
+    <id>urn:uuid:2</id>
+    <updated>2026-01-07T09:00:00Z</updated>
+    <summary>Just a product announcement.</summary>
+  </entry>
+</feed>
