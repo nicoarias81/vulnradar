@@ -223,9 +223,11 @@ def detail(qp: dict | None = None) -> str:
         if not texto or texto in ("—", "None"):
             return None
         try:
-            return datetime.fromisoformat(texto.replace("Z", "+00:00"))
+            momento = datetime.fromisoformat(texto.replace("Z", "+00:00"))
         except ValueError:
             return None
+        # Mezcla de naive (ISO sin zona) y aware (Postgres): sin esto no se pueden ordenar.
+        return momento if momento.tzinfo else momento.replace(tzinfo=timezone.utc)
 
     def _sello(momento):
         return momento.strftime("%d %b %Y, %H:%M") if momento else ""
