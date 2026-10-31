@@ -299,7 +299,7 @@ def load_highlights(conn, since=None, until=None, category=None, severity=None,
         "FROM scores s JOIN cves c ON c.cve_id = s.cve_id "
         "LEFT JOIN enrichments e ON e.cve_id = s.cve_id"
         + _where(clauses)
-        + "ORDER BY s.hype DESC, s.calculated_at DESC LIMIT ?"
+        + "\nORDER BY s.hype DESC NULLS LAST, s.calculated_at DESC LIMIT ?"
     )
     try:
         filas = conn.execute(sql, list(params) + [max(1, int(limit))]).fetchall()

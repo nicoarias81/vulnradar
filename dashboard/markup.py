@@ -177,6 +177,8 @@ a.link:hover { text-decoration: underline; }
 .tl-mark { cursor: pointer; }
 .tl-mark:hover circle { stroke-width: 2.8; }
 .tl-mark text { font-weight: 700; letter-spacing: .02em; }
+.dia .tip { opacity: 0; transition: opacity .12s ease; }
+.dia:hover .tip { opacity: 1; }
 .back {
   display: inline-flex; align-items: center; gap: 6px;
   color: var(--text); text-decoration: none; font-size: 13px; font-weight: 600;
@@ -535,15 +537,17 @@ def sparkline_svg(values, color: str, width: int = 160, height: int = 32) -> str
 
 
 def _nice_ceiling(pico: float) -> float:
-    """Techo del eje con paso legible: 3.4 -> 4, 9.2 -> 10, 47 -> 50."""
+    """Techo del eje con paso legible y fino: 1.4 -> 2, 3.4 -> 4, 9.2 -> 10, 47 -> 50."""
     if pico <= 0:
         return 10.0
     objetivo = pico * 1.08
-    for factor in (1, 2, 2.5, 5, 10):
-        paso = 10 ** math.floor(math.log10(objetivo)) * factor
-        if paso * 5 >= objetivo:
-            return float(paso * 5)
-    return float(10 ** math.ceil(math.log10(objetivo)) * 5)
+    exp = math.floor(math.log10(objetivo))
+    for k in (exp - 1, exp, exp + 1):
+        for factor in (1, 1.5, 2, 2.5, 3, 4, 5, 10):
+            paso = factor * 10 ** k
+            if paso * 5 >= objetivo:
+                return float(round(paso * 5, 4))
+    return float(round(10 ** (exp + 2) * 5, 4))
 
 
 def _fecha_larga(day: str) -> str:
@@ -613,23 +617,33 @@ def timeline_svg(series, highlights=None, width: int = 1200, height: int = 220) 
         etiqueta = f"{valor:.0f}" if alto >= 10 else f"{valor:.1f}"
         yticks.append(f'<text x="{l-6}" y="{y+4:.1f}" fill="#94A3B8" font-size="11" text-anchor="end">{etiqueta}</text>')
 
-    # Hover: una franja por día; el tooltip nativo muestra fecha, scores y el CVE top.
+    # Hover: tooltip propio por CSS (el <title> nativo es lento y casi no se ve).
     ancho = pw / max(len(series) - 1, 1)
     hover = []
     for i, item in enumerate(series):
         x = l + (i / n) * pw
         top = item.get("top_cve") or {}
-        texto = (
-            f"{_fecha_larga(item['date'])} · Hype {float(item.get('hype') or 0):.1f}"
-            f" · Reality {float(item.get('reality') or 0):.1f} · {int(item.get('n') or 0)} CVEs"
-        )
+        fecha = _fecha_larga(item["date"])
+        h_val = float(item.get("hype") or 0)
+        r_val = float(item.get("reality") or 0)
+        n_val = int(item.get("n") or 0)
+        tx = min(max(x - 95, l), l + pw - 190)
+        linea_top = ""
         if top.get("cve_id"):
-            texto += f" · top: {top['cve_id']}"
-            if top.get("brand_name"):
-                texto += f" ({top['brand_name']})"
+            nombre = top.get("brand_name") or ""
+            linea_top = f"{top['cve_id']}{' · ' + nombre if nombre else ''}"
         hover.append(
-            f'<rect x="{x-ancho/2:.1f}" y="{t}" width="{ancho:.1f}" height="{ph}" '
-            f'fill="transparent"><title>{escape(texto)}</title></rect>'
+            f'<g class="dia">'
+            f'<rect x="{x - ancho / 2:.1f}" y="{t}" width="{ancho:.1f}" height="{ph}" '
+            f'fill="#FFFFFF" fill-opacity="0.001" pointer-events="all"/>'
+            f'<g class="tip" pointer-events="none">'
+            f'<rect x="{tx:.1f}" y="{t + 4}" width="190" height="56" rx="5" '
+            f'fill="#0F172A" stroke="#334155" stroke-width="1"/>'
+            f'<text x="{tx + 9:.1f}" y="{t + 21}" fill="#E2E8F0" font-size="11">{escape(fecha)} · {n_val} CVEs</text>'
+            f'<text x="{tx + 9:.1f}" y="{t + 37}" fill="#FF6B00" font-size="11" font-weight="700">Hype {h_val:.1f}</text>'
+            f'<text x="{tx + 95:.1f}" y="{t + 37}" fill="#22D3EE" font-size="11" font-weight="700">Reality {r_val:.1f}</text>'
+            f'<text x="{tx + 9:.1f}" y="{t + 52}" fill="#94A3B8" font-size="10">{escape(linea_top[:38])}</text>'
+            f"</g></g>"
         )
 
     puntos = "".join(
