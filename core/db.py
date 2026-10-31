@@ -195,12 +195,23 @@ def get_db(path: Path | str | None = None) -> PgConnection:
 
 
 def init_db(path: Path | str | None = None):
-    """Crea el esquema. Idempotente: schema.sql sólo usa IF NOT EXISTS."""
+    """Crea el esquema. Idempotente: schema.sql sólo usa IF NOT EXISTS.
+
+    Dashboard y worker arrancan a la vez y `CREATE TABLE IF NOT EXISTS` no es atómico
+    consigo mismo en Postgres: la segunda sesión choca en `pg_type_typname_nsp_index`.
+    Las dos se serializan con un advisory lock de sesión (se libera solo si el proceso muere).
+    """
     isolation = path if path is not None else DB_PATH
+    lock_key = f"vulnradar.init_db.{schema_name(isolation)}"
     conn = get_db(isolation)
     try:
-        conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
-        conn.commit()
+        conn.execute("SELECT pg_advisory_lock(hashtext(?))", (lock_key,))
+        try:
+            conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+            conn.commit()
+        finally:
+            conn.execute("SELECT pg_advisory_unlock(hashtext(?))", (lock_key,))
+            conn.commit()
     finally:
         conn.close()
     return isolation
