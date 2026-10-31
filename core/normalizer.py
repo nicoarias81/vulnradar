@@ -23,9 +23,12 @@ SCALE_CAP = 10.0
 # 55.0.2883.75 for Mac, Windows and Linux". Como filtro de producto eso es ruido:
 # cada versión sería una opción distinta del desplegable.
 VERSION_SPLIT = re.compile(
-    r"\s+(?:prior\s+to|before|through|up\s+to|versions?|versiones?|all\s+versions)\s+",
+    r"\s+(?:prior\s+to|before|through|up\s+to|all\s+versions)\s+",
     re.IGNORECASE,
 )
+# "versions" por sí solo aparece en frases ("customize the mobile version
+# without redirections"): sólo corta si le sigue un número o un comparador.
+VERSION_WORD = re.compile(r"\s+versions?\s+(?=[<>=~]?\s*[vV]?\d)", re.IGNORECASE)
 VERSION_TAIL = re.compile(r"\s*[<>=~]+\s*[\w.]+.*$")
 VERSION_NUMBER = re.compile(r"\s+v?\d+(?:\.\d+)+.*$")
 PRODUCT_EMPTY = {"", "*", "-", "n/a", "unknown"}
@@ -33,7 +36,9 @@ PRODUCT_EMPTY = {"", "*", "-", "n/a", "unknown"}
 
 def clean_product(product: str) -> str:
     """Producto sin la versión pegada: 'Chrome prior to 120' -> 'Chrome'."""
-    text = VERSION_SPLIT.split((product or "").strip(), maxsplit=1)[0]
+    text = (product or "").strip()
+    text = VERSION_SPLIT.split(text, maxsplit=1)[0]
+    text = VERSION_WORD.split(text, maxsplit=1)[0]
     text = VERSION_TAIL.sub("", text)
     text = VERSION_NUMBER.sub("", text)
     return text.strip(" ,;:-") or (product or "").strip()

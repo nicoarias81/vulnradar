@@ -80,7 +80,9 @@ a { color: inherit; }
 }
 .filter select { padding: 0 12px; min-width: 148px; }
 .filter input[type="search"] { padding: 0 12px; min-width: 210px; }
-.filter input[type="text"] { padding: 0 12px; min-width: 168px; }
+.filter input[type="text"] { padding: 0 30px 0 12px; min-width: 168px;
+  background-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238b98a7' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 11px center; }
 .range {
   display: flex; align-items: center; gap: 6px; padding: 0 10px; min-width: 240px;
 }
