@@ -1,0 +1,15 @@
+.git
+.venv
+venv
+data
+.pytest_tmp
+.pytest_cache
+__pycache__
+*.pyc
+*.egg-info
+.coverage
+htmlcov
+.grok
+.env
+*.md
+!README.md

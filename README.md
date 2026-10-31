@@ -52,6 +52,18 @@ python agents/scoring_agent.py
 streamlit run dashboard/app.py
 ```
 
+### Demo local con Docker
+
+Sin clonar CVE List V5. Levanta el dashboard con 8 CVEs de muestra (las 4 categorías):
+
+```bash
+docker compose up --build -d
+# http://localhost:8501
+```
+
+La base queda en `./data/humo.db`. Para parar: `docker compose down`.
+Para re-sembrar: `SEED_DEMO=force docker compose up --build -d`.
+
 ## Dashboard
 
 `streamlit run dashboard/app.py` (o `make dashboard`) abre el tablero con los

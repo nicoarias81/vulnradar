@@ -1,6 +1,6 @@
 # Makefile simple
 
-.PHONY: init sync sync-delta enrich score alerts alerts-dry test dashboard
+.PHONY: init sync sync-delta enrich score alerts alerts-dry test dashboard demo demo-down
 
 init:
 	python -m core.db
@@ -31,5 +31,12 @@ test:
 
 dashboard:
 	streamlit run dashboard/app.py
+
+demo:
+	docker compose up --build -d
+	@echo Dashboard: http://localhost:8501
+
+demo-down:
+	docker compose down
 
 all: init sync enrich score
