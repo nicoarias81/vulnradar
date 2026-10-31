@@ -1,0 +1,5 @@
+# Cliente LLM. Las env LLM_PROVIDER y LLM_MODEL pisan estos valores.
+# Aliases de proveedor: x, xai, grok, spacexai → api.x.ai
+provider: xai
+model: grok-4.7
+timeout_seconds: 60
