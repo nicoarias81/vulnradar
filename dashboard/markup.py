@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from html import escape
+import math
 from urllib.parse import urlencode
 
 from dashboard.theme import (
@@ -173,6 +174,9 @@ a.link:hover { text-decoration: underline; }
 .tl-legend { text-align: center; margin: 6px 0 0; font-size: 12px; color: var(--text-muted); }
 .tl-legend .h { color: var(--hype); }
 .tl-legend .r { color: var(--reality); }
+.tl-mark { cursor: pointer; }
+.tl-mark:hover circle { stroke-width: 2.8; }
+.tl-mark text { font-weight: 700; letter-spacing: .02em; }
 .back {
   display: inline-flex; align-items: center; gap: 6px;
   color: var(--text); text-decoration: none; font-size: 13px; font-weight: 600;
@@ -530,10 +534,30 @@ def sparkline_svg(values, color: str, width: int = 160, height: int = 32) -> str
     )
 
 
+def _nice_ceiling(pico: float) -> float:
+    """Techo del eje con paso legible: 3.4 -> 4, 9.2 -> 10, 47 -> 50."""
+    if pico <= 0:
+        return 10.0
+    objetivo = pico * 1.08
+    for factor in (1, 2, 2.5, 5, 10):
+        paso = 10 ** math.floor(math.log10(objetivo)) * factor
+        if paso * 5 >= objetivo:
+            return float(paso * 5)
+    return float(10 ** math.ceil(math.log10(objetivo)) * 5)
+
+
+def _fecha_larga(day: str) -> str:
+    try:
+        dt = datetime.strptime(str(day)[:10], "%Y-%m-%d")
+        return dt.strftime("%d %b %Y")
+    except ValueError:
+        return str(day)[:10]
+
+
 def timeline_svg(series, width: int = 1200, height: int = 220) -> str:
     if not series:
         return '<p class="muted">Sin fechas de publicación para armar la serie.</p>'
-    l, t, r, b = 40, 12, 16, 40
+    l, t, r, b = 40, 16, 16, 40
     pw, ph = width - l - r, height - t - b
     dates = [item["date"] for item in series]
     n = max(len(dates) - 1, 1)
@@ -546,13 +570,16 @@ def timeline_svg(series, width: int = 1200, height: int = 220) -> str:
             out.append(sum(chunk) / len(chunk))
         return out
 
+    # Auto-zoom: el eje se ajusta al máximo real en vez de quedar fijo en 10.
+    hype_vals, reality_vals = smooth("hype"), smooth("reality")
+    pico = max(hype_vals + reality_vals + [0.0])
+    ymax = _nice_ceiling(pico)
+
+    def y_de(val):
+        return _xy(val, 0, ymax, t, ph, invert=True)
+
     def points(vals):
-        pts = []
-        for i, val in enumerate(vals):
-            x = l + (i / n) * pw
-            y = _xy(val, 0, 10, t, ph, invert=True)
-            pts.append((x, y))
-        return pts
+        return [(l + (i / n) * pw, y_de(val)) for i, val in enumerate(vals)]
 
     def polyline(vals, color):
         pts = " ".join(f"{x:.1f},{y:.1f}" for x, y in points(vals))
@@ -567,18 +594,82 @@ def timeline_svg(series, width: int = 1200, height: int = 220) -> str:
         ticks.append(
             f'<text x="{x:.1f}" y="{height-10}" fill="#94A3B8" font-size="11" text-anchor="middle">{escape(_tick(day))}</text>'
         )
+
     yticks = []
-    for i in range(0, 11, 2):
-        y = _xy(i, 0, 10, t, ph, invert=True)
-        yticks.append(f'<line x1="{l}" y1="{y:.1f}" x2="{l+pw}" y2="{y:.1f}" stroke="#334155"/>')
-        yticks.append(f'<text x="{l-6}" y="{y+4:.1f}" fill="#94A3B8" font-size="11" text-anchor="end">{i}</text>')
+    pasos = 5
+    for i in range(pasos + 1):
+        valor = ymax * i / pasos
+        y = y_de(valor)
+        yticks.append(f'<line x1="{l}" y1="{y:.1f}" x2="{l+pw}" y2="{y:.1f}" stroke="#334155" opacity=".7"/>')
+        etiqueta = f"{valor:.0f}" if ymax >= 10 else f"{valor:.1f}"
+        yticks.append(f'<text x="{l-6}" y="{y+4:.1f}" fill="#94A3B8" font-size="11" text-anchor="end">{etiqueta}</text>')
+
+    # Hover: una franja por día; el tooltip nativo muestra fecha, scores y el CVE top.
+    ancho = pw / max(len(series) - 1, 1)
+    hover = []
+    for i, item in enumerate(series):
+        x = l + (i / n) * pw
+        top = item.get("top_cve") or {}
+        texto = (
+            f"{_fecha_larga(item['date'])} · Hype {float(item.get('hype') or 0):.1f}"
+            f" · Reality {float(item.get('reality') or 0):.1f} · {int(item.get('n') or 0)} CVEs"
+        )
+        if top.get("cve_id"):
+            texto += f" · top: {top['cve_id']}"
+            if top.get("brand_name"):
+                texto += f" ({top['brand_name']})"
+        hover.append(
+            f'<rect x="{x-ancho/2:.1f}" y="{t}" width="{ancho:.1f}" height="{ph}" '
+            f'fill="transparent"><title>{escape(texto)}</title></rect>'
+        )
+
+    puntos = "".join(
+        f'<circle cx="{x:.1f}" cy="{y:.1f}" r="3.2" fill="{color}" opacity=".85"/>'
+        for vals, color in ((hype_vals, "#FF6B00"), (reality_vals, "#22D3EE"))
+        for x, y in points(vals)
+    )
+
+    # Los días más calientes llevan su CVE a la vista, con enlace a la ficha.
+    destacados = sorted(range(len(series)), key=lambda i: -(series[i].get("hype") or 0))[:3]
+    marcas = []
+    for i in destacados:
+        item = series[i]
+        top = item.get("top_cve") or {}
+        if not top.get("cve_id"):
+            continue
+        x = l + (i / n) * pw
+        y = y_de(float(item.get("hype") or 0))
+        cve = top["cve_id"]
+        corto = cve.replace("CVE-", "")
+        marcas.append(
+            f'<a href="/cve?cve={escape(cve)}" class="tl-mark">'
+            f'<circle cx="{x:.1f}" cy="{y:.1f}" r="5.5" fill="none" stroke="#FF6B00" stroke-width="1.6"/>'
+            f'<text x="{x:.1f}" y="{max(y-10, t+9):.1f}" fill="#FF6B00" font-size="10" '
+            f'text-anchor="middle">{escape(corto)}</text>'
+            f'<title>{escape(cve + (" · " + top["brand_name"] if top.get("brand_name") else ""))}</title></a>'
+        )
+
+    leyenda_destacados = ""
+    nombres = [
+        f'<a href="/cve?cve={escape((series[i].get("top_cve") or {}).get("cve_id"))}">'
+        f'{escape((series[i].get("top_cve") or {}).get("cve_id"))}</a>'
+        for i in destacados
+        if (series[i].get("top_cve") or {}).get("cve_id")
+    ]
+    if nombres:
+        leyenda_destacados = (
+            '<p class="tl-legend">Destacados: ' + " · ".join(dict.fromkeys(nombres)) + "</p>"
+        )
+
     return (
         f'<svg viewBox="0 0 {width} {height}" width="100%" height="{height}" role="img">'
         f'<rect x="0" y="0" width="{width}" height="{height}" fill="#0B1220" rx="6"/>'
-        f"{''.join(yticks)}{polyline(smooth('hype'), '#FF6B00')}{polyline(smooth('reality'), '#22D3EE')}{''.join(ticks)}"
+        f"{''.join(yticks)}{polyline(hype_vals, '#FF6B00')}{polyline(reality_vals, '#22D3EE')}"
+        f"{puntos}{''.join(marcas)}{''.join(hover)}{''.join(ticks)}"
         "</svg>"
         '<p class="tl-legend"><span class="h">━</span> Hype Score (Perceived)&nbsp;&nbsp;'
         '<span class="r">━</span> Reality Score (Observed)</p>'
+        f"{leyenda_destacados}"
     )
 
 

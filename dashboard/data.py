@@ -283,6 +283,35 @@ def load_daily_averages(conn, since=None, until=None, category=None, severity=No
             "reality": round(float(reality), 2) if reality is not None else None,
             "n": int(row["n"]),
         })
+    return _attach_top_cves(conn, series, clauses, params)
+
+
+def _attach_top_cves(conn, series, clauses, params) -> list:
+    """Suma a cada día su CVE más ruidoso: el gráfico lo etiqueta y lo enlaza."""
+    if not series:
+        return series
+    sql = (
+        f"SELECT DISTINCT ON (day) day, cve_id, hype, reality, brand_name FROM ("
+        f"  SELECT {_DAY_EXPR} AS day, s.cve_id, s.hype, s.reality, e.brand_name "
+        "   FROM scores s JOIN cves c ON c.cve_id = s.cve_id "
+        "   LEFT JOIN enrichments e ON e.cve_id = s.cve_id"
+        + _where(clauses)
+        + ") t ORDER BY day, hype DESC"
+    )
+    try:
+        filas = conn.execute(sql, params).fetchall()
+    except Exception:
+        return series  # sin el top el gráfico sigue sirviendo
+    por_dia = {
+        str(f["day"])[:10]: {
+            "cve_id": f["cve_id"],
+            "hype": round(float(f["hype"]), 2) if f["hype"] is not None else None,
+            "brand_name": f["brand_name"] or "",
+        }
+        for f in filas
+    }
+    for item in series:
+        item["top_cve"] = por_dia.get(item["date"])
     return series
 
 
