@@ -33,7 +33,12 @@ DEMOS = [
         "tone_score": 9.5,
         "branding": 1,
         "brand_name": "GhostShell",
+        "published": "2026-05-12T09:00:00",
         "alert": True,
+        "mentions": [
+            ("The Hacker News", "GhostShell: CMS RCE compared to Log4Shell", "https://example.test/thn/ghostshell"),
+            ("BleepingComputer", "Critical CMS flaw exploited in the wild?", "https://example.test/bc/ghostshell"),
+        ],
     },
     {
         "cve_id": "CVE-2026-9002",
@@ -49,7 +54,11 @@ DEMOS = [
         "tone_score": 7.0,
         "branding": 0,
         "brand_name": None,
+        "published": "2026-05-18T11:00:00",
         "alert": True,
+        "mentions": [
+            ("SecurityWeek", "CISA adds VPN auth bypass to KEV", "https://example.test/sw/vpn"),
+        ],
     },
     {
         "cve_id": "CVE-2026-9003",
@@ -65,6 +74,7 @@ DEMOS = [
         "tone_score": 2.0,
         "branding": 0,
         "brand_name": None,
+        "published": "2026-05-22T08:00:00",
         "alert": False,
     },
     {
@@ -81,6 +91,7 @@ DEMOS = [
         "tone_score": 1.0,
         "branding": 0,
         "brand_name": None,
+        "published": "2026-05-28T10:00:00",
         "alert": False,
     },
     {
@@ -97,6 +108,7 @@ DEMOS = [
         "tone_score": 8.5,
         "branding": 1,
         "brand_name": "Log4Boom",
+        "published": "2026-06-01T09:00:00",
         "alert": False,
     },
     {
@@ -113,6 +125,7 @@ DEMOS = [
         "tone_score": 6.0,
         "branding": 0,
         "brand_name": None,
+        "published": "2026-06-04T12:00:00",
         "alert": False,
     },
     {
@@ -129,6 +142,7 @@ DEMOS = [
         "tone_score": 3.0,
         "branding": 0,
         "brand_name": None,
+        "published": "2026-06-07T15:00:00",
         "alert": False,
     },
     {
@@ -145,6 +159,7 @@ DEMOS = [
         "tone_score": 0.5,
         "branding": 0,
         "brand_name": None,
+        "published": "2026-06-11T10:00:00",
         "alert": False,
     },
 ]
@@ -152,11 +167,12 @@ DEMOS = [
 
 UPSERT_CVE = """
     INSERT INTO cves (cve_id, description, cvss_score, cvss_severity, published)
-    VALUES (:cve_id, :description, :cvss_score, :cvss_severity, '2026-03-01T00:00:00')
+    VALUES (:cve_id, :description, :cvss_score, :cvss_severity, :published)
     ON CONFLICT(cve_id) DO UPDATE SET
         description = excluded.description,
         cvss_score = excluded.cvss_score,
-        cvss_severity = excluded.cvss_severity
+        cvss_severity = excluded.cvss_severity,
+        published = excluded.published
 """
 
 UPSERT_ENRICHMENT = """
@@ -196,8 +212,17 @@ def seed(db_path=None) -> int:
     n = 0
     try:
         for item in DEMOS:
-            conn.execute(UPSERT_CVE, item)
-            conn.execute(UPSERT_ENRICHMENT, item)
+            conn.execute(
+                UPSERT_CVE,
+                {k: item[k] for k in ("cve_id", "description", "cvss_score", "cvss_severity", "published")},
+            )
+            conn.execute(
+                UPSERT_ENRICHMENT,
+                {k: item[k] for k in (
+                    "cve_id", "in_kev", "epss", "wild_confirmation", "ransomware_use",
+                    "media_count", "poc_count", "tone_score", "branding", "brand_name",
+                )},
+            )
             cve_row = conn.execute(
                 "SELECT cve_id, cvss_score FROM cves WHERE cve_id = ?",
                 (item["cve_id"],),
@@ -216,6 +241,14 @@ def seed(db_path=None) -> int:
                     "category": result["category"],
                 },
             )
+            for source, title, url in item.get("mentions") or []:
+                conn.execute(
+                    """
+                    INSERT OR IGNORE INTO media_mentions (cve_id, url, title, source, published)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (item["cve_id"], url, title, source, item.get("published")),
+                )
             if item["alert"]:
                 conn.execute(
                     """

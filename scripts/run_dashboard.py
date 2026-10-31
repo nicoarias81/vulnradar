@@ -23,11 +23,9 @@ def _score_count() -> int:
 def main() -> int:
     init_db()
     if os.getenv("SEED_DEMO", "1") != "0":
-        if _score_count() == 0 or os.getenv("SEED_DEMO") == "force":
-            print("Cargando CVEs de demostración…")
-            seed()
-        else:
-            print(f"La base ya tiene {_score_count()} scores; seed omitido (SEED_DEMO=force para reescribir).")
+        print("Cargando / actualizando CVEs de demostración…")
+        seed()
+        print(f"scores en DB: {_score_count()}")
 
     os.execvp(
         "streamlit",

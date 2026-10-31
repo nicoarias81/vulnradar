@@ -4,7 +4,14 @@ from pathlib import Path
 import pytest
 
 from core.db import get_db, init_db
-from dashboard.data import filter_scores, load_scores
+from dashboard.data import (
+    daily_averages,
+    filter_scores,
+    guess_vuln_type,
+    hype_components,
+    load_agent_stats,
+    load_scores,
+)
 
 OVERHYPED = "CVE-2026-0101"
 QUIET = "CVE-2026-0102"
@@ -115,3 +122,33 @@ def test_load_scores_marca_los_cves_ya_alertados(conn):
     assert por_cve[OVERHYPED]["alertado"] is True
     assert por_cve[OVERHYPED]["alertas"] == 2
     assert por_cve[QUIET]["alertado"] is False
+
+
+def test_guess_vuln_type_y_daily_averages(conn):
+    assert guess_vuln_type("Remote code execution in foo") == "RCE"
+    assert guess_vuln_type("reflected XSS") == "XSS"
+    conn.execute(
+        "INSERT INTO cves (cve_id, description, published, cvss_severity) "
+        "VALUES ('CVE-2026-0101', 'RCE', '2026-05-12', 'CRITICAL')"
+    )
+    conn.execute(
+        "INSERT INTO cves (cve_id, description, published, cvss_severity) "
+        "VALUES ('CVE-2026-0102', 'XSS', '2026-05-12', 'MEDIUM')"
+    )
+    conn.execute(
+        "INSERT INTO scores (cve_id, hype, reality, category) VALUES ('CVE-2026-0101', 9.2, 2.1, 'Overhyped')"
+    )
+    conn.execute(
+        "INSERT INTO scores (cve_id, hype, reality, category) VALUES ('CVE-2026-0102', 1.5, 3.0, 'Quiet')"
+    )
+    conn.commit()
+    rows = load_scores(conn)
+    series = daily_averages(rows)
+    assert len(series) == 1
+    assert series[0]["n"] == 2
+    crit = filter_scores(rows, severities=["CRITICAL"])
+    assert [row["cve_id"] for row in crit] == [OVERHYPED]
+    stats = load_agent_stats(conn)
+    assert stats["scores"] == 2
+    comps = hype_components(rows[0])
+    assert {item["key"] for item in comps} == {"cvss", "media", "tone", "branding", "pocs"}
