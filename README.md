@@ -79,8 +79,13 @@ Los `make sync` / `make enrich` / `make score` siguen existiendo para debug.
 ## Dashboard
 
 El tablero **público** está en http://localhost:8501: scatter **Hype vs Reality**
-coloreado por categoría, tabla de CVEs y ficha de detalle. Lo sirve
-`python scripts/run_dashboard.py` (o `make dashboard`) en el puerto 8501.
+coloreado por categoría, tabla de CVEs, timeline de Score evolution y ficha de
+detalle. Lo sirve `python scripts/run_dashboard.py` (o `make dashboard`) en el
+puerto 8501. El timeline estira el eje solo según el máximo del período, tiene
+hover por día (fecha, CVEs, Hype, Reality y CVE top) y marca hasta 3
+**destacados** con una guía vertical sobre su día más un chip con el CVE y sus
+scores; esos scores son los del CVE, no el promedio diario del eje. La portada
+se recarga cada 60 s sin contar como visita.
 
 El panel **SOC monitoring** (estado de los 4 agentes, feed y logs) vive en
 http://localhost:8501/soc y **no es público**. Pide `SOC_USER` / `SOC_PASSWORD`
@@ -152,7 +157,8 @@ Flags: `--skip-kev --skip-epss --skip-rss --skip-github --skip-llm`, más
 `reality < 5`, ajustable con `--humo-tone`/`--humo-reality`).
 
 Canales por entorno: `SLACK_WEBHOOK_URL` (incoming webhook, `{text, blocks}`) y
-`ALERT_WEBHOOK_URL` (JSON plano); sin URL, ese canal se omite. `alerts_sent`
+`ALERT_WEBHOOK_URL` (JSON plano, `event: vulnradar.alert`); sin URL, ese canal
+se omite. `alerts_sent`
 deduplica por `UNIQUE(cve_id, channel, rule)` y sólo se escribe **después** de
 un POST exitoso: un 4xx/5xx deja la alerta pendiente para la próxima corrida.
 
@@ -205,7 +211,10 @@ vulnradar/
 │   └── test_dashboard.py
 └── dashboard/
     ├── data.py             # Load + filtros (sin Streamlit)
-    └── app.py
+    ├── markup.py           # HTML de portada, ficha y panel SOC
+    ├── server.py           # servidor HTTP en 8501
+    ├── theme.py            # tokens y componentes visuales
+    └── app.py              # vista Streamlit (alternativa)
 ```
 
 ## Scoring v2 (resumen)
