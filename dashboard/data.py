@@ -5,6 +5,8 @@ Módulo puro (psycopg + stdlib, sin Streamlit ni pandas): la UI se testea con
 pytest sin levantar el runtime de Streamlit. Las queries de la home capan en
 SQL (COUNT, LIMIT/OFFSET, GROUP BY): no se materializan decenas de miles de filas.
 """
+import re
+
 from core.db import has_table
 
 CATEGORIES = ("Overhyped", "Earned the hype", "Sleeper", "Quiet")
