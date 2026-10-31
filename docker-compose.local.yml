@@ -50,7 +50,7 @@ services:
     build: .
     container_name: vulnradar-b
     ports:
-      - "8502:8501"
+      - "8503:8501"
     environment:
       DATABASE_URL: postgresql://vuln:vuln@postgres:5432/vulnradar
       CVE_LIST_PATH: /app/data/cvelistV5
