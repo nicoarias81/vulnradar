@@ -208,7 +208,7 @@ def test_slack_y_webhook_usan_urls_distintas(conn, db_file):
 
     # Slack: text + blocks. Webhook: JSON plano del evento.
     assert "blocks" in slack_call["json"]
-    assert webhook_call["json"]["event"] == "humo-vs-miedo.alert"
+    assert webhook_call["json"]["event"] == "vulnradar.alert"
     assert webhook_call["json"]["cve_id"] == OVERHYPED
     assert webhook_call["json"]["rule"] == "overhyped"
     assert webhook_call["json"]["url"].endswith(OVERHYPED)

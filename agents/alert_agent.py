@@ -40,7 +40,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from core.db import get_db, init_db
 
-USER_AGENT = "humo-vs-miedo/0.4 (+https://github.com/humo-vs-miedo)"
+USER_AGENT = "vulnradar/0.4 (+https://github.com/nicoarias81/vulnradar)"
 TIMEOUT_SECONDS = 15
 
 NVD_URL = "https://nvd.nist.gov/vuln/detail/{cve_id}"
@@ -55,7 +55,7 @@ WEBHOOK_ENV = "ALERT_WEBHOOK_URL"
 RULE_LABELS = {
     "overhyped": "Overhyped",
     "earned_the_hype": "Earned the hype",
-    "humo": "Humo mediático",
+    "humo": "Hype sin sustento",
     "sleeper": "Sleeper",
 }
 
@@ -192,7 +192,7 @@ def build_slack_payload(alert: Alert) -> dict:
 def build_webhook_payload(alert: Alert) -> dict:
     """Webhook genérico: JSON plano para cualquier consumidor."""
     return {
-        "event": "humo-vs-miedo.alert",
+        "event": "vulnradar.alert",
         "cve_id": alert.cve_id,
         "rule": alert.rule,
         "category": alert.category,

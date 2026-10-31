@@ -1,6 +1,13 @@
-# Humo vs Miedo
+# VulnRadar
 
 **Sistema open source de scoring dual (Hype vs Reality) para CVEs, diseñado para agentes y extensible.**
+
+<a href="https://nan.builders/?ref=built-with-nan">
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="https://nan.builders/badge/built-with-nan-light.svg">
+    <img width="266" src="https://nan.builders/badge/built-with-nan-dark.svg" alt="Built with NaN">
+  </picture>
+</a>
 
 Versión base open source. La capa de contexto (inventario de assets + criticidad) es opcional y se enchufa sin modificar el core.
 
@@ -141,7 +148,7 @@ Flags: `--skip-kev --skip-epss --skip-rss --skip-github --skip-llm`, más
 
 `python agents/alert_agent.py` lee los scores vigentes (JOIN `cves` +
 `enrichments`) y avisa por Slack y/o webhook genérico. Reglas opt-in:
-`Overhyped`, `Earned the hype`, `Sleeper` y **humo** (`tone_score >= 7` con
+`Overhyped`, `Earned the hype`, `Sleeper` y **hype sin sustento** (`tone_score >= 7` con
 `reality < 5`, ajustable con `--humo-tone`/`--humo-reality`).
 
 Canales por entorno: `SLACK_WEBHOOK_URL` (incoming webhook, `{text, blocks}`) y
@@ -167,7 +174,7 @@ clave `tmp_path`) y un mini repo git armado en el propio tmp.
 ## Estructura del proyecto
 
 ```
-humo-vs-miedo/
+vulnradar/
 ├── README.md
 ├── ARCHITECTURE.md
 ├── requirements.txt
@@ -203,10 +210,10 @@ humo-vs-miedo/
 
 ## Scoring v2 (resumen)
 
-**Reality (Miedo)**  
+**Reality**  
 `0.45*KEV + 0.25*(EPSS*10) + 0.20*Wild + 0.05*Ransomware + 0.05*Complexity`
 
-**Hype (Humo)**  
+**Hype**  
 `0.20*CVSS + 0.30*Media + 0.15*Branding + 0.20*Tone + 0.15*PoCs`
 
 Categorías: Overhyped, Earned the hype, Sleeper, Quiet.

@@ -1,4 +1,4 @@
-"""HTML de las tres pantallas, alineado a humo-vs-miedo-ui-specs + mockups."""
+"""HTML de las tres pantallas, alineado a las specs de UI + mockups."""
 from __future__ import annotations
 
 from datetime import datetime
@@ -282,9 +282,12 @@ table.mini tr:hover td { background: rgba(255,255,255,.03); }
 .metrics span { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); }
 .spark { display: block; width: 100%; height: 32px; margin: 8px 0 0; }
 .footer {
-  display: flex; justify-content: space-between; gap: 12px;
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
   color: var(--text-muted); font-size: 12px; margin-top: 16px;
 }
+.foot-right { display: flex; align-items: center; }
+.foot-right img { display: block; opacity: .75; transition: opacity .15s ease; }
+.foot-right img:hover { opacity: 1; }
 .ico { width: 16px; height: 16px; display: inline-block; vertical-align: -3px; }
 .empty { color: var(--text-muted); padding: 40px 8px; text-align: center; }
 .callout {
@@ -341,7 +344,7 @@ def document(body: str, *, refresh: int | None = None, track: bool | None = None
         '<meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
         f"{meta}"
-        "<title>Humo vs Miedo</title>"
+        "<title>VulnRadar — Hype vs Reality</title>"
         '<link rel="preconnect" href="https://fonts.googleapis.com">'
         '<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">'
         f"{analytics}"
@@ -384,7 +387,7 @@ def logo(subtitle: str = "") -> str:
     sub = f'<p class="sub">{escape(subtitle)}</p>' if subtitle else ""
     return (
         f'<a class="brand" href="/">{FLAME_SVG}<div>'
-        '<p class="title"><span class="humo">Humo</span> vs Miedo</p>'
+        '<p class="title">Vuln<span class="humo">Radar</span></p>'
         f"{sub}</div></a>"
     )
 
@@ -953,7 +956,11 @@ def detail_html(
   </div>
   <div class="footer">
     <span>Fuente: CVE List V5 · CISA KEV · FIRST EPSS · GitHub · RSS</span>
-    <span>Humo vs Miedo Dashboard</span>
+    <span class="foot-right">
+      <a href="https://nan.builders/?ref=built-with-nan" target="_blank" rel="noopener">
+        <img src="https://nan.builders/badge/built-with-nan-compact.svg" alt="Built with NaN" height="20">
+      </a>
+    </span>
   </div>
 </div>
 """

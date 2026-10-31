@@ -1,4 +1,4 @@
-"""Look & feel: tokens y componentes del paquete humo-vs-miedo-ui-specs."""
+"""Look & feel: tokens y componentes de la UI."""
 
 CATEGORY_COLORS = {
     "Overhyped": "#EF4444",
@@ -276,7 +276,7 @@ def logo_html(subtitle: str = "") -> str:
         '<div class="hm-brand">'
         f"{FLAME_SVG}"
         "<div>"
-        '<p class="hm-title"><span class="hm-humo">Humo</span> vs Miedo</p>'
+        '<p class="hm-title">Vuln<span class="hm-humo">Radar</span></p>'
         f"{sub}"
         "</div></div>"
     )

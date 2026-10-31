@@ -1,1 +1,1 @@
-"""Core de Humo vs Miedo: scoring, normalización, modelos y acceso a PostgreSQL."""
+"""Core de VulnRadar: scoring, normalización, modelos y acceso a PostgreSQL."""

@@ -1,10 +1,10 @@
 """
-Fórmulas de scoring v2 — Humo vs Miedo
+Fórmulas de scoring v2 — VulnRadar
 """
 
 def calculate_reality(signals: dict) -> float:
     """
-    Reality (Miedo) v2
+    Reality v2
     45% KEV + 25% EPSS + 20% Wild + 5% Ransomware + 5% Complexity
     """
     kev = 10.0 if signals.get("in_kev") else 0.0
@@ -25,7 +25,7 @@ def calculate_reality(signals: dict) -> float:
 
 def calculate_hype(signals: dict) -> float:
     """
-    Hype (Humo) v2
+    Hype v2
     20% CVSS + 30% Media + 15% Branding + 20% Tone + 15% PoCs
     """
     cvss = signals.get("cvss", 0)

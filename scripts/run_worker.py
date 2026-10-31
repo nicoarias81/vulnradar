@@ -124,7 +124,7 @@ def loop() -> int:
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(description="Worker autónomo Humo vs Miedo")
+    parser = argparse.ArgumentParser(description="Worker autónomo VulnRadar")
     parser.add_argument("--once", action="store_true", help="Un ciclo y sale (tests / debug)")
     args = parser.parse_args(argv)
     if args.once:

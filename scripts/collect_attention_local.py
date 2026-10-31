@@ -20,7 +20,7 @@ from urllib.parse import quote_plus
 import feedparser
 import requests
 
-UA = "humo-vs-miedo/0.3 (+https://github.com/humo-vs-miedo)"
+UA = "vulnradar/0.3 (+https://github.com/nicoarias81/vulnradar)"
 NEWS_URL = "https://news.google.com/rss/search?q={query}&hl=en-US&gl=US&ceid=US:en"
 
 _lock = threading.Lock()

@@ -41,7 +41,7 @@ EPSS_URL = "https://epss.empiricalsecurity.com/epss_scores-current.csv.gz"
 GITHUB_SEARCH_URL = "https://api.github.com/search/repositories"
 SOURCES_PATH = REPO_ROOT / "config" / "sources.yaml"
 
-USER_AGENT = "humo-vs-miedo/0.3 (+https://github.com/humo-vs-miedo)"
+USER_AGENT = "vulnradar/0.3 (+https://github.com/nicoarias81/vulnradar)"
 DEFAULT_POC_QUERY = "{cve_id}"
 
 # CVE-YYYY-NNNN (4+ dígitos de secuencia).

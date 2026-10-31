@@ -1,4 +1,4 @@
-# Arquitectura — Humo vs Miedo
+# Arquitectura — VulnRadar
 
 ## Principios de diseño
 

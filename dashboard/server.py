@@ -1,4 +1,4 @@
-"""Servidor HTTP del dashboard Humo vs Miedo (HTML estático generado, puerto 8501)."""
+"""Servidor HTTP del dashboard VulnRadar (HTML estático generado, puerto 8501)."""
 from __future__ import annotations
 
 import json
@@ -179,7 +179,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
 def serve(host: str = "0.0.0.0", port: int = 8501) -> None:
     httpd = ThreadingHTTPServer((host, port), DashboardHandler)
-    print(f"Humo vs Miedo en http://{host}:{port}", flush=True)
+    print(f"VulnRadar en http://{host}:{port}", flush=True)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
