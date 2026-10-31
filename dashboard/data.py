@@ -22,7 +22,10 @@ SCATTER_LIMIT = 400
 VIEW_ALL_LIMIT = 100
 
 # Día de publicación (ISO) o, si falta, el del score. TEXT + TIMESTAMPTZ.
-_DAY_EXPR = "left(coalesce(c.published, s.calculated_at::text), 10)"
+# La fecha que manda es la de publicación del CVE. El fallback a la fecha de
+# cálculo metía en "recientes" a CVEs sin fecha (stubs de Exploit-DB/GHSA)
+# porque su día pasaba a ser hoy; sin fecha, un CVE no es reciente.
+_DAY_EXPR = "left(c.published, 10)"
 
 SELECT_SCORES_BASE = """
     SELECT s.cve_id, s.hype, s.reality, s.category, s.calculated_at,
@@ -115,9 +118,10 @@ def _where(clauses: list[str]) -> str:
 
 def _order_sql(order: str) -> str:
     if order in ("published", "recent", "date"):
-        # Fecha de publicación del CVE, más reciente primero (ISO ordena como
-        # texto). El fallback a calculated_at cubre las filas sin published.
-        return f"    ORDER BY {_DAY_EXPR} DESC, s.cve_id\n"
+        # Más reciente primero por fecha de publicación real. NULLS LAST y el
+        # desempate por cve_id: sin eso, todas las filas calculadas en el mismo
+        # ciclo empatan y el orden alfabético sube CVEs de 2023 al tope.
+        return "    ORDER BY c.published DESC NULLS LAST, s.cve_id\n"
     if order == "hype":
         return (
             "    ORDER BY (e.brand_name IS NOT NULL AND btrim(e.brand_name) <> '') DESC,"
