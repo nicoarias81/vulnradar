@@ -1,0 +1,13 @@
+# Dependencias para Humo vs Miedo
+
+requests>=2.31.0
+feedparser>=6.0.10
+PyYAML>=6.0
+streamlit>=1.28.0
+pandas>=2.0.0
+plotly>=5.17.0
+python-dotenv>=1.0.0
+# Opcional para LLM local
+# ollama
+# Para Postgres en lugar de SQLite
+# psycopg2-binary
