@@ -54,7 +54,12 @@ def _synced_at(db_path: Path, cve_id: str):
     conn = get_db(db_path)
     try:
         row = conn.execute("SELECT synced_at FROM cves WHERE cve_id = ?", (cve_id,)).fetchone()
-        return row["synced_at"] if row is not None else None
+        if row is None:
+            return None
+        value = row["synced_at"]
+        if hasattr(value, "strftime"):
+            return value.strftime("%Y-%m-%d %H:%M:%S")
+        return str(value)[:19]
     finally:
         conn.close()
 
@@ -133,7 +138,9 @@ def test_init_db_crea_sync_state_y_es_idempotente(db_path):
 
     conn = get_db(db_path)
     try:
-        columns = {row["name"] for row in conn.execute("PRAGMA table_info(sync_state)")}
+        from core.db import table_columns
+
+        columns = table_columns(conn, "sync_state")
         assert {"key", "value", "updated_at"} <= columns
         sync_agent.set_state(conn, sync_agent.HEAD_KEY, "abc123")
         sync_agent.set_state(conn, sync_agent.HEAD_KEY, "def456")

@@ -33,6 +33,8 @@ else
     echo "SLACK_WEBHOOK_URL="
     echo "ALERT_WEBHOOK_URL="
     echo "TZ=Europe/Madrid"
+    echo "# PostgreSQL externo (obligatorio). Completar antes del primer up."
+    echo "DATABASE_URL="
   } > "$ENV_PROD"
   chmod 600 "$ENV_PROD"
   echo "env.prod: creado (SOC_PASSWORD aleatorio, LITELLM_API_KEY: $([ -n "$LITELLM_KEY" ] && echo copiada || echo VACIA))"
@@ -40,6 +42,10 @@ fi
 
 chmod 700 "$APP/deploy" 2>/dev/null || true
 chmod 600 "$ENV_PROD"
+
+if ! grep -q '^DATABASE_URL=.\+' "$ENV_PROD"; then
+  echo "AVISO: DATABASE_URL vacío — el dashboard no arranca sin PostgreSQL externo"
+fi
 
 echo "data: $(du -sh "$APP/data" 2>/dev/null | cut -f1 || echo vacio)"
 echo "disco libre: $(df -h / | awk 'NR==2{print $4}')"

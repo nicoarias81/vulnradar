@@ -3,18 +3,21 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from html import escape
-import time
 
 from core.db import get_db
 from dashboard.data import (
-    daily_averages,
-    filter_scores,
+    SCATTER_LIMIT,
+    VIEW_ALL_LIMIT,
     guess_vuln_type,
     hype_components,
     load_agent_stats,
+    load_daily_averages,
+    load_latest_score,
     load_mentions,
     load_recent_events,
+    load_score,
     load_scores,
+    count_scores,
 )
 from dashboard.markup import (
     VTYPE_COLORS,
@@ -33,28 +36,6 @@ from dashboard.markup import (
 from dashboard.theme import AGENT_COLORS, SEVERITY_COLORS
 
 PAGE_SIZE = 6
-
-# Cache del listado por rango: el cálculo de promedios diarios y el render
-# cuestan ~1 s sobre 68k filas, y el worker sólo reescribe cada 15 min.
-_ROWS_CACHE: dict[tuple, tuple[float, list]] = {}
-_ROWS_TTL = 120.0
-
-
-def _rows(since=None, until=None):
-    key = (str(since), str(until))
-    now = time.monotonic()
-    hit = _ROWS_CACHE.get(key)
-    if hit and now - hit[0] < _ROWS_TTL:
-        return hit[1]
-    conn = get_db()
-    try:
-        rows = load_scores(conn, since=since, until=until)
-    finally:
-        conn.close()
-    if len(_ROWS_CACHE) > 6:
-        _ROWS_CACHE.clear()
-    _ROWS_CACHE[key] = (now, rows)
-    return rows
 
 
 def _fmt_pub(value) -> str:
@@ -105,32 +86,38 @@ def overview(qp: dict | None = None) -> str:
         except ValueError:
             until = None
 
-    rows = _rows(since=since, until=until)
-    if not rows:
-        return overview_html(
-            logo_html=logo(),
-            scatter_div='<p class="empty">Todavía no hay scores. El worker autónomo los calcula solo.</p>',
-            timeline_div="",
-            table_rows="",
-            total=0, page=0, page_size=page_size,
-            severity=severity, category=category, since=since_s, until=until_s,
-            show_all=show_all,
+    cat = None if category == "All categories" else category
+    sev = None if severity == "All severities" else severity
+    conn = get_db()
+    try:
+        total = count_scores(conn, since=since, until=until, category=cat, severity=sev)
+        if not total:
+            return overview_html(
+                logo_html=logo(),
+                scatter_div='<p class="empty">Todavía no hay scores. El worker autónomo los calcula solo.</p>',
+                timeline_div="",
+                table_rows="",
+                total=0, page=0, page_size=page_size,
+                severity=severity, category=category, since=since_s, until=until_s,
+                show_all=show_all,
+            )
+        if show_all:
+            page_size = VIEW_ALL_LIMIT
+        max_page = max(0, (total - 1) // page_size) if total else 0
+        page = min(max(0, page), max_page)
+        chunk = load_scores(
+            conn, since=since, until=until, category=cat, severity=sev,
+            limit=page_size, offset=page * page_size, order="calculated_at",
         )
-
-    filtered = filter_scores(
-        rows,
-        categories=None if category == "All categories" else [category],
-        severities=None if severity == "All severities" else [severity],
-        since=since,
-        until=until,
-    )
-    total = len(filtered)
-    if show_all:
-        page_size = max(total, 1)
-        page = 0
-    max_page = max(0, (total - 1) // page_size) if total else 0
-    page = min(max(0, page), max_page)
-    chunk = filtered[page * page_size : page * page_size + page_size]
+        scatter_rows = load_scores(
+            conn, since=since, until=until, category=cat, severity=sev,
+            limit=SCATTER_LIMIT, order="hype",
+        )
+        series = load_daily_averages(
+            conn, since=since, until=until, category=cat, severity=sev,
+        )
+    finally:
+        conn.close()
 
     table_rows = []
     for item in chunk:
@@ -151,8 +138,7 @@ def overview(qp: dict | None = None) -> str:
             "</tr>"
         )
 
-    scatter_div = scatter_svg(filtered) if filtered else '<p class="empty">Ningún CVE pasa los filtros actuales.</p>'
-    series = daily_averages(filtered) if filtered else []
+    scatter_div = scatter_svg(scatter_rows) if scatter_rows else '<p class="empty">Ningún CVE pasa los filtros actuales.</p>'
     timeline_div = timeline_svg(series)
 
     return overview_html(
@@ -169,19 +155,15 @@ def overview(qp: dict | None = None) -> str:
 def detail(qp: dict | None = None) -> str:
     qp = qp or {}
     now = datetime.now(timezone.utc).strftime("%d %b %Y, %H:%M UTC")
-    rows = _rows()
-    if not rows:
-        return document(
-            f'<div class="page">{logo()}<p class="empty">Todavía no hay scores. El worker los calcula solo en el próximo ciclo.</p></div>'
-        )
-
-    ids = [row["cve_id"] for row in rows]
     requested = _qp(qp, "cve")
-    cve_id = requested if requested in ids else ids[0]
-    row = next(item for item in rows if item["cve_id"] == cve_id)
-
     conn = get_db()
     try:
+        row = load_score(conn, requested) if requested else load_latest_score(conn)
+        if not row:
+            return document(
+                f'<div class="page">{logo()}<p class="empty">Todavía no hay scores. El worker los calcula solo en el próximo ciclo.</p></div>'
+            )
+        cve_id = row["cve_id"]
         mentions = load_mentions(conn, cve_id)
     finally:
         conn.close()
@@ -268,22 +250,25 @@ def _spark_values(events, agent: str, n: int = 16) -> list[float]:
 
 
 def agents(_qp: dict | None = None) -> str:
+    today = datetime.now(timezone.utc).date()
     conn = get_db()
     try:
         stats = load_agent_stats(conn)
-        # Sólo hace falta el conteo: traer los ~400k scores costaba 9 s.
         overhyped = conn.execute(
             "SELECT COUNT(*) FROM scores WHERE category = 'Overhyped'"
         ).fetchone()[0]
         events = load_recent_events(conn, 80)
+        rows = load_scores(
+            conn,
+            since=today - timedelta(days=180),
+            until=today,
+            limit=SCATTER_LIMIT,
+            order="hype",
+        )
     finally:
         conn.close()
     now = datetime.now(timezone.utc).strftime("%H:%M:%S UTC")
     last = stats.get("agents") or {}
-    # El scatter del panel usa los últimos 180 días (no los ~400k scores): mismo
-    # rango que la portada, así comparten caché.
-    today = datetime.now(timezone.utc).date()
-    rows = _rows(since=today - timedelta(days=180), until=today)
     specs = [
         ("sync", "Sync Agent", (f"{stats['cves']:,}", "RECORDS SYNCED"), (str(stats["synced_at"] or "—")[:16] or "—", "LAST SYNC")),
         ("enrich", "Enrichment Agent", (f"{stats['enrichments']:,}", "ENTITIES ENRICHED"), ("KEV · EPSS", "SOURCES")),

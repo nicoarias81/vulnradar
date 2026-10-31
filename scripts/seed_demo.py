@@ -244,16 +244,18 @@ def seed(db_path=None) -> int:
             for source, title, url in item.get("mentions") or []:
                 conn.execute(
                     """
-                    INSERT OR IGNORE INTO media_mentions (cve_id, url, title, source, published)
+                    INSERT INTO media_mentions (cve_id, url, title, source, published)
                     VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT DO NOTHING
                     """,
                     (item["cve_id"], url, title, source, item.get("published")),
                 )
             if item["alert"]:
                 conn.execute(
                     """
-                    INSERT OR IGNORE INTO alerts_sent (cve_id, channel, rule)
+                    INSERT INTO alerts_sent (cve_id, channel, rule)
                     VALUES (?, 'slack', ?)
+                    ON CONFLICT DO NOTHING
                     """,
                     (
                         item["cve_id"],

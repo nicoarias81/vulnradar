@@ -130,7 +130,7 @@ def _extract_description(cna: Mapping[str, Any]) -> str:
 
 
 def _get(row, key: str):
-    """Lee una clave de un dict o de un sqlite3.Row (ambos se usan como fila)."""
+    """Lee una clave de un dict o de una fila (Row / mapping)."""
     if row is None:
         return None
     if isinstance(row, Mapping):

@@ -1,7 +1,7 @@
 """Fase 3: RSS, PoCs de GitHub y tone/branding vía LLM.
 
 Sin red: los feeds y la búsqueda salen de fixtures, y el LLM se inyecta o se
-mockea. Todo se persiste contra SQLite temporal (`tmp_path`).
+mockea. Todo se persiste contra un schema PostgreSQL aislado (`tmp_path` como clave).
 """
 import json
 from pathlib import Path
@@ -114,7 +114,9 @@ def _feed_mentions(conn, cve_id=CVE_1):
 def test_schema_crea_la_tabla_media_mentions(db_file):
     conn = get_db(db_file)
     try:
-        tables = {row["name"] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        from core.db import list_tables
+
+        tables = list_tables(conn)
     finally:
         conn.close()
 
@@ -433,7 +435,13 @@ def test_rss_only_no_toca_red(tmp_path, monkeypatch):
     db_path = tmp_path / "humo.db"
 
     assert agent.main(["--rss-only", "--sources", str(sources), "--db-path", str(db_path)]) == 0
-    assert db_path.exists()
+    conn = get_db(db_path)
+    try:
+        from core.db import list_tables
+
+        assert "cves" in list_tables(conn)
+    finally:
+        conn.close()
 
 
 def test_run_con_todo_skippeado_devuelve_ceros(tmp_path):
@@ -467,5 +475,5 @@ def test_select_tone_targets_toma_un_titular_por_cve(conn, rss_session):
 
     targets = agent.select_tone_targets(conn, limit=10)
 
-    assert [item["cve_id"] for item in targets] == [CVE_2, CVE_1]  # rowid DESC
+    assert [item["cve_id"] for item in targets] == [CVE_2, CVE_1]  # id DESC
     assert all(item["title"] for item in targets)

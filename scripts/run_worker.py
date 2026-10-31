@@ -41,7 +41,9 @@ def log_event(agent: str, event_type: str, details: str, status: str = "SUCCESS"
         conn.execute(
             """
             DELETE FROM agent_events WHERE id NOT IN (
-                SELECT id FROM agent_events ORDER BY id DESC LIMIT ?
+                SELECT id FROM (
+                    SELECT id FROM agent_events ORDER BY id DESC LIMIT ?
+                ) keep
             )
             """,
             (KEEP_EVENTS,),

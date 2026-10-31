@@ -20,7 +20,7 @@ Versión base open source. La capa de contexto (inventario de assets + criticida
               ↓
          Sync Agent + Enrichment Agent
               ↓
-         Base de datos local (SQLite/Postgres)
+         PostgreSQL externo
               ↓
          Scoring Agent (fórmulas v2)
               ↓
@@ -35,7 +35,7 @@ El sistema es autónomo: un worker en loop hace sync → enrich → score → al
 No hace falta entrar a correr agentes a mano.
 
 ```bash
-cp .env.example .env   # LITELLM_API_KEY, webhooks, opcional GITHUB_TOKEN
+cp .env.example .env   # DATABASE_URL, LITELLM_API_KEY, webhooks, opcional GITHUB_TOKEN
 docker compose up --build -d
 # Dashboard: http://localhost:8501
 docker compose logs -f worker
@@ -45,7 +45,7 @@ docker compose logs -f worker
 solo, en loop (`SYNC_INTERVAL_MINUTES`, default 15):
 
 1. `git fetch --depth 1` + merge ff-only del mirror CVE List V5 (clone `--depth 1` si no existe; si origin reescribió historia, `reset --hard` al tip remoto)
-2. sync incremental a SQLite
+2. sync incremental a PostgreSQL
 3. enrichment (KEV, EPSS, RSS, GitHub, LLM)
 4. scoring
 5. alertas (si hay webhook configurado)
@@ -82,8 +82,10 @@ La pantalla pública no enlaza al SOC.
 
 Con la base vacía la página no rompe: el worker autónomo llena scores en el
 próximo ciclo; con `SEED_DEMO=1` hay 8 CVEs de ejemplo. La carga y el filtrado
-viven en `dashboard/data.py` y se testean con `pytest`. El panel SOC se
-refresca solo con los eventos de `agent_events`.
+viven en `dashboard/data.py` y se testean con `pytest`. La home no materializa
+el histórico: `COUNT(*)` para el total, scatter `LIMIT 400` (prioriza branding
+y hype), tabla paginada (`LIMIT/OFFSET`, 6 u 100 en View all) y timeline con
+`GROUP BY` diario. El panel SOC se refresca solo con los eventos de `agent_events`.
 
 ## Sync incremental
 
@@ -117,7 +119,7 @@ puede cambiar por una corrección de metadatos. En cada corrida incremental:
 
 Para tests se puede inyectar el mirror y la base:
 `sync(full=False, cve_list_path="...", db_path="...")` o `--cve-list-path`/
-`--db-path` por CLI.
+`--db-path` por CLI (`db_path` aísla un schema de test; producción usa `DATABASE_URL`).
 
 ## Enriquecimiento
 
@@ -159,8 +161,8 @@ pytest -q
 ```
 
 Los tests no usan red: el scoring, la normalización, los UPSERTs y el sync
-incremental se prueban contra SQLite temporal (`tmp_path`) y un mini repo git
-armado en el propio tmp.
+incremental se prueban contra schemas PostgreSQL aislados (`DATABASE_URL` +
+clave `tmp_path`) y un mini repo git armado en el propio tmp.
 
 ## Estructura del proyecto
 

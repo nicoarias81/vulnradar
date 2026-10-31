@@ -4,7 +4,7 @@ services:
     ports:
       - "8501:8501"
     environment:
-      DB_PATH: /app/data/humo.db
+      DATABASE_URL: ${DATABASE_URL}
       CVE_LIST_PATH: /app/data/cvelistV5
       SEED_DEMO: "1"
       SOC_USER: ${SOC_USER:-soc}
@@ -21,7 +21,7 @@ services:
     healthcheck:
       disable: true
     environment:
-      DB_PATH: /app/data/humo.db
+      DATABASE_URL: ${DATABASE_URL}
       CVE_LIST_PATH: /app/data/cvelistV5
     env_file:
       - .env

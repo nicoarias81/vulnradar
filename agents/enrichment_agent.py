@@ -474,7 +474,7 @@ def select_tone_targets(conn, limit=50) -> list:
         FROM media_mentions m
         LEFT JOIN enrichments e ON e.cve_id = m.cve_id
         WHERE m.title IS NOT NULL AND m.title <> ''
-        ORDER BY (e.tone_score IS NOT NULL), m.rowid DESC
+        ORDER BY (e.tone_score IS NOT NULL), m.id DESC
     """).fetchall()
 
     targets, seen = [], set()
@@ -567,7 +567,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--llm-limit", type=int, default=50, help="CVEs a analizar con el LLM (default 50).")
     parser.add_argument("--llm-batch-size", type=int, default=10, help="Titulares por llamada (default 10).")
     parser.add_argument("--sources", default=None, help="Ruta a sources.yaml (default config/sources.yaml).")
-    parser.add_argument("--db-path", default=None, help="Ruta de la base (default DB_PATH).")
+    parser.add_argument("--db-path", default=None, help="Schema de test. Producción: DATABASE_URL.")
     parser.add_argument("--llm-smoke", action="store_true", help="Una llamada real al LLM y sale.")
     return parser
 

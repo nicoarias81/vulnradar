@@ -57,7 +57,7 @@ Agentes lee `agent_events`. No requiere comandos manuales.
 ```
 CVE List V5 ──┐
 CISA KEV     ──┤
-EPSS         ──┼→ Enrichment → DB local → Scoring → [Contexto] → Dashboard/Alerts
+EPSS         ──┼→ Enrichment → PostgreSQL → Scoring → [Contexto] → Dashboard/Alerts
 RSS + GitHub ──┘
 ```
 

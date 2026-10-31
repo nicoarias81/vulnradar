@@ -574,19 +574,21 @@ def overview_html(
     end = min(total, page * page_size + page_size)
     max_page = max(0, (total - 1) // page_size) if total else 0
     common = dict(severity=severity, category=category, since=since, until=until)
+    if show_all:
+        common["all"] = "1"
     prev = _qs("/", **common, page=str(page - 1)) if page > 0 else None
     nxt = _qs("/", **common, page=str(page + 1)) if page < max_page else None
     prev_el = f'<a class="nav" href="{prev}">‹</a>' if prev else '<span class="disabled">‹</span>'
     nxt_el = f'<a class="nav" href="{nxt}">›</a>' if nxt else '<span class="disabled">›</span>'
-    all_href = _qs("/", **common, all="1")
-    paged_href = _qs("/", **common)
+    all_href = _qs("/", **{k: v for k, v in common.items() if k != "all"}, all="1")
+    paged_href = _qs("/", **{k: v for k, v in common.items() if k != "all"})
     view = (
         f'<a class="viewall" href="{paged_href}">Show pages ←</a>'
         if show_all else
         f'<a class="viewall" href="{all_href}">View all CVEs →</a>'
     )
     hidden_all = '<input type="hidden" name="all" value="1">' if show_all else ""
-    pager_btns = "" if show_all else f"<span>{prev_el} {nxt_el}</span>"
+    pager_btns = f"<span>{prev_el} {nxt_el}</span>"
     body = f"""
 <div class="page">
   <div class="top">

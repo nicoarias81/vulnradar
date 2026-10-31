@@ -1,13 +1,14 @@
 """
 Carga y filtrado de scores para el dashboard.
 
-Módulo puro (sqlite3 + stdlib, sin Streamlit ni pandas): la UI se testea con
-pytest sin levantar el runtime de Streamlit.
+Módulo puro (psycopg + stdlib, sin Streamlit ni pandas): la UI se testea con
+pytest sin levantar el runtime de Streamlit. Las queries de la home capan en
+SQL (COUNT, LIMIT/OFFSET, GROUP BY): no se materializan decenas de miles de filas.
 """
+from core.db import has_table
 
 CATEGORIES = ("Overhyped", "Earned the hype", "Sleeper", "Quiet")
 
-# Claves de cada fila, en el orden en que las consume la UI.
 SCORE_COLUMNS = (
     "cve_id", "hype", "reality", "category", "calculated_at",
     "description", "cvss_score", "cvss_severity", "published",
@@ -15,8 +16,12 @@ SCORE_COLUMNS = (
     "branding", "brand_name", "alertas", "alertado",
 )
 
-# `scores` tiene UNIQUE(cve_id): un solo score vigente por CVE y el JOIN
-# directo alcanza. El LEFT JOIN conserva los CVEs todavía sin enriquecer.
+SCATTER_LIMIT = 400
+VIEW_ALL_LIMIT = 100
+
+# Día de publicación (ISO) o, si falta, el del score. TEXT + TIMESTAMPTZ.
+_DAY_EXPR = "left(coalesce(c.published, s.calculated_at::text), 10)"
+
 SELECT_SCORES_BASE = """
     SELECT s.cve_id, s.hype, s.reality, s.category, s.calculated_at,
            c.description, c.cvss_score, c.cvss_severity, c.published,
@@ -27,59 +32,153 @@ SELECT_SCORES_BASE = """
     LEFT JOIN enrichments e ON e.cve_id = s.cve_id
 """
 
-SELECT_SCORES = SELECT_SCORES_BASE + "    ORDER BY s.calculated_at DESC\n"
 
-
-def has_alerts_table(conn) -> bool:
-    """`alerts_sent` es de la Fase 4: una base vieja puede no tenerla."""
-    return _has_table(conn, "alerts_sent")
-
-
-def load_alert_counts(conn) -> dict:
-    """Cantidad de alertas enviadas por CVE. Sin tabla, ningún CVE está alertado."""
-    if not has_alerts_table(conn):
-        return {}
-    rows = conn.execute(
-        "SELECT cve_id, COUNT(*) FROM alerts_sent GROUP BY cve_id"
-    ).fetchall()
-    return {row[0]: int(row[1]) for row in rows}
-
-
-def load_scores(conn, since=None, until=None) -> list:
-    """
-    Scores vigentes con su CVE y su enrichment.
-
-    Base vacía -> lista vacía (no excepción): la UI decide el empty state.
-    Se leen los nombres del cursor para no depender del row_factory del caller.
-    El rango se filtra en SQL: con ~400k scores, traer todo y recortar en Python
-    costaba ~9 s por request.
-    """
+def _filters(since=None, until=None, category=None, severity=None):
     clauses: list[str] = []
-    params: list[str] = []
+    params: list = []
     if since:
-        clauses.append("date(coalesce(c.published, s.calculated_at)) >= date(?)")
+        clauses.append(f"{_DAY_EXPR} >= ?")
         params.append(str(since)[:10])
     if until:
-        clauses.append("date(coalesce(c.published, s.calculated_at)) <= date(?)")
+        clauses.append(f"{_DAY_EXPR} <= ?")
         params.append(str(until)[:10])
-    sql = SELECT_SCORES_BASE
-    if clauses:
-        sql += "    WHERE " + " AND ".join(clauses) + "\n"
-    sql += "    ORDER BY s.calculated_at DESC\n"
+    if category and category not in ("All categories",):
+        clauses.append("s.category = ?")
+        params.append(category)
+    if severity and severity not in ("All severities",):
+        clauses.append("upper(c.cvss_severity) = ?")
+        params.append(str(severity).upper())
+    return clauses, params
 
-    alerts = load_alert_counts(conn)
-    cursor = conn.execute(sql, params)
-    names = [column[0] for column in cursor.description]
 
-    result = []
-    for raw in cursor.fetchall():
-        row = dict(zip(names, raw))
+def _where(clauses: list[str]) -> str:
+    if not clauses:
+        return ""
+    return "    WHERE " + " AND ".join(clauses) + "\n"
+
+
+def _order_sql(order: str) -> str:
+    if order == "hype":
+        return (
+            "    ORDER BY (e.brand_name IS NOT NULL AND btrim(e.brand_name) <> '') DESC,"
+            " s.hype DESC NULLS LAST, s.cve_id\n"
+        )
+    return "    ORDER BY s.calculated_at DESC NULLS LAST, s.cve_id\n"
+
+
+def _attach_alerts(conn, rows: list) -> list:
+    if not rows:
+        return rows
+    if not has_table(conn, "alerts_sent"):
+        for row in rows:
+            row["alertas"] = 0
+            row["alertado"] = False
+        return rows
+    alerts = load_alert_counts(conn, [row["cve_id"] for row in rows])
+    for row in rows:
         count = alerts.get(row["cve_id"], 0)
         row["alertas"] = count
         row["alertado"] = count > 0
-        result.append(row)
-    return result
+    return rows
 
+
+def _fetch_dicts(cursor) -> list:
+    names = [column[0] for column in cursor.description]
+    return [dict(zip(names, raw)) for raw in cursor.fetchall()]
+
+
+def load_alert_counts(conn, cve_ids=None) -> dict:
+    """Cantidad de alertas enviadas por CVE. Sin tabla, ningún CVE está alertado."""
+    if not has_table(conn, "alerts_sent"):
+        return {}
+    if cve_ids is not None:
+        if not cve_ids:
+            return {}
+        placeholders = ", ".join("?" for _ in cve_ids)
+        rows = conn.execute(
+            f"SELECT cve_id, COUNT(*) FROM alerts_sent WHERE cve_id IN ({placeholders}) GROUP BY cve_id",
+            tuple(cve_ids),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT cve_id, COUNT(*) FROM alerts_sent GROUP BY cve_id"
+        ).fetchall()
+    return {row[0]: int(row[1]) for row in rows}
+
+
+def count_scores(conn, since=None, until=None, category=None, severity=None) -> int:
+    clauses, params = _filters(since, until, category, severity)
+    sql = (
+        "SELECT COUNT(*) FROM scores s "
+        "JOIN cves c ON c.cve_id = s.cve_id "
+        "LEFT JOIN enrichments e ON e.cve_id = s.cve_id\n"
+        + _where(clauses)
+    )
+    row = conn.execute(sql, params).fetchone()
+    return int(row[0] if row and row[0] is not None else 0)
+
+
+def load_scores(
+    conn,
+    since=None,
+    until=None,
+    category=None,
+    severity=None,
+    limit=None,
+    offset=0,
+    order="calculated_at",
+) -> list:
+    """
+    Scores vigentes con su CVE y su enrichment.
+
+    Base vacía -> lista vacía. `limit`/`offset` capan en SQL (home: tabla y scatter).
+    """
+    clauses, params = _filters(since, until, category, severity)
+    sql = SELECT_SCORES_BASE + _where(clauses) + _order_sql(order)
+    if limit is not None:
+        sql += "    LIMIT ? OFFSET ?\n"
+        params = list(params) + [int(limit), int(offset or 0)]
+    cursor = conn.execute(sql, params)
+    return _attach_alerts(conn, _fetch_dicts(cursor))
+
+
+def load_score(conn, cve_id: str):
+    """Una ficha CVE. None si no hay score."""
+    sql = SELECT_SCORES_BASE + "    WHERE s.cve_id = ?\n"
+    cursor = conn.execute(sql, (cve_id,))
+    rows = _attach_alerts(conn, _fetch_dicts(cursor))
+    return rows[0] if rows else None
+
+
+def load_latest_score(conn):
+    rows = load_scores(conn, limit=1, order="calculated_at")
+    return rows[0] if rows else None
+
+
+def load_daily_averages(conn, since=None, until=None, category=None, severity=None) -> list:
+    """Promedio de hype/reality por día, agregado en SQL."""
+    clauses, params = _filters(since, until, category, severity)
+    sql = (
+        f"SELECT {_DAY_EXPR} AS date, "
+        "AVG(s.hype) AS hype, AVG(s.reality) AS reality, COUNT(*) AS n "
+        "FROM scores s "
+        "JOIN cves c ON c.cve_id = s.cve_id "
+        "LEFT JOIN enrichments e ON e.cve_id = s.cve_id\n"
+        + _where(clauses)
+        + f"    GROUP BY {_DAY_EXPR}\n"
+        + f"    ORDER BY {_DAY_EXPR}\n"
+    )
+    series = []
+    for row in conn.execute(sql, params).fetchall():
+        hype = row["hype"]
+        reality = row["reality"]
+        series.append({
+            "date": str(row["date"])[:10],
+            "hype": round(float(hype), 2) if hype is not None else None,
+            "reality": round(float(reality), 2) if reality is not None else None,
+            "n": int(row["n"]),
+        })
+    return series
 
 
 def filter_scores(
@@ -152,7 +251,7 @@ def daily_averages(rows) -> list:
 
 
 def load_mentions(conn, cve_id: str) -> list:
-    if not _has_table(conn, "media_mentions"):
+    if not has_table(conn, "media_mentions"):
         return []
     cursor = conn.execute(
         """
@@ -163,8 +262,7 @@ def load_mentions(conn, cve_id: str) -> list:
         """,
         (cve_id,),
     )
-    names = [column[0] for column in cursor.description]
-    return [dict(zip(names, raw)) for raw in cursor.fetchall()]
+    return _fetch_dicts(cursor)
 
 
 def load_agent_stats(conn) -> dict:
@@ -179,13 +277,15 @@ def load_agent_stats(conn) -> dict:
     n_cves = count("SELECT COUNT(*) FROM cves")
     n_enrich = count("SELECT COUNT(*) FROM enrichments")
     n_scores = count("SELECT COUNT(*) FROM scores")
-    n_alerts = count("SELECT COUNT(*) FROM alerts_sent") if _has_table(conn, "alerts_sent") else 0
-    avg_row = conn.execute("SELECT AVG(hype), AVG(reality) FROM scores").fetchone()
+    n_alerts = count("SELECT COUNT(*) FROM alerts_sent") if has_table(conn, "alerts_sent") else 0
+    avg_row = conn.execute(
+        "SELECT AVG(hype) AS avg_hype, AVG(reality) AS avg_reality FROM scores"
+    ).fetchone()
     avg_hype = round(float(avg_row[0] or 0), 1)
     avg_reality = round(float(avg_row[1] or 0), 1)
 
     sync_at = None
-    if _has_table(conn, "sync_state"):
+    if has_table(conn, "sync_state"):
         row = conn.execute(
             "SELECT value FROM sync_state WHERE key = 'cvelist_synced_at'"
         ).fetchone()
@@ -206,7 +306,7 @@ def load_agent_stats(conn) -> dict:
 
 
 def load_recent_events(conn, limit: int = 15) -> list:
-    if not _has_table(conn, "agent_events"):
+    if not has_table(conn, "agent_events"):
         return []
     cursor = conn.execute(
         """
@@ -217,13 +317,12 @@ def load_recent_events(conn, limit: int = 15) -> list:
         """,
         (limit,),
     )
-    names = [column[0] for column in cursor.description]
-    return [dict(zip(names, raw)) for raw in cursor.fetchall()]
+    return _fetch_dicts(cursor)
 
 
 def load_last_agent_status(conn) -> dict:
     """Último evento por agente (sync/enrich/score/alert)."""
-    if not _has_table(conn, "agent_events"):
+    if not has_table(conn, "agent_events"):
         return {}
     out = {}
     for agent in ("sync", "enrich", "score", "alert", "worker"):
@@ -286,14 +385,6 @@ def guess_vuln_type(description: str | None) -> str:
         if needle in text:
             return label
     return "—"
-
-
-def _has_table(conn, name: str) -> bool:
-    row = conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
-        (name,),
-    ).fetchone()
-    return row is not None
 
 
 def _as_date(value):

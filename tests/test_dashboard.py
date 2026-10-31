@@ -5,13 +5,16 @@ import pytest
 
 from core.db import get_db, init_db
 from dashboard.data import (
+    count_scores,
     daily_averages,
     filter_scores,
     guess_vuln_type,
     hype_components,
     load_agent_stats,
+    load_daily_averages,
     load_last_agent_status,
     load_recent_events,
+    load_score,
     load_scores,
 )
 
@@ -154,6 +157,22 @@ def test_guess_vuln_type_y_daily_averages(conn):
     assert stats["scores"] == 2
     comps = hype_components(rows[0])
     assert {item["key"] for item in comps} == {"cvss", "media", "tone", "branding", "pocs"}
+
+
+def test_count_y_limit_no_materializan_todo(conn):
+    for i in range(5):
+        _score(conn, f"CVE-2026-02{i:02d}", 9.0 - i, 1.0, "Overhyped",
+               description="RCE")
+    assert count_scores(conn) == 5
+    capped = load_scores(conn, limit=2, order="hype")
+    assert len(capped) == 2
+    assert capped[0]["hype"] >= capped[1]["hype"]
+    assert load_score(conn, "CVE-2026-0200")["cve_id"] == "CVE-2026-0200"
+    assert load_score(conn, "CVE-2099-0000") is None
+    series = load_daily_averages(conn)
+    assert series and series[0]["n"] == 5
+    assert count_scores(conn, category="Overhyped") == 5
+    assert count_scores(conn, category="Quiet") == 0
 
 
 def test_load_recent_events_y_ultimo_status(conn):

@@ -5,7 +5,8 @@
 # - Publica SÓLO en 127.0.0.1:8501 (el túnel entra ahí). Nada escucha en 0.0.0.0.
 # - `default` = bridge con salida a internet (worker: git/CISA/EPSS/RSS/GitHub).
 # - `litellm` = red `internal` compartida con el LiteLLM de /opt/stack (proxy en litellm:4000).
-# - `../data` (bind mount) guarda humo.db y el mirror cvelistV5: NUNCA se pisa con git archive.
+# - `../data` (bind mount) guarda el mirror cvelistV5: NUNCA se pisa con git archive.
+# - La DB es PostgreSQL externo (`DATABASE_URL` en `.env.prod`).
 name: vulnradar
 
 services:
@@ -16,7 +17,6 @@ services:
     env_file:
       - .env.prod
     environment:
-      DB_PATH: /app/data/humo.db
       CVE_LIST_PATH: /app/data/cvelistV5
       # Sitio público: nunca datos de demo.
       SEED_DEMO: "0"
@@ -41,7 +41,6 @@ services:
     env_file:
       - .env.prod
     environment:
-      DB_PATH: /app/data/humo.db
       CVE_LIST_PATH: /app/data/cvelistV5
       LLM_BASE_URL: http://litellm:4000/v1
       TZ: Europe/Madrid
@@ -49,7 +48,7 @@ services:
       - ../data:/app/data
     networks: [default, litellm]
     restart: unless-stopped
-    # Un ciclo de sync/enrich puede tardar; que el SIGTERM no corte una escritura SQLite.
+    # Un ciclo de sync/enrich puede tardar; que el SIGTERM no corte una escritura.
     stop_grace_period: 2m
     healthcheck:
       disable: true

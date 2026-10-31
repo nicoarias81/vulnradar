@@ -9,7 +9,7 @@ Uso:
     python agents/alert_agent.py                 # una pasada y sale (default)
     python agents/alert_agent.py --dry-run       # evalúa e imprime, sin POST ni escrituras
     python agents/alert_agent.py --skip-slack    # sólo webhook genérico
-    python agents/alert_agent.py --once --db-path data/humo.db
+    python agents/alert_agent.py --once
 
 Reglas (todas opt-in por umbral, no hay alertas "por defecto"):
     overhyped        category == "Overhyped"      hype alto, miedo bajo
@@ -347,7 +347,7 @@ def build_parser() -> argparse.ArgumentParser:
                         help=f"tone_score mínimo para la regla humo (default {HUMO_TONE_THRESHOLD}).")
     parser.add_argument("--humo-reality", type=float, default=HUMO_REALITY_THRESHOLD,
                         help=f"reality máximo para la regla humo (default {HUMO_REALITY_THRESHOLD}).")
-    parser.add_argument("--db-path", default=None, help="Ruta de la base (default DB_PATH).")
+    parser.add_argument("--db-path", default=None, help="Schema de test. Producción: DATABASE_URL.")
     return parser
 
 

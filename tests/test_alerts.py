@@ -309,15 +309,15 @@ def test_init_db_crea_alerts_sent(tmp_path):
 
     conn = get_db(path)
     try:
-        tabla = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='alerts_sent'"
-        ).fetchone()
-        columnas = {row["name"] for row in conn.execute("PRAGMA table_info(alerts_sent)")}
-        indices = {row["name"] for row in conn.execute("PRAGMA index_list(alerts_sent)")}
+        from core.db import has_table, table_columns, table_indexes
+
+        tabla = has_table(conn, "alerts_sent")
+        columnas = table_columns(conn, "alerts_sent")
+        indices = table_indexes(conn, "alerts_sent")
     finally:
         conn.close()
 
-    assert tabla is not None
+    assert tabla is True
     assert columnas == {"id", "cve_id", "channel", "rule", "payload_hash", "sent_at"}
     assert indices  # el UNIQUE(cve_id, channel, rule) crea su índice automático
 

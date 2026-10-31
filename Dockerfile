@@ -4,7 +4,6 @@ WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    DB_PATH=/app/data/humo.db \
     STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
 
 RUN apt-get update \

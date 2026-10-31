@@ -7,7 +7,7 @@ import pytest
 from agents.enrichment_agent import upsert_epss, upsert_kev
 from agents.scoring_agent import score_all
 from agents.sync_agent import process_cve_file
-from core.db import DB_PATH, REPO_ROOT, get_db, init_db
+from core.db import get_db, init_db, list_tables
 
 CVE_ID = "CVE-2026-0001"
 FIXTURES = Path(__file__).parent / "fixtures" / "cvelistV5"
@@ -42,19 +42,13 @@ def _count(conn, table, cve_id=CVE_ID):
     return conn.execute(f"SELECT COUNT(*) FROM {table} WHERE cve_id = ?", (cve_id,)).fetchone()[0]
 
 
-def test_db_path_y_schema_no_dependen_del_cwd(tmp_path, monkeypatch):
-    assert DB_PATH.is_absolute()
-    assert REPO_ROOT in DB_PATH.parents
-
+def test_init_db_aisla_por_clave_y_no_depende_del_cwd(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     path = init_db(tmp_path / "otro.db")
 
     conn = get_db(path)
     try:
-        tables = {
-            row["name"]
-            for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        }
+        tables = list_tables(conn)
     finally:
         conn.close()
 

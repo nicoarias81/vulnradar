@@ -11,7 +11,8 @@ python-dotenv>=1.0.0
 # Tests
 pytest>=7.4.0
 
+# PostgreSQL
+psycopg[binary]>=3.1
+
 # Opcional para LLM local
 # ollama
-# Para Postgres en lugar de SQLite
-# psycopg2-binary

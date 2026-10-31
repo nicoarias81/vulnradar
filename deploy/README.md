@@ -11,7 +11,7 @@ Internet → Cloudflare edge → tunnel "personal-1" → http://localhost:8501 �
 |---|---|
 | Server | Hetzner CAX21 ARM64, `ssh.munalabs.eu` (sólo por túnel) |
 | Código | `/opt/vulnradar` (no es git repo: se sincroniza con `git archive HEAD`) |
-| Datos | `/opt/vulnradar/data` (bind mount): `humo.db` + mirror `cvelistV5` |
+| Datos | `/opt/vulnradar/data` (bind mount): mirror `cvelistV5`. DB = PostgreSQL externo (`DATABASE_URL`) |
 | Secretos | `/opt/vulnradar/deploy/.env.prod` (chmod 600, generado en el server, nunca en el repo) |
 | Puerto | `127.0.0.1:8501` — nada escucha en 0.0.0.0 |
 | Redes | `default` (egress: git/CISA/EPSS/RSS/GitHub) + `internal` (LiteLLM compartido de `/opt/stack`) |
@@ -86,7 +86,7 @@ Esperado en `/soc` sin cookie: página de login (200). Con cookie: panel `SOC MO
 `SEED_DEMO=0`: la DB arranca vacía y **el worker la llena solo**. El primer ciclo es caro:
 
 1. `git clone --depth 1` del mirror cvelistV5 (~1–2 GB en disco).
-2. Recorrido completo de ~395k archivos JSON → SQLite (la DB queda en ~2 GB; en local tardó y quedó así).
+2. Recorrido completo de ~395k archivos JSON → PostgreSQL.
 3. Enrichment por ciclo: KEV + EPSS completos, RSS, PoC de 25 CVEs, tone de 50 CVEs (lotes de 10).
 4. Scoring sobre los CVEs enriquecidos.
 
@@ -95,7 +95,7 @@ O sea: el sitio público arranca mostrando poco y se va poblando. Un ciclo puede
 
 ```bash
 ssh ... 'docker logs -f --tail 50 vulnradar-worker-1'
-ssh ... "docker exec vulnradar-dashboard-1 python -c \"import sqlite3;c=sqlite3.connect('/app/data/humo.db');print([(t,c.execute('select count(*) from '+t).fetchone()[0]) for t in ('cves','scores','enrichments')])\""
+ssh ... "docker exec vulnradar-dashboard-1 python -c \"from core.db import get_db;c=get_db();print([(t,c.execute('select count(*) from '+t).fetchone()[0]) for t in ('cves','scores','enrichments')]);c.close()\""
 ```
 
 ## Operación
@@ -103,7 +103,7 @@ ssh ... "docker exec vulnradar-dashboard-1 python -c \"import sqlite3;c=sqlite3.
 ```bash
 # logs
 ssh ... 'docker logs -f --tail 100 vulnradar-dashboard-1'
-# backup consistente de SQLite + rotación (cron sugerido 04:00)
+# backup PostgreSQL (pg_dump) + rotación (cron sugerido 04:00)
 ssh ... 'bash /opt/vulnradar/deploy/backup-db.sh'
 # credenciales del panel SOC
 ssh ... 'grep -E "^SOC_(USER|PASSWORD)=" /opt/vulnradar/deploy/.env.prod'

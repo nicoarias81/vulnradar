@@ -31,8 +31,8 @@ COMMIT_EVERY = 1000
 HEAD_KEY = "cvelist_head"
 SYNCED_AT_KEY = "cvelist_synced_at"
 
-# UPSERT en lugar de INSERT OR REPLACE: con PRAGMA foreign_keys=ON, REPLACE
-# borraría la fila de cves y rompería el FK de enrichments/scores.
+# UPSERT en lugar de REPLACE: REPLACE borraría la fila de cves y rompería
+# el FK de enrichments/scores.
 UPSERT_SQL = """
     INSERT INTO cves (cve_id, published, last_modified, description,
                       cvss_score, cvss_vector, cvss_severity, raw_json)
@@ -328,7 +328,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--db-path",
         default=None,
-        help="ruta de la base SQLite (default: $DB_PATH o data/humo.db)",
+        help="clave de aislamiento de schema (tests). Producción: DATABASE_URL",
     )
     return parser
 
