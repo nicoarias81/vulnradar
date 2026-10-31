@@ -107,3 +107,11 @@ CREATE INDEX IF NOT EXISTS idx_cves_severity ON cves(cvss_severity);
 CREATE INDEX IF NOT EXISTS idx_scores_date ON scores(calculated_at);
 CREATE INDEX IF NOT EXISTS idx_scores_hype ON scores(hype DESC);
 CREATE INDEX IF NOT EXISTS idx_scores_category ON scores(category);
+
+-- Búsqueda por texto (buscador de la home): full-text sobre la descripción y
+-- trigramas para el apodo / el id parcial.
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE INDEX IF NOT EXISTS idx_cves_fts
+    ON cves USING gin (to_tsvector('english', coalesce(description, '')));
+CREATE INDEX IF NOT EXISTS idx_enrich_brand_trgm ON enrichments USING gin (brand_name gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_cves_id_trgm ON cves USING gin (cve_id gin_trgm_ops);

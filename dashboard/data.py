@@ -54,8 +54,14 @@ def _filters(since=None, until=None, category=None, severity=None, query=None):
         text = str(query).strip()
         if text:
             like = f"%{text}%"
-            clauses.append("(c.cve_id ILIKE ? OR e.brand_name ILIKE ?)")
-            params.extend([like, like])
+            # cve_id/brand_name por ILIKE (trigramas); descripción por full-text:
+            # el ILIKE '%...%' sobre 400k textos tardaba ~1,5 s por request.
+            clauses.append(
+                "(c.cve_id ILIKE ? OR e.brand_name ILIKE ? "
+                "OR to_tsvector('english', coalesce(c.description, '')) "
+                "   @@ plainto_tsquery('english', ?))"
+            )
+            params.extend([like, like, text])
     return clauses, params
 
 
@@ -64,7 +70,8 @@ CVE_SHAPE = re.compile(r"^\d{4}-\d{4,}$")
 
 def find_cve_id(conn, query: str):
     """CVE id exacto para un texto: acepta `CVE-2021-44228`, `2021-44228` o el
-    apodo (`Log4Shell`). None si no hay coincidencia única."""
+    apodo (`Log4Shell`). Si el texto deja un único candidato por descripción,
+    también lo devuelve. None si no hay coincidencia única."""
     text = (query or "").strip()
     if not text:
         return None
@@ -79,7 +86,15 @@ def find_cve_id(conn, query: str):
     row = conn.execute(
         "SELECT cve_id FROM enrichments WHERE upper(btrim(brand_name)) = ? LIMIT 1", (upper,)
     ).fetchone()
-    return row[0] if row else None
+    if row:
+        return row[0]
+    rows = conn.execute(
+        "SELECT cve_id FROM scores s JOIN cves c ON c.cve_id = s.cve_id "
+        "WHERE to_tsvector('english', coalesce(c.description, '')) "
+        "      @@ plainto_tsquery('english', ?) LIMIT 2",
+        (text,),
+    ).fetchall()
+    return rows[0][0] if len(rows) == 1 else None
 
 
 def _where(clauses: list[str]) -> str:
