@@ -159,9 +159,26 @@ class PgConnection:
             cur.executemany(adapted, params_seq)
             return cur
 
-    def executescript(self, script: str) -> None:
+    def executescript(self, script: str) -> list:
+        """Aplica el script sentencia por sentencia, cada una con su savepoint.
+
+        Sin savepoints, una sola sentencia que falla aborta la transacción entera y
+        las siguientes mueren con InFailedSqlTransaction: el error que se veía era
+        el de la sentencia posterior, no el real. El esquema es idempotente y
+        aditivo, así que una falla puntual no debe impedir el resto.
+        """
+        fallidas = []
         for stmt in split_sql(script):
-            self._raw.execute(stmt)
+            self._raw.execute("SAVEPOINT esquema_stmt")
+            try:
+                self._raw.execute(stmt)
+                self._raw.execute("RELEASE SAVEPOINT esquema_stmt")
+            except Exception as exc:
+                self._raw.execute("ROLLBACK TO SAVEPOINT esquema_stmt")
+                fallidas.append(
+                    f"{type(exc).__name__}: {str(exc)[:120]} | {' '.join(stmt.split())[:100]}"
+                )
+        return fallidas
 
     def commit(self):
         self._raw.commit()
@@ -235,8 +252,10 @@ def init_db(path: Path | str | None = None):
         try:
             conn.execute("SELECT pg_advisory_lock(hashtext(?))", (lock_key,))
             try:
-                conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+                fallidas = conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
                 conn.commit()
+                for falla in fallidas:
+                    print(f"Aviso: sentencia del esquema omitida ({falla})")
             finally:
                 conn.execute("SELECT pg_advisory_unlock(hashtext(?))", (lock_key,))
                 conn.commit()
