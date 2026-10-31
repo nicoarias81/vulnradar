@@ -67,7 +67,8 @@ def overview(qp: dict | None = None) -> str:
     since_s = _qp(qp, "since")
     until_s = _qp(qp, "until")
     show_all = _qp(qp, "all") == "1"
-    if not since_s and not until_s:
+    query = (_qp(qp, "q") or "").strip()
+    if not since_s and not until_s and not query:
         until_default = datetime.now(timezone.utc).date()
         since_default = until_default - timedelta(days=DEFAULT_RANGE_DAYS)
         since_s = since_default.isoformat()
@@ -94,16 +95,21 @@ def overview(qp: dict | None = None) -> str:
     sev = None if severity == "All severities" else severity
     conn = get_db()
     try:
-        total = count_scores(conn, since=since, until=until, category=cat, severity=sev)
+        total = count_scores(conn, since=since, until=until, category=cat, severity=sev, query=query)
         if not total:
+            empty = (
+                f'<p class="empty">Sin resultados para «{escape(query)}».</p>'
+                if query else
+                '<p class="empty">Todavía no hay scores. El worker autónomo los calcula solo.</p>'
+            )
             return overview_html(
                 logo_html=logo(),
-                scatter_div='<p class="empty">Todavía no hay scores. El worker autónomo los calcula solo.</p>',
+                scatter_div=empty,
                 timeline_div="",
                 table_rows="",
                 total=0, page=0, page_size=page_size,
                 severity=severity, category=category, since=since_s, until=until_s,
-                show_all=show_all,
+                show_all=show_all, query=query,
             )
         if show_all:
             page_size = VIEW_ALL_LIMIT
@@ -111,7 +117,7 @@ def overview(qp: dict | None = None) -> str:
         page = min(max(0, page), max_page)
         chunk = load_scores(
             conn, since=since, until=until, category=cat, severity=sev,
-            limit=page_size, offset=page * page_size, order="published",
+            limit=page_size, offset=page * page_size, order="published", query=query,
         )
         scatter_rows = load_scores(
             conn, since=since, until=until, category=cat, severity=sev,
@@ -152,7 +158,7 @@ def overview(qp: dict | None = None) -> str:
         table_rows="".join(table_rows),
         total=total, page=page, page_size=page_size,
         severity=severity, category=category, since=since_s, until=until_s,
-        show_all=show_all,
+        show_all=show_all, query=query,
     )
 
 

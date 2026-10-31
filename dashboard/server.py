@@ -11,10 +11,32 @@ from urllib.parse import parse_qs, urlparse
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from dashboard import auth
+from dashboard.data import find_cve_id
 from dashboard.markup import login_html
 from dashboard.screens import agents, detail, overview
+from core.db import get_db
 
 SOC_PATHS = {"/soc", "/agentes", "/agents"}
+
+
+def _search_target(query: str):
+    """CVE exacto para el buscador (id o apodo): redirige a la ficha.
+
+    Sólo cubre coincidencias exactas; el resto se resuelve como filtro en la home.
+    """
+    text = (query or "").strip()
+    if not text:
+        return None
+    try:
+        conn = get_db()
+    except Exception:
+        return None
+    try:
+        return find_cve_id(conn, text)
+    except Exception:
+        return None
+    finally:
+        conn.close()
 
 # Cache de HTML ya renderizado: el primer request de cada URL paga el SQL, los
 # siguientes salen de memoria mientras dure el TTL (el worker reescribe cada 15
@@ -64,6 +86,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
         try:
             if path in ("/", "/dashboard"):
+                target = _search_target(qp.get("q"))
+                if target:
+                    self._redirect(f"/cve?cve={target}")
+                    return
                 html = cached_html(self.path, lambda: overview(qp))
             elif path == "/cve":
                 html = cached_html(self.path, lambda: detail(qp))

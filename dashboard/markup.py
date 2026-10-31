@@ -74,11 +74,12 @@ a { color: inherit; }
   font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
   color: var(--text-muted); font-weight: 600;
 }
-.filter select, .range {
+.filter select, .filter input[type="search"], .range {
   background: var(--bg); border: 1px solid var(--border); color: var(--text);
   border-radius: 8px; height: 36px; font: 13px Inter, sans-serif;
 }
 .filter select { padding: 0 12px; min-width: 148px; }
+.filter input[type="search"] { padding: 0 12px; min-width: 210px; }
 .range {
   display: flex; align-items: center; gap: 6px; padding: 0 10px; min-width: 240px;
 }
@@ -569,11 +570,14 @@ def overview_html(
     since: str,
     until: str,
     show_all: bool = False,
+    query: str = "",
 ) -> str:
     start = page * page_size + 1 if total else 0
     end = min(total, page * page_size + page_size)
     max_page = max(0, (total - 1) // page_size) if total else 0
     common = dict(severity=severity, category=category, since=since, until=until)
+    if query:
+        common["q"] = query
     if show_all:
         common["all"] = "1"
     prev = _qs("/", **common, page=str(page - 1)) if page > 0 else None
@@ -595,6 +599,10 @@ def overview_html(
     {logo_html}
     <form class="filters" id="filters" method="get" action="/">
       {hidden_all}
+      <div class="filter filter-search"><label>Search</label>
+        <input type="search" name="q" value="{escape(query)}"
+               placeholder="CVE-2021-44228 o Log4Shell" autocomplete="off">
+      </div>
       <div class="filter"><label>Date Range</label>
         <div class="range">
           <input type="date" name="since" value="{escape(since)}">

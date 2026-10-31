@@ -33,7 +33,7 @@ SELECT_SCORES_BASE = """
 """
 
 
-def _filters(since=None, until=None, category=None, severity=None):
+def _filters(since=None, until=None, category=None, severity=None, query=None):
     clauses: list[str] = []
     params: list = []
     if since:
@@ -48,7 +48,36 @@ def _filters(since=None, until=None, category=None, severity=None):
     if severity and severity not in ("All severities",):
         clauses.append("upper(c.cvss_severity) = ?")
         params.append(str(severity).upper())
+    if query:
+        text = str(query).strip()
+        if text:
+            like = f"%{text}%"
+            clauses.append("(c.cve_id ILIKE ? OR e.brand_name ILIKE ?)")
+            params.extend([like, like])
     return clauses, params
+
+
+CVE_SHAPE = re.compile(r"^\d{4}-\d{4,}$")
+
+
+def find_cve_id(conn, query: str):
+    """CVE id exacto para un texto: acepta `CVE-2021-44228`, `2021-44228` o el
+    apodo (`Log4Shell`). None si no hay coincidencia única."""
+    text = (query or "").strip()
+    if not text:
+        return None
+    upper = text.upper()
+    candidates = [upper]
+    if CVE_SHAPE.match(upper):
+        candidates.append(f"CVE-{upper}")
+    for cand in candidates:
+        row = conn.execute("SELECT cve_id FROM cves WHERE upper(cve_id) = ? LIMIT 1", (cand,)).fetchone()
+        if row:
+            return row[0]
+    row = conn.execute(
+        "SELECT cve_id FROM enrichments WHERE upper(btrim(brand_name)) = ? LIMIT 1", (upper,)
+    ).fetchone()
+    return row[0] if row else None
 
 
 def _where(clauses: list[str]) -> str:
@@ -110,8 +139,8 @@ def load_alert_counts(conn, cve_ids=None) -> dict:
     return {row[0]: int(row[1]) for row in rows}
 
 
-def count_scores(conn, since=None, until=None, category=None, severity=None) -> int:
-    clauses, params = _filters(since, until, category, severity)
+def count_scores(conn, since=None, until=None, category=None, severity=None, query=None) -> int:
+    clauses, params = _filters(since, until, category, severity, query)
     sql = (
         "SELECT COUNT(*) FROM scores s "
         "JOIN cves c ON c.cve_id = s.cve_id "
@@ -131,13 +160,15 @@ def load_scores(
     limit=None,
     offset=0,
     order="calculated_at",
+    query=None,
 ) -> list:
     """
     Scores vigentes con su CVE y su enrichment.
 
     Base vacía -> lista vacía. `limit`/`offset` capan en SQL (home: tabla y scatter).
+    `query` filtra por CVE id o apodo del CVE (brand_name).
     """
-    clauses, params = _filters(since, until, category, severity)
+    clauses, params = _filters(since, until, category, severity, query)
     sql = SELECT_SCORES_BASE + _where(clauses) + _order_sql(order)
     if limit is not None:
         sql += "    LIMIT ? OFFSET ?\n"

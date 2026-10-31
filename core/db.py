@@ -205,13 +205,22 @@ def init_db(path: Path | str | None = None):
     lock_key = f"vulnradar.init_db.{schema_name(isolation)}"
     conn = get_db(isolation)
     try:
-        conn.execute("SELECT pg_advisory_lock(hashtext(?))", (lock_key,))
+        # El DDL necesita ACCESS EXCLUSIVE: si el worker está en medio de un lote
+        # grande (enrich), esperar acá colgaba el arranque del dashboard, que
+        # nunca llegaba a abrir el puerto. Mejor fallar rápido y seguir con el
+        # esquema existente (schema.sql es idempotente).
+        conn.execute("SET lock_timeout = '10s'")
         try:
-            conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
-            conn.commit()
-        finally:
-            conn.execute("SELECT pg_advisory_unlock(hashtext(?))", (lock_key,))
-            conn.commit()
+            conn.execute("SELECT pg_advisory_lock(hashtext(?))", (lock_key,))
+            try:
+                conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+                conn.commit()
+            finally:
+                conn.execute("SELECT pg_advisory_unlock(hashtext(?))", (lock_key,))
+                conn.commit()
+        except Exception as exc:
+            conn.rollback()
+            print(f"Aviso: no se pudo aplicar el esquema ({type(exc).__name__}: {exc}). Se sigue con el actual.")
     finally:
         conn.close()
     return isolation

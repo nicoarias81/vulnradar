@@ -79,23 +79,46 @@ def upsert_kev(conn, vulnerabilities) -> int:
     return count
 
 
+EPSS_BATCH = 20_000
+
+EPSS_UPSERT = """
+    INSERT INTO enrichments (cve_id, epss, epss_percentile)
+    VALUES (?, ?, ?)
+    ON CONFLICT(cve_id) DO UPDATE SET
+        epss = excluded.epss,
+        epss_percentile = excluded.epss_percentile,
+        updated_at = CURRENT_TIMESTAMP
+"""
+
+
 def upsert_epss(conn, rows) -> int:
-    """Escribe SÓLO las columnas de EPSS, preservando KEV y el resto."""
+    """Escribe SÓLO las columnas de EPSS, preservando KEV y el resto.
+
+    El feed trae ~400k filas y antes iba en una única transacción: sostenía el
+    lock sobre `cves` durante minutos y el `CREATE INDEX` del arranque del
+    dashboard esperaba ese lock, así que el server no llegaba a abrir el puerto.
+    Ahora va por lotes con commit y sólo crea stubs de los CVEs que faltan.
+    """
+    known = {row[0] for row in conn.execute("SELECT cve_id FROM cves").fetchall()}
     count = 0
+    batch: list[tuple] = []
     for row in rows:
         cve_id = (row.get("cve") or "").strip()
         if not cve_id:
             continue
-        ensure_cve_stub(conn, cve_id)
-        conn.execute("""
-            INSERT INTO enrichments (cve_id, epss, epss_percentile)
-            VALUES (?, ?, ?)
-            ON CONFLICT(cve_id) DO UPDATE SET
-                epss = excluded.epss,
-                epss_percentile = excluded.epss_percentile,
-                updated_at = CURRENT_TIMESTAMP
-        """, (cve_id, _to_float(row.get("epss")), _to_float(row.get("percentile"))))
-        count += 1
+        if cve_id not in known:
+            ensure_cve_stub(conn, cve_id)
+            known.add(cve_id)
+        batch.append((cve_id, _to_float(row.get("epss")), _to_float(row.get("percentile"))))
+        if len(batch) >= EPSS_BATCH:
+            conn.executemany(EPSS_UPSERT, batch)
+            conn.commit()
+            count += len(batch)
+            batch = []
+    if batch:
+        conn.executemany(EPSS_UPSERT, batch)
+        conn.commit()
+        count += len(batch)
     return count
 
 
