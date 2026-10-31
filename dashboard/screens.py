@@ -37,6 +37,10 @@ from dashboard.theme import AGENT_COLORS, SEVERITY_COLORS
 
 PAGE_SIZE = 6
 
+# Rango por defecto de la portada y del scatter de agentes. Debe ser el mismo
+# en ambos para que compartan la entrada de caché.
+DEFAULT_RANGE_DAYS = 30
+
 
 def _fmt_pub(value) -> str:
     text = str(value or "")[:10]
@@ -65,7 +69,7 @@ def overview(qp: dict | None = None) -> str:
     show_all = _qp(qp, "all") == "1"
     if not since_s and not until_s:
         until_default = datetime.now(timezone.utc).date()
-        since_default = until_default - timedelta(days=180)
+        since_default = until_default - timedelta(days=DEFAULT_RANGE_DAYS)
         since_s = since_default.isoformat()
         until_s = until_default.isoformat()
     try:
@@ -107,7 +111,7 @@ def overview(qp: dict | None = None) -> str:
         page = min(max(0, page), max_page)
         chunk = load_scores(
             conn, since=since, until=until, category=cat, severity=sev,
-            limit=page_size, offset=page * page_size, order="calculated_at",
+            limit=page_size, offset=page * page_size, order="published",
         )
         scatter_rows = load_scores(
             conn, since=since, until=until, category=cat, severity=sev,
@@ -260,7 +264,7 @@ def agents(_qp: dict | None = None) -> str:
         events = load_recent_events(conn, 80)
         rows = load_scores(
             conn,
-            since=today - timedelta(days=180),
+            since=today - timedelta(days=DEFAULT_RANGE_DAYS),
             until=today,
             limit=SCATTER_LIMIT,
             order="hype",

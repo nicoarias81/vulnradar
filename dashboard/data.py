@@ -58,6 +58,10 @@ def _where(clauses: list[str]) -> str:
 
 
 def _order_sql(order: str) -> str:
+    if order in ("published", "recent", "date"):
+        # Fecha de publicación del CVE, más reciente primero (ISO ordena como
+        # texto). El fallback a calculated_at cubre las filas sin published.
+        return f"    ORDER BY {_DAY_EXPR} DESC, s.cve_id\n"
     if order == "hype":
         return (
             "    ORDER BY (e.brand_name IS NOT NULL AND btrim(e.brand_name) <> '') DESC,"
