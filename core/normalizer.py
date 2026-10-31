@@ -5,6 +5,7 @@ Normalización — CVE List V5 al esquema de la tabla cves y señales internas.
 lo usan el scoring agent (fila unida) y los tests.
 """
 import json
+import re
 from typing import Any, Mapping, Optional
 
 from core.models import CveRecord, Enrichment, NormalizedCve
@@ -16,6 +17,49 @@ CVSS_KEYS = ("cvssV3_1", "cvssV3_0", "cvssV4_0")
 MEDIA_COUNT_PER_POINT = 2.0   # media_score = min(media_count / 2, 10)
 POC_COUNT_PER_POINT = 2.0     # poc_score   = min(poc_count * 2, 10)
 SCALE_CAP = 10.0
+
+
+# Los CNA escriben el producto con la versión adentro: "Google Chrome prior to
+# 55.0.2883.75 for Mac, Windows and Linux". Como filtro de producto eso es ruido:
+# cada versión sería una opción distinta del desplegable.
+VERSION_SPLIT = re.compile(
+    r"\s+(?:prior\s+to|before|through|up\s+to|versions?|versiones?|all\s+versions)\s+",
+    re.IGNORECASE,
+)
+VERSION_TAIL = re.compile(r"\s*[<>=~]+\s*[\w.]+.*$")
+VERSION_NUMBER = re.compile(r"\s+v?\d+(?:\.\d+)+.*$")
+PRODUCT_EMPTY = {"", "*", "-", "n/a", "unknown"}
+
+
+def clean_product(product: str) -> str:
+    """Producto sin la versión pegada: 'Chrome prior to 120' -> 'Chrome'."""
+    text = VERSION_SPLIT.split((product or "").strip(), maxsplit=1)[0]
+    text = VERSION_TAIL.sub("", text)
+    text = VERSION_NUMBER.sub("", text)
+    return text.strip(" ,;:-") or (product or "").strip()
+
+
+def extract_vendor_product(data: Mapping[str, Any]) -> tuple:
+    """(vendor, product) del primer `affected` que declare producto.
+
+    El registro CVE 5.0 lo pone en `containers.cna.affected[]` y, si el CNA no lo
+    declaró, en los bloques ADP.
+    """
+    if not isinstance(data, Mapping):
+        return None, None
+    containers = data.get("containers") or {}
+    blocks = [containers.get("cna") or {}]
+    blocks.extend(containers.get("adp") or [])
+    for block in blocks:
+        for item in (block or {}).get("affected") or []:
+            product = clean_product(str(item.get("product") or ""))
+            if product.lower() in PRODUCT_EMPTY:
+                continue
+            vendor = str(item.get("vendor") or "").strip() or None
+            if vendor and vendor.lower() in PRODUCT_EMPTY:
+                vendor = None
+            return vendor, product
+    return None, None
 
 
 def normalize_cve_list_v5(raw: Mapping[str, Any]) -> Optional[dict]:

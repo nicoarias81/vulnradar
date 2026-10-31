@@ -15,47 +15,31 @@ sin CPE quedan con product = '' para no volver a leerlas.
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from core.db import get_db
+from core.normalizer import extract_vendor_product
 
 ALTERS = [
     "ALTER TABLE cves ADD COLUMN IF NOT EXISTS vendor TEXT",
     "ALTER TABLE cves ADD COLUMN IF NOT EXISTS product TEXT",
 ]
 BATCH = 400
-PLACEHOLDERS = {"", "*", "-", "n/a", "unknown"}
 
 
-def product_from_raw(raw: str | None) -> tuple[str | None, str | None]:
-    """(vendor, product) del primer `affected` que declare producto.
-
-    `raw_json` es un CVE_RECORD 5.0, no la respuesta NVD 2.0: el producto está en
-    `containers.cna.affected[].product` y, si el CNA no lo declaró, en los bloques
-    ADP. Ahí los nombres vienen legibles ("Apache Log4j2"), sin resolver CPEs.
-    """
+def product_from_raw(raw):
+    """(vendor, product) del registro CVE 5.0 ya guardado."""
     if not raw:
         return None, None
     try:
         data = json.loads(raw)
     except (TypeError, ValueError):
         return None, None
-    containers = data.get("containers") or {}
-    blocks = [containers.get("cna") or {}]
-    blocks.extend(containers.get("adp") or [])
-    for block in blocks:
-        for item in block.get("affected") or []:
-            product = str(item.get("product") or "").strip()
-            if product.lower() in PLACEHOLDERS:
-                continue
-            vendor = str(item.get("vendor") or "").strip() or None
-            if vendor and vendor.lower() in PLACEHOLDERS:
-                vendor = None
-            return vendor, product
-    return None, None
+    return extract_vendor_product(data)
 
 
 def main(dry_run: bool = False) -> dict:
