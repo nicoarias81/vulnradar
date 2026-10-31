@@ -39,3 +39,6 @@ htmlcov/
 *.swp
 .DS_Store
 Thumbs.db
+
+# artefactos del backfill local (listas de pendientes, NDJSON de menciones)
+.cache/
