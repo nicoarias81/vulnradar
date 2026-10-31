@@ -183,6 +183,48 @@ def count_scores(conn, since=None, until=None, category=None, severity=None, que
     return int(row[0] if row and row[0] is not None else 0)
 
 
+# Criterio de "accionable": evidencia de explotación, no gravedad. Un CVE entra
+# si CISA lo vio explotado, si EPSS lo pone en el 30% más probable del día, o si
+# ya hay un PoC público. El CVSS no participa: 9.8 sin explotación no se acciona.
+ACTIONABLE_WHERE = (
+    "(COALESCE(e.in_kev, 0) <> 0 OR COALESCE(e.epss, 0) >= 0.70 "
+    "OR COALESCE(e.poc_count, 0) > 0)"
+)
+# Orden por evidencia, no por fecha: KEV primero, después probabilidad de
+# exploit y PoC. `reality` desempata dentro de cada escalón.
+ACTIONABLE_ORDER = (
+    "    ORDER BY (COALESCE(e.in_kev, 0) <> 0) DESC,\n"
+    "             COALESCE(e.epss, 0) DESC,\n"
+    "             COALESCE(e.poc_count, 0) DESC,\n"
+    "             s.reality DESC, s.cve_id\n"
+)
+
+
+def load_actionables(conn, since=None, until=None, category=None, severity=None,
+                     query=None, product=None, limit: int = 6) -> list:
+    """CVEs del rango que tienen evidencia de explotación (ver ACTIONABLE_WHERE)."""
+    clauses, params = _filters(since, until, category, severity, query, product)
+    clauses.append(ACTIONABLE_WHERE)
+    sql = SELECT_SCORES_BASE + _where(clauses) + ACTIONABLE_ORDER + "    LIMIT ?\n"
+    cursor = conn.execute(sql, list(params) + [int(limit)])
+    return _attach_alerts(conn, _fetch_dicts(cursor))
+
+
+def count_actionables(conn, since=None, until=None, category=None, severity=None,
+                      query=None, product=None) -> int:
+    """Cuántos CVEs del rango cumplen el criterio de accionable."""
+    clauses, params = _filters(since, until, category, severity, query, product)
+    clauses.append(ACTIONABLE_WHERE)
+    sql = (
+        "SELECT COUNT(*) FROM scores s "
+        "JOIN cves c ON c.cve_id = s.cve_id "
+        "LEFT JOIN enrichments e ON e.cve_id = s.cve_id\n"
+        + _where(clauses)
+    )
+    row = conn.execute(sql, params).fetchone()
+    return int(row[0] if row and row[0] is not None else 0)
+
+
 def load_products(conn, since=None, until=None, limit: int = 40) -> list:
     """Productos con más CVEs del rango: opciones iniciales del selector.
 

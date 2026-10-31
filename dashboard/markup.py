@@ -101,7 +101,7 @@ a { color: inherit; }
   grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
   align-items: stretch;
 }
-.dash-row { grid-template-rows: 464px; }
+.dash-row { grid-template-rows: 800px; }
 .row-333 { grid-template-columns: minmax(0, 30fr) minmax(0, 35fr) minmax(0, 35fr); }
 .row-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .card {
@@ -116,13 +116,46 @@ a { color: inherit; }
 svg.info, .info { width: 14px; height: 14px; flex-shrink: 0; }
 .h3 .info { opacity: .85; }
 .muted { color: var(--text-muted); font-size: 13px; margin: 4px 0 10px; }
-.scatter-card { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
-.scatter-body { display: grid; grid-template-columns: minmax(0, 1fr) 190px; gap: 4px 8px; flex: 1; min-height: 0; align-items: start; }
-.plot { background: var(--plot); border-radius: 8px; display: block; width: 100%; height: 340px; max-height: 340px; }
+.scatter-card { display: flex; flex-direction: column; justify-content: space-between; min-height: 0; overflow: hidden; }
+.scatter-body { display: grid; grid-template-columns: minmax(0, 1fr) 190px; gap: 4px 8px; flex: 1; min-height: 0; align-items: start; align-content: center; }
+.plot { background: var(--plot); border-radius: 8px; display: block; width: 100%; height: auto; }
 .table-card { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 .table-card > .h3, .table-card > .pager, .scatter-card > .h3, .scatter-card > .muted, .scatter-card > .note { flex-shrink: 0; }
 .table-scroll { overflow-x: hidden; overflow-y: auto; flex: 1; min-height: 0; }
 .table-scroll thead th { position: sticky; top: 0; background: var(--card); z-index: 1; }
+.col-stack { display: flex; flex-direction: column; gap: 16px; min-height: 0; }
+.col-stack > .card { min-height: 0; }
+.col-stack > .acc-card { flex: 0 0 auto; }
+.col-stack > .table-card:last-child { flex: 1 1 auto; }
+.acc-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.acc-head .h3 { color: var(--hype); }
+.acc-count { font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.acc-crit { font-size: 11px; color: var(--text-muted); margin: 4px 0 8px; }
+.acc-table { font-size: 12.5px; }
+.acc-table td { padding: 5px 6px; }
+.sig { display: flex; gap: 4px; flex-wrap: wrap; }
+.sig span {
+  font-size: 10.5px; font-weight: 600; padding: 1px 6px; border-radius: 5px;
+  white-space: nowrap; border: 1px solid transparent;
+}
+.sig .s-kev { background: rgba(239,68,68,.16); color: #F87171; border-color: rgba(239,68,68,.35); }
+.sig .s-poc { background: rgba(255,107,0,.14); color: #FF8A3D; border-color: rgba(255,107,0,.32); }
+.sig .s-epss { background: rgba(96,165,250,.14); color: #93C5FD; border-color: rgba(96,165,250,.32); }
+.sig .s-none { color: var(--text-muted); border: 0; }
+.reality-bar {
+  display: inline-block; width: 34px; height: 4px; border-radius: 2px;
+  background: #243044; vertical-align: middle; margin-right: 6px; overflow: hidden;
+}
+.reality-bar i { display: block; height: 100%; background: var(--reality); border-radius: 2px; }
+.reality-num { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.tl-strip { padding-top: 10px; border-top: 1px solid var(--border); }
+.tl-strip .tl-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2px; }
+.tl-strip .tl-head .rng { font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.tl-strip .tl-head .mini { display: flex; align-items: center; gap: 10px; font-size: 10.5px; color: var(--text-muted); }
+.tl-strip .tl-head .mini i { width: 6px; height: 6px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+.tl-strip .tl-head .mini .h { background: var(--hype); }
+.tl-strip .tl-head .mini .r { background: var(--reality); }
+.tl-strip .tl-svg { display: block; width: 100%; height: 78px; }
 .plot-wrap { position: relative; width: 100%; }
 .plot-wrap a { cursor: pointer; }
 .plot-tip {
@@ -173,8 +206,7 @@ a.link:hover { text-decoration: underline; }
   color: var(--text); text-decoration: none; background: var(--bg);
 }
 .pager span.disabled { opacity: .35; }
-.timeline-wrap { margin-top: 16px; }
-.timeline-wrap svg { display: block; }
+
 .tl-legend { text-align: center; margin: 6px 0 0; font-size: 12px; color: var(--text-muted); }
 .tl-legend .h { color: var(--hype); }
 .tl-legend .r { color: var(--reality); }
@@ -584,7 +616,8 @@ def _fecha_larga(day: str) -> str:
         return str(day)[:10]
 
 
-def timeline_svg(series, highlights=None, width: int = 1200, height: int = 220) -> str:
+def timeline_svg(series, highlights=None, width: int = 1200, height: int = 220,
+                 compact: bool = False) -> str:
     if not series:
         return '<p class="muted">Sin fechas de publicación para armar la serie.</p>'
     highlights = highlights or []
@@ -604,6 +637,39 @@ def timeline_svg(series, highlights=None, width: int = 1200, height: int = 220) 
     # Auto-zoom: el eje abraza el rango real. Con 0-10 fijo (o 0-techo) los
     # promedios diarios, que viven entre 0.3 y 2, quedaban pegados al piso.
     hype_vals, reality_vals = smooth("hype"), smooth("reality")
+    if compact:
+        # Franja al pie del scatter: sin destacados ni eje de valores, sólo la
+        # forma de las dos series y tres fechas de referencia.
+        l, r, t, b = 12, 12, 6, 18
+        pw, ph = width - l - r, height - t - b
+        techo = max(hype_vals + reality_vals + [0.1]) * 1.15
+
+        def px(i):
+            return l + (i / n) * pw
+
+        def py(val):
+            return t + ph - (max(0.0, val) / techo) * ph
+
+        def linea(vals, color):
+            pts = " ".join(f"{px(i):.1f},{py(v):.1f}" for i, v in enumerate(vals))
+            return (f'<polyline points="{pts}" fill="none" stroke="{color}" '
+                    'stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>')
+
+        ultimo = len(dates) - 1
+        ticks = []
+        for i in (0, ultimo // 2, ultimo):
+            anchor = "start" if i == 0 else ("end" if i == ultimo else "middle")
+            ticks.append(
+                f'<text x="{px(i):.1f}" y="{height - 4}" fill="#8b98a7" '
+                f'font-size="10" text-anchor="{anchor}">{escape(str(dates[i])[5:])}</text>'
+            )
+        return (
+            f'<svg class="tl-svg" viewBox="0 0 {width} {height}" role="img" '
+            f'aria-label="Score evolution">'
+            f'<line x1="{l}" y1="{t + ph}" x2="{l + pw}" y2="{t + ph}" stroke="#243044"/>'
+            + linea(hype_vals, "#FF6B00") + linea(reality_vals, "#22C55E")
+            + "".join(ticks) + "</svg>"
+        )
     todos = hype_vals + reality_vals
     pico = max(todos + [0.0])
     suelo = min(todos + [0.0])
@@ -787,6 +853,8 @@ def overview_html(
     query: str = "",
     product: str = "",
     products=None,
+    actionable_rows: str = "",
+    actionable_total: int = 0,
 ) -> str:
     product_options = "".join(
         f'<option value="{escape(str(row["product"]))}">' for row in (products or [])
@@ -864,22 +932,36 @@ def overview_html(
       <p class="h3">Hype vs Reality {INFO_SVG}</p>
       <p class="muted">Comparing perceived hype (social / media / chatter) against observed impact</p>
       <div class="scatter-body">{scatter_div}{legend_html()}</div>
-      <div class="note">{INFO_SVG} Diagonal separator indicates equilibrium between hype and reality.</div>
-    </div>
-    <div class="card table-card">
-      <p class="h3">Recent CVEs</p>
-      <div class="table-scroll">
-      <table class="table"><thead><tr>
-        <th>CVE ID</th><th>Severity</th><th>Score</th><th>Category</th><th>Published</th>
-      </tr></thead><tbody>{table_rows or '<tr><td colspan="5" class="muted">Sin CVEs.</td></tr>'}</tbody></table>
+      <div class="tl-strip">
+        <div class="tl-head"><span class="h3">Score evolution {INFO_SVG}</span>
+          <span class="mini"><span><i class="h"></i>Hype</span><span><i class="r"></i>Reality</span></span>
+          <span class="rng">{escape(since)} → {escape(until)}</span></div>
+        {timeline_div}
       </div>
-      <div class="pager"><span>{view}</span><span>{start}–{end} of {total}</span>{pager_btns}</div>
     </div>
-  </div>
-  <div class="card timeline-wrap">
-    <p class="h3">Score evolution timeline {INFO_SVG}</p>
-    <p class="muted">Daily average Hype and Reality scores over time</p>
-    {timeline_div}
+    <div class="col-stack">
+      <div class="card table-card acc-card">
+        <div class="acc-head">
+          <p class="h3">Pay attention to {INFO_SVG}</p>
+          <span class="acc-count">{actionable_total} of {total:,}</span>
+        </div>
+        <p class="acc-crit">Entra con KEV, EPSS ≥ 0.70 o PoC público — ordenado por evidencia</p>
+        <div class="table-scroll">
+          <table class="table acc-table"><thead><tr>
+            <th>CVE ID</th><th>Severity</th><th>Signals</th><th>Reality</th>
+          </tr></thead><tbody>{actionable_rows}</tbody></table>
+        </div>
+      </div>
+      <div class="card table-card">
+        <p class="h3">Recent CVEs</p>
+        <div class="table-scroll">
+        <table class="table"><thead><tr>
+          <th>CVE ID</th><th>Severity</th><th>Score</th><th>Category</th><th>Published</th>
+        </tr></thead><tbody>{table_rows or '<tr><td colspan="5" class="muted">Sin CVEs.</td></tr>'}</tbody></table>
+        </div>
+        <div class="pager"><span>{view}</span><span>{start}–{end} of {total}</span>{pager_btns}</div>
+      </div>
+    </div>
   </div>
   <div class="footer">
     <span>Fuente: CVE List V5 · CISA KEV · FIRST EPSS · GitHub · RSS</span>

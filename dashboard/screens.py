@@ -8,8 +8,10 @@ from core.db import get_db
 from dashboard.data import (
     SCATTER_LIMIT,
     VIEW_ALL_LIMIT,
+    count_actionables,
     guess_vuln_type,
     hype_components,
+    load_actionables,
     load_agent_stats,
     load_daily_averages,
     load_highlights,
@@ -40,6 +42,10 @@ from dashboard.theme import AGENT_COLORS, SEVERITY_COLORS
 
 PAGE_SIZE = 6
 
+# Filas visibles de "Pay attention to" en la portada: llena la columna derecha
+# sin empujar el fold. El resto se ve con el filtro de acción.
+ACTIONABLE_LIMIT = 6
+
 # Rango por defecto de la portada y del scatter de agentes. Debe ser el mismo
 # en ambos para que compartan la entrada de caché.
 DEFAULT_RANGE_DAYS = 30
@@ -61,6 +67,44 @@ def _qp(qp: dict, key: str, default: str = "") -> str:
     if isinstance(value, list):
         value = value[0] if value else default
     return str(value if value is not None else default)
+
+
+def _sig_badges(item) -> str:
+    """Señales de explotación de un CVE como badges cortos (KEV / PoC / EPSS)."""
+    sigs = []
+    if item.get("in_kev"):
+        fecha = str(item.get("kev_date") or "")[:10]
+        sufijo = f" {fecha[5:]}" if len(fecha) == 10 else ""
+        sigs.append(f'<span class="s-kev">KEV{sufijo}</span>')
+    pocs = int(item.get("poc_count") or 0)
+    if pocs:
+        sigs.append(f'<span class="s-poc">{pocs} PoC</span>')
+    epss = item.get("epss")
+    if epss is not None and float(epss) >= 0.70:
+        sigs.append(f'<span class="s-epss">EPSS {float(epss) * 100:.0f}%</span>')
+    return "".join(sigs) or '<span class="s-none">—</span>'
+
+
+def _actionable_rows_html(rows) -> str:
+    """Filas de "Pay attention to": la señal manda, la fecha sólo acompaña."""
+    out = []
+    for item in rows or []:
+        sev = str(item.get("cvss_severity") or "—").upper()
+        reality = float(item.get("reality") or 0)
+        cve = escape(str(item.get("cve_id") or ""))
+        out.append(
+            "<tr>"
+            f'<td><a class="link" href="/cve?cve={cve}">{cve}</a></td>'
+            f'<td>{badge(sev, SEVERITY_COLORS.get(sev, "#6B7280"))}</td>'
+            f'<td><div class="sig">{_sig_badges(item)}</div></td>'
+            f'<td><span class="reality-bar"><i style="width:{min(reality * 10, 100):.0f}%"></i>'
+            f'</span><span class="reality-num">{reality:.1f}</span></td>'
+            "</tr>"
+        )
+    if not out:
+        return ('<tr><td colspan="4" class="muted">Ningún CVE del rango tiene '
+                "evidencia de explotación.</td></tr>")
+    return "".join(out)
 
 
 def overview(qp: dict | None = None) -> str:
@@ -142,6 +186,16 @@ def overview(qp: dict | None = None) -> str:
             conn, since=since, until=until, category=cat, severity=sev,
             product=prod, limit=3,
         )
+        # Accionables: evidencia de explotación en el mismo rango y filtros.
+        # Va dentro del try porque después del close() la conexión no sirve.
+        actionable_rows_data = load_actionables(
+            conn, since=since, until=until, category=cat, severity=sev,
+            query=query, product=prod, limit=ACTIONABLE_LIMIT,
+        )
+        actionable_total = count_actionables(
+            conn, since=since, until=until, category=cat, severity=sev,
+            query=query, product=prod,
+        )
     finally:
         conn.close()
 
@@ -164,14 +218,22 @@ def overview(qp: dict | None = None) -> str:
             "</tr>"
         )
 
-    scatter_div = scatter_svg(scatter_rows) if scatter_rows else '<p class="empty">Ningún CVE pasa los filtros actuales.</p>'
-    timeline_div = timeline_svg(series, highlights=highlights)
+    # 760x520 sobre el ancho real de la card: el scatter llena el alto de la
+    # columna en vez de dejar un hueco antes de la timeline.
+    scatter_div = (scatter_svg(scatter_rows, width=760, height=640) if scatter_rows
+                   else '<p class="empty">Ningún CVE pasa los filtros actuales.</p>')
+    # Al pie del scatter: 760 de ancho para que las fechas queden legibles al
+    # escalar el SVG a la columna.
+    timeline_div = timeline_svg(series, width=760, height=78, compact=True)
+    actionable_table = _actionable_rows_html(actionable_rows_data)
 
     return overview_html(
         logo_html=logo(),
         scatter_div=scatter_div,
         timeline_div=timeline_div,
         table_rows="".join(table_rows),
+        actionable_rows=actionable_table,
+        actionable_total=actionable_total,
         total=total, page=page, page_size=page_size,
         severity=severity, category=category, since=since_s, until=until_s,
         show_all=show_all, query=query, product=product, products=products,

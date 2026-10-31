@@ -81,13 +81,24 @@ Los `make sync` / `make enrich` / `make score` siguen existiendo para debug.
 ## Dashboard
 
 El tablero **público** está en http://localhost:8501: scatter **Hype vs Reality**
-coloreado por categoría, tabla de CVEs, timeline de Score evolution y ficha de
-detalle. Lo sirve `python scripts/run_dashboard.py` (o `make dashboard`) en el
-puerto 8501. El timeline estira el eje solo según el máximo del período, tiene
-hover por día (fecha, CVEs, Hype, Reality y CVE top) y marca hasta 3
-**destacados** con una guía vertical sobre su día más un chip con el CVE y sus
-scores; esos scores son los del CVE, no el promedio diario del eje. La portada
-se recarga cada 60 s sin contar como visita.
+coloreado por categoría, tabla **Pay attention to**, tabla de CVEs recientes,
+timeline compacta de Score evolution y ficha de detalle. Lo sirve
+`python scripts/run_dashboard.py` (o `make dashboard`) en el puerto 8501.
+
+La portada entra en una pantalla sin scrollear: a la izquierda el scatter con la
+timeline como franja al pie, a la derecha **Pay attention to** arriba y **Recent
+CVEs** abajo. **Pay attention to** filtra por *evidencia de explotación*, no por
+CVSS: entra un CVE con KEV, con EPSS ≥ 0.70 o con al menos un PoC público, y el
+orden es KEV → EPSS → PoC. Cada fila muestra las señales como badges (KEV con
+fecha de alta, cantidad de PoC, EPSS) y un medidor de Reality. La tabla de
+recientes sigue siendo cronológica, de más nuevo a más viejo.
+
+La timeline estira el eje solo según el máximo del período. En la portada va en
+modo compacto (sin destacados ni eje de valores, tres fechas de referencia); el
+detalle de cada CVE conserva la versión completa con hover por día (fecha, CVEs,
+Hype, Reality y CVE top) y hasta 3 **destacados** con guía vertical y chip; esos
+scores son los del CVE, no el promedio diario del eje. La portada se recarga
+cada 60 s sin contar como visita.
 
 El panel **SOC monitoring** (estado de los 4 agentes, feed y logs) vive en
 http://localhost:8501/soc y **no es público**. Pide `SOC_USER` / `SOC_PASSWORD`
@@ -96,10 +107,11 @@ La pantalla pública no enlaza al SOC.
 
 Con la base vacía la página no rompe: el worker autónomo llena scores en el
 próximo ciclo; con `SEED_DEMO=1` hay 8 CVEs de ejemplo. La carga y el filtrado
-viven en `dashboard/data.py` y se testean con `pytest`. La home no materializa
-el histórico: `COUNT(*)` para el total, scatter `LIMIT 400` (prioriza branding
-y hype), tabla paginada (`LIMIT/OFFSET`, 6 u 100 en View all) y timeline con
-`GROUP BY` diario. El panel SOC se refresca solo con los eventos de `agent_events`.
+`dashboard/data.py` y se testean con `pytest`. La home no materializa
+el histórico: `COUNT(*)` para el total y para los accionables, scatter `LIMIT 400`
+(prioriza branding y hype), accionables `LIMIT 6` ordenados por evidencia, tabla
+paginada (`LIMIT/OFFSET`, 6 u 100 en View all) y timeline con `GROUP BY` diario.
+El panel SOC se refresca solo con los eventos de `agent_events`.
 
 ## Sync incremental
 
