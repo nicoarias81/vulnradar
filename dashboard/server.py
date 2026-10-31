@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import sys
+import threading
+import time
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -13,6 +15,30 @@ from dashboard.markup import login_html
 from dashboard.screens import agents, detail, overview
 
 SOC_PATHS = {"/soc", "/agentes", "/agents"}
+
+# Cache de HTML ya renderizado: el primer request de cada URL paga el SQL, los
+# siguientes salen de memoria mientras dure el TTL (el worker reescribe cada 15
+# min). Las páginas que dependen de la cookie (/soc) nunca se cachean.
+_HTML_CACHE: dict[str, tuple[float, str]] = {}
+_HTML_TTL = 60.0
+_HTML_MAX_ENTRIES = 32
+_HTML_MAX_BYTES = 2 * 1024 * 1024
+_HTML_LOCK = threading.Lock()
+
+
+def cached_html(key: str, producer) -> str:
+    now = time.monotonic()
+    with _HTML_LOCK:
+        hit = _HTML_CACHE.get(key)
+    if hit and now - hit[0] < _HTML_TTL:
+        return hit[1]
+    html = producer()
+    if len(html) <= _HTML_MAX_BYTES:  # `?all=1` puede generar MBs: no se cachea
+        with _HTML_LOCK:
+            if len(_HTML_CACHE) >= _HTML_MAX_ENTRIES:
+                _HTML_CACHE.clear()
+            _HTML_CACHE[key] = (now, html)
+    return html
 
 
 class DashboardHandler(BaseHTTPRequestHandler):
@@ -38,9 +64,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
         try:
             if path in ("/", "/dashboard"):
-                html = overview(qp)
+                html = cached_html(self.path, lambda: overview(qp))
             elif path == "/cve":
-                html = detail(qp)
+                html = cached_html(self.path, lambda: detail(qp))
             elif path in SOC_PATHS:
                 html = self._soc(qp)
             else:

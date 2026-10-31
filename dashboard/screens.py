@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from html import escape
+import time
 
 from core.db import get_db
 from dashboard.data import (
@@ -33,13 +34,27 @@ from dashboard.theme import AGENT_COLORS, SEVERITY_COLORS
 
 PAGE_SIZE = 6
 
+# Cache del listado por rango: el cálculo de promedios diarios y el render
+# cuestan ~1 s sobre 68k filas, y el worker sólo reescribe cada 15 min.
+_ROWS_CACHE: dict[tuple, tuple[float, list]] = {}
+_ROWS_TTL = 120.0
 
-def _rows():
+
+def _rows(since=None, until=None):
+    key = (str(since), str(until))
+    now = time.monotonic()
+    hit = _ROWS_CACHE.get(key)
+    if hit and now - hit[0] < _ROWS_TTL:
+        return hit[1]
     conn = get_db()
     try:
-        return load_scores(conn)
+        rows = load_scores(conn, since=since, until=until)
     finally:
         conn.close()
+    if len(_ROWS_CACHE) > 6:
+        _ROWS_CACHE.clear()
+    _ROWS_CACHE[key] = (now, rows)
+    return rows
 
 
 def _fmt_pub(value) -> str:
@@ -62,7 +77,6 @@ def _qp(qp: dict, key: str, default: str = "") -> str:
 
 def overview(qp: dict | None = None) -> str:
     qp = qp or {}
-    rows = _rows()
     severity = _qp(qp, "severity") or "All severities"
     category = _qp(qp, "category") or "All categories"
     since_s = _qp(qp, "since")
@@ -79,17 +93,6 @@ def overview(qp: dict | None = None) -> str:
         page = 0
     page_size = PAGE_SIZE
 
-    if not rows:
-        return overview_html(
-            logo_html=logo(),
-            scatter_div='<p class="empty">Todavía no hay scores. El worker autónomo los calcula solo.</p>',
-            timeline_div="",
-            table_rows="",
-            total=0, page=0, page_size=page_size,
-            severity=severity, category=category, since=since_s, until=until_s,
-            show_all=show_all,
-        )
-
     since = until = None
     if since_s:
         try:
@@ -101,6 +104,18 @@ def overview(qp: dict | None = None) -> str:
             until = datetime.strptime(until_s, "%Y-%m-%d").date()
         except ValueError:
             until = None
+
+    rows = _rows(since=since, until=until)
+    if not rows:
+        return overview_html(
+            logo_html=logo(),
+            scatter_div='<p class="empty">Todavía no hay scores. El worker autónomo los calcula solo.</p>',
+            timeline_div="",
+            table_rows="",
+            total=0, page=0, page_size=page_size,
+            severity=severity, category=category, since=since_s, until=until_s,
+            show_all=show_all,
+        )
 
     filtered = filter_scores(
         rows,
@@ -256,13 +271,19 @@ def agents(_qp: dict | None = None) -> str:
     conn = get_db()
     try:
         stats = load_agent_stats(conn)
-        rows = load_scores(conn)
+        # Sólo hace falta el conteo: traer los ~400k scores costaba 9 s.
+        overhyped = conn.execute(
+            "SELECT COUNT(*) FROM scores WHERE category = 'Overhyped'"
+        ).fetchone()[0]
         events = load_recent_events(conn, 80)
     finally:
         conn.close()
     now = datetime.now(timezone.utc).strftime("%H:%M:%S UTC")
     last = stats.get("agents") or {}
-    overhyped = sum(1 for r in rows if r.get("category") == "Overhyped")
+    # El scatter del panel usa los últimos 180 días (no los ~400k scores): mismo
+    # rango que la portada, así comparten caché.
+    today = datetime.now(timezone.utc).date()
+    rows = _rows(since=today - timedelta(days=180), until=today)
     specs = [
         ("sync", "Sync Agent", (f"{stats['cves']:,}", "RECORDS SYNCED"), (str(stats["synced_at"] or "—")[:16] or "—", "LAST SYNC")),
         ("enrich", "Enrichment Agent", (f"{stats['enrichments']:,}", "ENTITIES ENRICHED"), ("KEV · EPSS", "SOURCES")),

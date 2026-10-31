@@ -17,7 +17,7 @@ SCORE_COLUMNS = (
 
 # `scores` tiene UNIQUE(cve_id): un solo score vigente por CVE y el JOIN
 # directo alcanza. El LEFT JOIN conserva los CVEs todavía sin enriquecer.
-SELECT_SCORES = """
+SELECT_SCORES_BASE = """
     SELECT s.cve_id, s.hype, s.reality, s.category, s.calculated_at,
            c.description, c.cvss_score, c.cvss_severity, c.published,
            e.tone_score, e.media_count, e.in_kev, e.epss, e.poc_count,
@@ -25,8 +25,9 @@ SELECT_SCORES = """
     FROM scores s
     JOIN cves c ON c.cve_id = s.cve_id
     LEFT JOIN enrichments e ON e.cve_id = s.cve_id
-    ORDER BY s.calculated_at DESC
 """
+
+SELECT_SCORES = SELECT_SCORES_BASE + "    ORDER BY s.calculated_at DESC\n"
 
 
 def has_alerts_table(conn) -> bool:
@@ -44,15 +45,30 @@ def load_alert_counts(conn) -> dict:
     return {row[0]: int(row[1]) for row in rows}
 
 
-def load_scores(conn) -> list:
+def load_scores(conn, since=None, until=None) -> list:
     """
     Scores vigentes con su CVE y su enrichment.
 
     Base vacía -> lista vacía (no excepción): la UI decide el empty state.
     Se leen los nombres del cursor para no depender del row_factory del caller.
+    El rango se filtra en SQL: con ~400k scores, traer todo y recortar en Python
+    costaba ~9 s por request.
     """
+    clauses: list[str] = []
+    params: list[str] = []
+    if since:
+        clauses.append("date(coalesce(c.published, s.calculated_at)) >= date(?)")
+        params.append(str(since)[:10])
+    if until:
+        clauses.append("date(coalesce(c.published, s.calculated_at)) <= date(?)")
+        params.append(str(until)[:10])
+    sql = SELECT_SCORES_BASE
+    if clauses:
+        sql += "    WHERE " + " AND ".join(clauses) + "\n"
+    sql += "    ORDER BY s.calculated_at DESC\n"
+
     alerts = load_alert_counts(conn)
-    cursor = conn.execute(SELECT_SCORES)
+    cursor = conn.execute(sql, params)
     names = [column[0] for column in cursor.description]
 
     result = []
@@ -63,6 +79,7 @@ def load_scores(conn) -> list:
         row["alertado"] = count > 0
         result.append(row)
     return result
+
 
 
 def filter_scores(
