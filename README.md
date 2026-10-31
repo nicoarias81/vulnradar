@@ -52,6 +52,18 @@ python agents/scoring_agent.py
 streamlit run dashboard/app.py
 ```
 
+## Dashboard
+
+`streamlit run dashboard/app.py` (o `make dashboard`) abre el tablero con los
+scores vigentes: scatter **Hype vs Reality** coloreado por categoría con la
+diagonal `x=y` de referencia, conteo por categoría, tabla, detalle de un CVE y
+un flag `alertado` cuando ese CVE ya disparó una alerta (`alerts_sent`). La
+barra lateral filtra categorías y mínimos de hype/reality.
+
+Con la base vacía la página no rompe: muestra qué comandos correr
+(`python -m core.db` → sync → enrich → score). La carga y el filtrado viven en
+`dashboard/data.py`, sin Streamlit, y se testean con `pytest`.
+
 ## Sync incremental
 
 El sync incremental es el modo por defecto: lo que se corre a diario.
@@ -151,8 +163,10 @@ humo-vs-miedo/
 │   ├── test_normalizer.py
 │   ├── test_db_upsert.py
 │   ├── test_alerts.py
-│   └── test_sync_incremental.py
+│   ├── test_sync_incremental.py
+│   └── test_dashboard.py
 └── dashboard/
+    ├── data.py             # Load + filtros (sin Streamlit)
     └── app.py
 ```
 
