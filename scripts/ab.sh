@@ -12,6 +12,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.local.yml}"
 COMPOSE=(docker compose -f "$COMPOSE_FILE")
+# En prod el compose espera deploy/.env.prod para interpolar y para el env_file.
+[[ -n "${ENV_FILE:-}" ]] && COMPOSE+=(--env-file "$ENV_FILE")
 STATE_FILE="${STATE_FILE:-.ab-active}"
 PROXY_PORT="${PROXY_PORT:-8500}"
 PROXY_SVC="${PROXY_SVC:-proxy}"
@@ -22,7 +24,12 @@ active() { [[ -f $STATE_FILE ]] && cat "$STATE_FILE" || echo a; }
 other() { [[ $(active) == a ]] && echo b || echo a; }
 
 health() { # $1=url
-  curl -s -o /dev/null -w '%{http_code}' -m 10 "$1" 2>/dev/null || echo 000
+  # curl puede imprimir el código y salir distinto de 0 (p.ej. con -o /dev/null
+  # en git-bash); capturar y validar evita que el fallback se concatene (200000).
+  local code
+  code=$(curl -s -o /dev/null -w '%{http_code}' -m 10 "$1" 2>/dev/null) || true
+  [[ $code =~ ^[0-9]{3}$ ]] || code=000
+  echo "$code"
 }
 
 public_health() { health "http://localhost:${PROXY_PORT}/health"; }
