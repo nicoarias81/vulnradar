@@ -233,13 +233,17 @@ def search_mentions(cve_id, brand_name=None, *, session=None,
 
 
 def select_attention_targets(conn, limit=40) -> list:
-    """CVEs donde la atención importa: con PoCs, en KEV o recientes."""
+    """CVEs donde la atención importa: con PoCs, en KEV o recientes.
+
+    `cves.published` es TEXT ISO ('2026-10-31T10:11:47.188Z'): se compara como
+    texto contra una fecha ISO, no casteando a timestamp (falla si viene vacío).
+    """
     rows = conn.execute("""
         SELECT e.cve_id AS cve_id, e.brand_name AS brand_name
         FROM enrichments e
         LEFT JOIN cves c ON c.cve_id = e.cve_id
         WHERE COALESCE(e.poc_count, 0) > 0 OR COALESCE(e.in_kev, 0) = 1
-           OR c.published > CURRENT_TIMESTAMP - INTERVAL '60 days'
+           OR c.published >= to_char(CURRENT_TIMESTAMP - INTERVAL '60 days', 'YYYY-MM-DD')
         ORDER BY COALESCE(e.in_kev, 0) DESC, COALESCE(e.poc_count, 0) DESC,
                  c.published DESC
         LIMIT ?

@@ -24,7 +24,7 @@ from agents.enrichment_agent import (
     select_attention_targets,
     upsert_media_mentions,
 )
-from agents.scoring_agent import score_all
+from agents.scoring_agent import score_cves
 from core.db import get_db, init_db
 
 
@@ -84,7 +84,7 @@ def main() -> int:
 
     if not args.skip_score:
         print(f"recalculando scores ({total_menciones} menciones nuevas)...")
-        puntuados = score_all(conn)
+        puntuados = score_cves(conn, [cve_id for cve_id, _ in objetivos])
         conn.commit()  # sin esto el trabajo se descarta al cerrar la conexión
         print(f"CVEs puntuados: {puntuados}")
 

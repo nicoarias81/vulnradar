@@ -20,10 +20,10 @@ SELECT_ENRICHED = """
     FROM cves c
     JOIN enrichments e ON e.cve_id = c.cve_id
     -- Stubs de ensure_cve_stub() sólo tienen cve_id; EPSS masivo no debe puntuarlos.
-    WHERE c.raw_json IS NOT NULL
+    WHERE (c.raw_json IS NOT NULL
        OR c.published IS NOT NULL
        OR c.description IS NOT NULL
-       OR c.cvss_score IS NOT NULL
+       OR c.cvss_score IS NOT NULL)
 """
 
 UPSERT_SQL = """
@@ -42,6 +42,19 @@ def score_all(conn) -> int:
     rows = conn.execute(SELECT_ENRICHED).fetchall()
     for row in rows:
         # Fila unida: las columnas de cves y de enrichments viven en la misma fila.
+        signals = build_signals(row, row)
+        score = Score(cve_id=row["cve_id"], **score_cve(signals))
+        conn.execute(UPSERT_SQL, (score.cve_id, score.hype, score.reality, score.category))
+    return len(rows)
+
+
+def score_cves(conn, cve_ids) -> int:
+    """Recalcula sólo los CVEs indicados: 398k filas por corrida no es viable."""
+    ids = list(dict.fromkeys(i for i in (cve_ids or []) if i))
+    if not ids:
+        return 0
+    rows = conn.execute(SELECT_ENRICHED + " AND c.cve_id = ANY(?)", (ids,)).fetchall()
+    for row in rows:
         signals = build_signals(row, row)
         score = Score(cve_id=row["cve_id"], **score_cve(signals))
         conn.execute(UPSERT_SQL, (score.cve_id, score.hype, score.reality, score.category))

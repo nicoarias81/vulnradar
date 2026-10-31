@@ -52,6 +52,13 @@ CREATE TABLE IF NOT EXISTS reranked_urls (
     reranked_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
+-- CVEs ya pasados por el backfill de atención: el runner es reanudable y no
+-- repite trabajo entre corridas.
+CREATE TABLE IF NOT EXISTS attention_backfill (
+    cve_id TEXT PRIMARY KEY,
+    done_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
 -- UNIQUE(cve_id): un solo score vigente por CVE. El scoring hace UPSERT
 -- (ON CONFLICT(cve_id) DO UPDATE) en lugar de acumular filas históricas.
 CREATE TABLE IF NOT EXISTS scores (
