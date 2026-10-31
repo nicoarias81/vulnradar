@@ -1,5 +1,5 @@
 """
-Worker autónomo: sync → enrich → score → alert, en loop.
+Worker autónomo: sync → enrich → intel → score → alert, en loop.
 
 No requiere comandos a mano. Intervalo: SYNC_INTERVAL_MINUTES (default 15).
 Uso:
@@ -87,6 +87,17 @@ def run_cycle() -> dict:
         score()
         return "ok"
 
+    def do_intel():
+        from agents.intel_agent import run_daily
+
+        conn = get_db()
+        try:
+            resumen = run_daily(conn, hours=int(os.getenv("INTEL_INTERVAL_HOURS", "24")))
+            conn.commit()
+            return resumen
+        finally:
+            conn.close()
+
     def do_alert():
         from agents.alert_agent import run as alert
 
@@ -94,6 +105,7 @@ def run_cycle() -> dict:
 
     summary["sync"] = _step("sync", "SYNC", do_sync)
     summary["enrich"] = _step("enrich", "ENRICH", do_enrich)
+    summary["intel"] = _step("intel", "INTEL", do_intel)
     summary["score"] = _step("score", "SCORE", do_score)
     summary["alert"] = _step("alert", "ALERT", do_alert)
     failed = [name for name, value in summary.items() if value is None]

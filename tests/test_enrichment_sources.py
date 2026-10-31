@@ -448,7 +448,14 @@ def test_run_con_todo_skippeado_devuelve_ceros(tmp_path):
     summary = agent.run(skip_kev=True, skip_epss=True, skip_rss=True, skip_github=True,
                         skip_llm=True, db_path=tmp_path / "humo.db")
 
-    assert summary == {"kev": 0, "epss": 0, "rss": {}, "poc": 0, "tone": 0}
+    # Por clave y no por dict exacto: cada fuente nueva que devuelve su propio
+    # contador rompía este test sin que nada estuviera mal.
+    assert summary["kev"] == 0
+    assert summary["epss"] == 0
+    assert summary["rss"] == {}
+    assert summary["poc"] == 0
+    assert summary["tone"] == 0
+    assert summary["attention"]["nuevas"] == 0
 
 
 def test_load_sources_config_lee_fuentes_del_repo():
