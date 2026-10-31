@@ -176,7 +176,20 @@ a.link:hover { text-decoration: underline; }
 .tl-legend .r { color: var(--reality); }
 .tl-mark { cursor: pointer; }
 .tl-mark:hover circle { stroke-width: 2.8; }
-.tl-mark text { font-weight: 700; letter-spacing: .02em; }
+.tl-mark text { font-weight: 700; letter-spacing: .01em; }
+.tl-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.tl-chip {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 5px 10px; border: 1px solid #334155; border-radius: 999px;
+  background: #0F172A; color: #E2E8F0; text-decoration: none; font-size: 12px;
+  transition: border-color .15s ease, transform .15s ease;
+}
+.tl-chip i { width: 8px; height: 8px; border-radius: 50%; background: var(--c, #FF6B00); flex: none; }
+.tl-chip b { font-weight: 700; color: var(--c, #E2E8F0); }
+.tl-chip span { font-family: ui-monospace, monospace; font-size: 11px; color: #94A3B8; }
+.tl-chip em { font-style: normal; font-size: 11px; color: #94A3B8; }
+.tl-chip:hover { border-color: var(--c, #FF6B00); transform: translateY(-1px); }
+.tl-note { color: #64748B; font-size: 11px; margin: 6px 0 0; }
 .dia .tip { opacity: 0; transition: opacity .12s ease; }
 .dia:hover .tip { opacity: 1; }
 .back {
@@ -562,7 +575,7 @@ def timeline_svg(series, highlights=None, width: int = 1200, height: int = 220) 
     if not series:
         return '<p class="muted">Sin fechas de publicación para armar la serie.</p>'
     highlights = highlights or []
-    l, t, r, b = 44, 20, 16, 40
+    l, t, r, b = 44, 26, 16, 40
     pw, ph = width - l - r, height - t - b
     dates = [item["date"] for item in series]
     n = max(len(dates) - 1, 1)
@@ -652,31 +665,65 @@ def timeline_svg(series, highlights=None, width: int = 1200, height: int = 220) 
         for x, y in points(vals)
     )
 
-    # Los CVEs más ruidosos del período se marcan en el día de su score y enlazan
-    # a la ficha: con promedios diarios solos no se ven en el gráfico.
+    # Los CVEs más ruidosos del período: guía vertical en su día y etiqueta
+    # escalonada en carriles. Su hype vive en otra escala que el eje (promedios
+    # diarios), así que marcarlos como punto los sacaba del área y, con fechas
+    # consecutivas, las etiquetas se pisaban.
+    palette = ("#F472B6", "#A78BFA", "#34D399")
     indice_dia = {item["date"]: i for i, item in enumerate(series)}
-    marcas, nombres = [], []
+    validos = []
     for hito in highlights[:3]:
         i = indice_dia.get(str(hito.get("date"))[:10])
-        cve = hito.get("cve_id") or ""
-        if i is None or not cve:
+        if i is None or not hito.get("cve_id"):
             continue
+        validos.append((i, hito))
+    validos.sort(key=lambda par: par[0])
+
+    marcas, chips = [], []
+    ocupado: dict[int, float] = {}
+    # Las guías arrancan debajo de todos los carriles: si nacen en el carril,
+    # la línea vertical de un destacado cruza el texto del que está al lado.
+    inicio_guia = t + 17 + (len(validos) + 1) * 14
+    for k, (i, hito) in enumerate(validos):
+        color = palette[k % len(palette)]
+        cve = hito["cve_id"]
+        etiqueta = (hito.get("brand_name") or f"CVE {cve.rsplit('-', 1)[-1]}")[:18]
+        ancho_txt = len(etiqueta) * 5.7 + 12
         x = l + (i / n) * pw
-        y = y_de(float(hito.get("hype") or 0))
-        etiqueta = hito.get("brand_name") or cve.rsplit("-", 1)[-1]
-        titulo = f"{cve} · Hype {float(hito.get('hype') or 0):.1f} · Reality {float(hito.get('reality') or 0):.1f}"
+        carril = 0
+        while ocupado.get(carril, -1e9) > x - ancho_txt:
+            carril += 1
+        ocupado[carril] = x + ancho_txt
+        ty = t + 12 + carril * 14
+        tx = min(max(x, l + ancho_txt / 2), l + pw - ancho_txt / 2)
+        hype_v = float(hito.get("hype") or 0)
+        reality_v = float(hito.get("reality") or 0)
         marcas.append(
             f'<a href="/cve?cve={escape(cve)}" class="tl-mark">'
-            f'<circle cx="{x:.1f}" cy="{y:.1f}" r="5.5" fill="none" stroke="#FF6B00" stroke-width="1.6"/>'
-            f'<text x="{x:.1f}" y="{max(y - 9, t + 10):.1f}" fill="#FF6B00" font-size="10" '
-            f'text-anchor="middle">{escape(etiqueta[:20])}</text>'
-            f"<title>{escape(titulo)}</title></a>"
+            f'<line x1="{x:.1f}" y1="{ty + 4:.1f}" x2="{x:.1f}" y2="{inicio_guia:.1f}" '
+            f'stroke="{color}" stroke-width="1" opacity=".45"/>'
+            f'<line x1="{x:.1f}" y1="{inicio_guia:.1f}" x2="{x:.1f}" y2="{t + ph}" '
+            f'stroke="{color}" stroke-width="1.2" stroke-dasharray="3 3" opacity=".5"/>'
+            f'<circle cx="{x:.1f}" cy="{inicio_guia:.1f}" r="3" fill="{color}"/>'
+            f'<text x="{tx:.1f}" y="{ty:.1f}" fill="{color}" font-size="10.5" text-anchor="middle" '
+            f'paint-order="stroke" stroke="#0B1220" stroke-width="3">{escape(etiqueta)}</text>'
+            f"<title>{escape(f'{cve} · Hype {hype_v:.1f} · Reality {reality_v:.1f}')}</title></a>"
         )
-        nombres.append(f'<a href="/cve?cve={escape(cve)}">{escape(etiqueta[:26])}</a>')
+        chips.append(
+            f'<a class="tl-chip" href="/cve?cve={escape(cve)}" style="--c:{color}">'
+            f"<i></i><b>{escape(etiqueta)}</b><span>{escape(cve)}</span>"
+            f"<em>H {hype_v:.1f} · R {reality_v:.1f}</em></a>"
+        )
 
-    leyenda_destacados = (
-        f'<p class="tl-legend">Destacados: {" · ".join(nombres)}</p>' if nombres else ""
-    )
+    leyenda_destacados = ""
+    if chips:
+        leyenda_destacados = (
+            '<div class="tl-chips">'
+            + "".join(chips)
+            + "</div>"
+            '<p class="tl-note">Score propio de cada CVE (escala absoluta), '
+            "no el promedio diario que dibuja el gráfico.</p>"
+        )
 
     return (
         f'<svg viewBox="0 0 {width} {height}" width="100%" height="{height}" role="img">'
