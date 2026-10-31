@@ -42,6 +42,14 @@ CREATE TABLE IF NOT EXISTS scores (
     FOREIGN KEY (cve_id) REFERENCES cves(cve_id)
 );
 
+-- Estado del sync incremental. El watermark es el SHA de HEAD del mirror
+-- git, no dateUpdated: un CVE se puede republicar sin mover su fecha.
+CREATE TABLE IF NOT EXISTS sync_state (
+    key TEXT PRIMARY KEY,
+    value TEXT,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS assets (
     asset_id TEXT PRIMARY KEY,
     name TEXT,

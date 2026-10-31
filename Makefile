@@ -1,12 +1,16 @@
 # Makefile simple
 
-.PHONY: init sync enrich score test dashboard
+.PHONY: init sync sync-delta enrich score test dashboard
 
 init:
 	python -m core.db
 
 sync:
 	python agents/sync_agent.py --full
+
+# Delta: sólo los cves/**/*.json que cambiaron desde el último HEAD del mirror.
+sync-delta:
+	python agents/sync_agent.py
 
 enrich:
 	python agents/enrichment_agent.py

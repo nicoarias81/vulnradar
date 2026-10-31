@@ -5,8 +5,12 @@ Versión base: implementa las fuentes abiertas.
 import csv
 import gzip
 import io
+import sys
+from pathlib import Path
 
 import requests
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from core.db import ensure_cve_stub, get_db
 

@@ -1,6 +1,11 @@
 """
 Scoring Agent — Calcula Hype y Reality para CVEs enriquecidos
 """
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from core.db import get_db
 from core.models import Score
 from core.normalizer import build_signals

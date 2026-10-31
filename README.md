@@ -41,7 +41,7 @@ pip install -r requirements.txt
 # 3. Inicializar base de datos (crea data/humo.db)
 python -m core.db
 
-# 4. Primera sincronización (puede tardar)
+# 4. Primera sincronización (recorre todo el mirror, puede tardar)
 python agents/sync_agent.py --full
 
 # 5. Correr enriquecimiento + scoring
@@ -52,14 +52,44 @@ python agents/scoring_agent.py
 streamlit run dashboard/app.py
 ```
 
+## Sync incremental
+
+El sync incremental es el modo por defecto: lo que se corre a diario.
+
+```bash
+python agents/sync_agent.py            # incremental (default)
+python agents/sync_agent.py --full     # recorre todo el mirror
+make sync-delta                        # incremental
+make sync                              # --full
+```
+
+El watermark es el **SHA de HEAD del mirror git local** (`sync_state.cvelist_head`),
+no `dateUpdated`: un CVE se puede republicar sin mover su fecha, y un archivo
+puede cambiar por una corrección de metadatos. En cada corrida incremental:
+
+1. `git pull --ff-only` sobre el mirror.
+2. Si no hay watermark guardado (primera vez o base nueva): recorrido completo.
+3. Si el HEAD no cambió: 0 archivos, watermark igual, exit 0.
+4. Si cambió: `git diff --name-only OLD NEW` y se procesan sólo los
+   `cves/**/*.json` añadidos o modificados. Los borrados se ignoran (no se
+   borran filas locales).
+5. Si el SHA viejo ya no existe en el mirror (re-clone, historia reescrita),
+   se degrada a recorrido completo en lugar de fallar.
+6. Al terminar se guarda el HEAD actual en `sync_state`.
+
+Para tests se puede inyectar el mirror y la base:
+`sync(full=False, cve_list_path="...", db_path="...")` o `--cve-list-path`/
+`--db-path` por CLI.
+
 ## Tests
 
 ```bash
 pytest -q
 ```
 
-Los tests no usan red: el scoring, la normalización y los UPSERTs se prueban
-contra SQLite temporal (`tmp_path`).
+Los tests no usan red: el scoring, la normalización, los UPSERTs y el sync
+incremental se prueban contra SQLite temporal (`tmp_path`) y un mini repo git
+armado en el propio tmp.
 
 ## Estructura del proyecto
 
@@ -86,7 +116,8 @@ humo-vs-miedo/
 ├── tests/
 │   ├── test_scoring.py
 │   ├── test_normalizer.py
-│   └── test_db_upsert.py
+│   ├── test_db_upsert.py
+│   └── test_sync_incremental.py
 └── dashboard/
     └── app.py
 ```
