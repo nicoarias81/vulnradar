@@ -43,3 +43,7 @@ Thumbs.db
 # artefactos del backfill local (listas de pendientes, NDJSON de menciones)
 .cache/
 .ab-active
+# Estado del slot activo del proxy (lo escribe scripts/ab.sh en el server).
+# Si lo versionamos, cada deploy lo pisa y el bind mount del proxy queda
+# apuntando al inodo viejo.
+deploy/upstream.caddy

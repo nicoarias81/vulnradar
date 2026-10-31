@@ -9,6 +9,13 @@ PANOPTICON_ENV=/opt/panopticon/deploy/.env.prod
 
 mkdir -p "$APP/data"
 
+# El upstream activo es estado del server, no del repo: el tar no lo trae y el
+# proxy lo monta como archivo. Si falta (primer arranque), apuntar al slot a.
+if [ ! -f "$APP/deploy/upstream.caddy" ]; then
+  printf 'reverse_proxy dashboard-a:8501\n' > "$APP/deploy/upstream.caddy"
+  echo "upstream.caddy: creado (dashboard-a)"
+fi
+
 if [ -f "$ENV_PROD" ]; then
   echo "env.prod: ya existe (no se toca)"
 else

@@ -46,7 +46,17 @@ wait_health() { # $1=url  $2=segundos
 slot_url() { echo "http://localhost:$( [[ $1 == a ]] && echo "${SLOT_A_PORT:-8511}" || echo "${SLOT_B_PORT:-8512}")/health"; }
 
 set_upstream() { # $1=slot
-  printf 'reverse_proxy dashboard-%s:8501\n' "$1" > "$UPSTREAM_FILE"
+  local want seen
+  want="reverse_proxy dashboard-$1:8501"
+  printf '%s\n' "$want" > "$UPSTREAM_FILE"
+  # El proxy monta upstream.caddy como *archivo*: si algo lo reemplazó en el
+  # host (tar del deploy, checkout), el contenedor sigue viendo el inodo viejo
+  # y el reload lee el upstream anterior. Si lo que ve no es lo pedido, recrear.
+  seen=$("${COMPOSE[@]}" exec -T "$PROXY_SVC" cat /etc/caddy/upstream.caddy 2>/dev/null | tr -d '\r' | head -n1)
+  if [[ $seen != "$want" ]]; then
+    "${COMPOSE[@]}" up -d --no-deps --force-recreate "$PROXY_SVC" >/dev/null 2>&1
+    sleep 2
+  fi
   "${COMPOSE[@]}" exec -T "$PROXY_SVC" caddy reload --config /etc/caddy/Caddyfile >/dev/null 2>&1 \
     || { echo "reload del proxy falló"; return 1; }
 }
