@@ -84,9 +84,12 @@ step "limpieza de huérfanos de proyectos viejos"
 ssh_srv "docker ps -a --format '{{.Names}}' | grep -E '^[0-9a-f]{12}_vulnradar-' | xargs -r docker rm -f 2>&1 | tail -5 || true"
 
 step "build + up"
-UP_ARGS="up -d --remove-orphans"
-if [ "$BUILD" -eq 1 ]; then UP_ARGS="$UP_ARGS --build"; fi
-ssh_srv "cd $REMOTE && docker compose -f deploy/docker-compose.server.yml --env-file deploy/.env.prod $UP_ARGS 2>&1 | tail -20"
+# Construir ANTES de recrear: con --build en el up, compose deja el contenedor
+# abajo mientras compila y cada deploy se comía ~2 minutos de caída.
+if [ "$BUILD" -eq 1 ]; then
+  ssh_srv "cd $REMOTE && docker compose -f deploy/docker-compose.server.yml --env-file deploy/.env.prod build 2>&1 | tail -8"
+fi
+ssh_srv "cd $REMOTE && docker compose -f deploy/docker-compose.server.yml --env-file deploy/.env.prod up -d --remove-orphans 2>&1 | tail -20"
 
 step "cloudflare (ingress + DNS público)"
 if [ "$CF" -eq 1 ]; then
