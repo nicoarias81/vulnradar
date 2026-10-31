@@ -624,7 +624,7 @@ def timeline_svg(series, width: int = 1200, height: int = 220) -> str:
         )
 
     puntos = "".join(
-        f'<circle cx="{x:.1f}" cy="{y:.1f}" r="3.2" fill="{color}" opacity=".85"/>'
+        f'<circle cx="{x:.1f}" cy="{y:.1f}" r="3.2" fill="{color}" opacity=".85" pointer-events="none"/>'
         for vals, color in ((hype_vals, "#FF6B00"), (reality_vals, "#22D3EE"))
         for x, y in points(vals)
     )
@@ -665,7 +665,8 @@ def timeline_svg(series, width: int = 1200, height: int = 220) -> str:
         f'<svg viewBox="0 0 {width} {height}" width="100%" height="{height}" role="img">'
         f'<rect x="0" y="0" width="{width}" height="{height}" fill="#0B1220" rx="6"/>'
         f"{''.join(yticks)}{polyline(hype_vals, '#FF6B00')}{polyline(reality_vals, '#22D3EE')}"
-        f"{puntos}{''.join(marcas)}{''.join(hover)}{''.join(ticks)}"
+        # Hover antes que las marcas: si las franjas van encima, se comen el click.
+        f"{puntos}{''.join(hover)}{''.join(marcas)}{''.join(ticks)}"
         "</svg>"
         '<p class="tl-legend"><span class="h">━</span> Hype Score (Perceived)&nbsp;&nbsp;'
         '<span class="r">━</span> Reality Score (Observed)</p>'
