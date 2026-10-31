@@ -37,7 +37,9 @@ ssh_srv() {
       -i "$KEY" "$REMOTE_HOST" "$@"
 }
 
-step() { printf '\n== %s\n' "$*"; }
+# Con hora en cada paso: sin esto no se sabe qué tramo del deploy consume los
+# ~2 min que el sitio pasa abajo.
+step() { printf '\n== %s  [%s]\n' "$*" "$(date +%H:%M:%S)"; }
 
 step "preflight"
 cd "$REPO"
