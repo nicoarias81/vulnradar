@@ -1,0 +1,3 @@
+# Los .sh se ejecutan con bash: si llegan con CRLF, `set -euo pipefail\r`
+# revienta con "invalid option name" y el blue-green no puede promover el slot.
+*.sh text eol=lf

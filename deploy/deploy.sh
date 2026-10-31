@@ -70,7 +70,7 @@ if [ "$FROM_WORKTREE" -eq 1 ]; then
 else
   git archive --format=tar HEAD | ssh_srv "tar -x -C $REMOTE"
 fi
-ssh_srv "find $REMOTE/deploy -type f \( -name '*.sh' -o -name '*.yml' -o -name '*.py' \) -print0 | xargs -0 -r sed -i '$CRLF' && echo extract+crlf: ok"
+ssh_srv "find $REMOTE/deploy $REMOTE/scripts -type f \( -name '*.sh' -o -name '*.yml' -o -name '*.py' \) -print0 | xargs -0 -r sed -i '$CRLF' && echo extract+crlf: ok"
 
 step "bootstrap (dirs + env.prod si falta)"
 ssh_srv "bash $REMOTE/deploy/bootstrap-server.sh"
