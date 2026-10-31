@@ -2,71 +2,90 @@
 Sync Agent — Sincroniza CVE List V5
 Uso: python agents/sync_agent.py [--full]
 """
-import subprocess
 import json
+import os
+import subprocess
 from pathlib import Path
-from datetime import datetime
-from core.db import get_db
 
-CVE_LIST_PATH = Path("data/cvelistV5")
+from core.db import get_db, resolve_path
+from core.normalizer import normalize_cve_list_v5
+
+CVE_LIST_PATH = resolve_path(os.getenv("CVE_LIST_PATH", ""), "data/cvelistV5")
 REPO_URL = "https://github.com/CVEProject/cvelistV5.git"
+
+# UPSERT en lugar de INSERT OR REPLACE: con PRAGMA foreign_keys=ON, REPLACE
+# borraría la fila de cves y rompería el FK de enrichments/scores.
+UPSERT_SQL = """
+    INSERT INTO cves (cve_id, published, last_modified, description,
+                      cvss_score, cvss_vector, cvss_severity, raw_json)
+    VALUES (:cve_id, :published, :last_modified, :description,
+            :cvss_score, :cvss_vector, :cvss_severity, :raw_json)
+    ON CONFLICT(cve_id) DO UPDATE SET
+        published = excluded.published,
+        last_modified = excluded.last_modified,
+        description = excluded.description,
+        cvss_score = excluded.cvss_score,
+        cvss_vector = excluded.cvss_vector,
+        cvss_severity = excluded.cvss_severity,
+        raw_json = excluded.raw_json,
+        synced_at = CURRENT_TIMESTAMP
+"""
+
 
 def clone_or_pull():
     if not CVE_LIST_PATH.exists():
         print("Clonando CVE List V5 por primera vez...")
-        subprocess.run(["git", "clone", "--depth", "1", REPO_URL, str(CVE_LIST_PATH)], check=True)
+        subprocess.run(
+            ["git", "clone", "--depth", "1", REPO_URL, str(CVE_LIST_PATH)],
+            check=True,
+        )
     else:
         print("Actualizando CVE List V5...")
         subprocess.run(["git", "-C", str(CVE_LIST_PATH), "pull"], check=True)
 
-def process_cve_file(path: Path, conn):
+
+def process_cve_file(path: Path, conn) -> bool:
+    """Normaliza un JSON de CVE List V5 y lo upsertea. False si se descarta."""
     try:
-        data = json.loads(path.read_text())
-        cve_id = data.get("cveMetadata", {}).get("cveId")
-        if not cve_id:
-            return
-        # Extraer campos básicos (simplificado)
-        published = data.get("cveMetadata", {}).get("datePublished")
-        description = ""
-        containers = data.get("containers", {})
-        cna = containers.get("cna", {})
-        for desc in cna.get("descriptions", []):
-            if desc.get("lang") == "en":
-                description = desc.get("value", "")
-                break
-        # CVSS (buscar en metrics)
-        cvss = None
-        for metric in cna.get("metrics", []):
-            if "cvssV3_1" in metric:
-                cvss = metric["cvssV3_1"].get("baseScore")
-                break
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"Error procesando {path}: {exc}")
+        return False
 
-        conn.execute("""
-            INSERT OR REPLACE INTO cves (cve_id, published, description, cvss_score, raw_json, synced_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (cve_id, published, description, cvss, json.dumps(data), datetime.utcnow().isoformat()))
-    except Exception as e:
-        print(f"Error procesando {path}: {e}")
+    record = normalize_cve_list_v5(data)
+    if record is None:
+        return False
 
-def sync(full=False):
+    conn.execute(UPSERT_SQL, record)
+    return True
+
+
+def sync(full: bool = True):
+    """Recorre el mirror completo y upsertea cada CVE."""
+    if not full:
+        print("Aviso: el sync incremental todavía no existe (Fase 2); se sincroniza todo.")
     clone_or_pull()
+
     conn = get_db()
     cves_dir = CVE_LIST_PATH / "cves"
     count = 0
-    for year_dir in cves_dir.iterdir():
-        if not year_dir.is_dir():
-            continue
-        for json_file in year_dir.rglob("*.json"):
-            process_cve_file(json_file, conn)
-            count += 1
-            if count % 1000 == 0:
-                conn.commit()
-                print(f"Procesados {count} CVEs...")
-    conn.commit()
-    conn.close()
+    try:
+        for year_dir in cves_dir.iterdir():
+            if not year_dir.is_dir():
+                continue
+            for json_file in year_dir.rglob("*.json"):
+                if process_cve_file(json_file, conn):
+                    count += 1
+                if count % 1000 == 0:
+                    conn.commit()
+                    print(f"Procesados {count} CVEs...")
+        conn.commit()
+    finally:
+        conn.close()
     print(f"Sync completado. Total: {count} CVEs.")
+
 
 if __name__ == "__main__":
     import sys
-    full = "--full" in sys.argv
-    sync(full=full)
+
+    sync(full="--full" in sys.argv)

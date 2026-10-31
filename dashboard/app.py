@@ -1,6 +1,13 @@
 """
 Dashboard básico con Streamlit
 """
+import sys
+from pathlib import Path
+
+# `streamlit run` agrega sólo dashboard/ al sys.path: la raíz del repo hace
+# falta para importar `core`.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import streamlit as st
 import pandas as pd
 import plotly.express as px

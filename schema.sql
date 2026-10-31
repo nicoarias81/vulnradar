@@ -29,9 +29,12 @@ CREATE TABLE IF NOT EXISTS enrichments (
     FOREIGN KEY (cve_id) REFERENCES cves(cve_id)
 );
 
+-- UNIQUE(cve_id): un solo score vigente por CVE. El scoring hace UPSERT
+-- (ON CONFLICT(cve_id) DO UPDATE) en lugar de acumular filas históricas.
+-- Ese UNIQUE ya indexa las búsquedas por CVE: no hace falta un idx aparte.
 CREATE TABLE IF NOT EXISTS scores (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    cve_id TEXT,
+    cve_id TEXT NOT NULL UNIQUE,
     hype REAL,
     reality REAL,
     category TEXT,
@@ -56,5 +59,4 @@ CREATE TABLE IF NOT EXISTS cve_assets (
 );
 
 CREATE INDEX IF NOT EXISTS idx_cves_published ON cves(published);
-CREATE INDEX IF NOT EXISTS idx_scores_cve ON scores(cve_id);
 CREATE INDEX IF NOT EXISTS idx_scores_date ON scores(calculated_at);

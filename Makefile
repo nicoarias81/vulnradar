@@ -1,6 +1,6 @@
 # Makefile simple
 
-.PHONY: init sync enrich score dashboard
+.PHONY: init sync enrich score test dashboard
 
 init:
 	python -m core.db
@@ -13,6 +13,9 @@ enrich:
 
 score:
 	python agents/scoring_agent.py
+
+test:
+	python -m pytest -q
 
 dashboard:
 	streamlit run dashboard/app.py

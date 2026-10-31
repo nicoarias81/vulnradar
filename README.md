@@ -35,11 +35,11 @@ Versión base open source. La capa de contexto (inventario de assets + criticida
 # 1. Clonar y entrar
 cd humo-vs-miedo
 
-# 2. Instalar dependencias
+# 2. Instalar dependencias (incluye pytest)
 pip install -r requirements.txt
 
-# 3. Inicializar base de datos
-python -m core.db_init
+# 3. Inicializar base de datos (crea data/humo.db)
+python -m core.db
 
 # 4. Primera sincronización (puede tardar)
 python agents/sync_agent.py --full
@@ -51,6 +51,15 @@ python agents/scoring_agent.py
 # 6. Dashboard
 streamlit run dashboard/app.py
 ```
+
+## Tests
+
+```bash
+pytest -q
+```
+
+Los tests no usan red: el scoring, la normalización y los UPSERTs se prueban
+contra SQLite temporal (`tmp_path`).
 
 ## Estructura del proyecto
 
@@ -74,6 +83,10 @@ humo-vs-miedo/
 │   └── db.py
 ├── config/
 │   └── sources.yaml
+├── tests/
+│   ├── test_scoring.py
+│   ├── test_normalizer.py
+│   └── test_db_upsert.py
 └── dashboard/
     └── app.py
 ```

@@ -2,38 +2,51 @@
 Scoring Agent — Calcula Hype y Reality para CVEs enriquecidos
 """
 from core.db import get_db
+from core.models import Score
+from core.normalizer import build_signals
 from core.scoring import score_cve
+
+# Columnas explícitas: cves y enrichments comparten nombres (cve_id, timestamps)
+# y un SELECT c.*, e.* devuelve duplicados.
+SELECT_ENRICHED = """
+    SELECT c.cve_id, c.cvss_score,
+           e.in_kev, e.epss, e.wild_confirmation, e.ransomware_use,
+           e.media_count, e.poc_count, e.tone_score, e.branding
+    FROM cves c
+    JOIN enrichments e ON e.cve_id = c.cve_id
+"""
+
+UPSERT_SQL = """
+    INSERT INTO scores (cve_id, hype, reality, category)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(cve_id) DO UPDATE SET
+        hype = excluded.hype,
+        reality = excluded.reality,
+        category = excluded.category,
+        calculated_at = CURRENT_TIMESTAMP
+"""
+
+
+def score_all(conn) -> int:
+    """Un score vigente por CVE (UNIQUE(cve_id)): reemplaza, no acumula filas."""
+    rows = conn.execute(SELECT_ENRICHED).fetchall()
+    for row in rows:
+        # Fila unida: las columnas de cves y de enrichments viven en la misma fila.
+        signals = build_signals(row, row)
+        score = Score(cve_id=row["cve_id"], **score_cve(signals))
+        conn.execute(UPSERT_SQL, (score.cve_id, score.hype, score.reality, score.category))
+    return len(rows)
+
 
 def run():
     conn = get_db()
-    rows = conn.execute("""
-        SELECT c.*, e.*
-        FROM cves c
-        LEFT JOIN enrichments e ON c.cve_id = e.cve_id
-        WHERE e.cve_id IS NOT NULL
-    """).fetchall()
+    try:
+        count = score_all(conn)
+        conn.commit()
+    finally:
+        conn.close()
+    print(f"Scoring completado: {count} CVEs.")
 
-    for row in rows:
-        signals = {
-            "cvss": row["cvss_score"] or 0,
-            "in_kev": bool(row["in_kev"]),
-            "epss": row["epss"] or 0,
-            "wild_confirmation": bool(row["wild_confirmation"]),
-            "ransomware_use": bool(row["ransomware_use"]),
-            "media_score": min((row["media_count"] or 0) / 2, 10),  # escala simple
-            "tone_score": row["tone_score"] or 0,
-            "branding": bool(row["branding"]),
-            "poc_score": min((row["poc_count"] or 0) * 2, 10),
-        }
-        result = score_cve(signals)
-        conn.execute("""
-            INSERT INTO scores (cve_id, hype, reality, category)
-            VALUES (?, ?, ?, ?)
-        """, (row["cve_id"], result["hype"], result["reality"], result["category"]))
-
-    conn.commit()
-    conn.close()
-    print("Scoring completado.")
 
 if __name__ == "__main__":
     run()
