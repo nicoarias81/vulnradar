@@ -1,12 +1,14 @@
 """
 Cliente LLM configurable (proveedor + modelo).
 
+LiteLLM proxy (alias: litellm) es el default de este repo:
+POST http://192.168.10.5:4000/v1/chat/completions, clave LITELLM_API_KEY.
+
 xAI (aliases: x, grok, spacexai) usa la Responses API documentada en
 https://docs.x.ai — POST https://api.x.ai/v1/responses, clave XAI_API_KEY.
-Otros proveedores OpenAI-compatibles usan /v1/chat/completions.
 
 Pytest no llama a la red: los tests mockean HTTP. Humo en vivo:
-`python -m core.llm` (requiere XAI_API_KEY en .env).
+`python -m core.llm`.
 """
 from __future__ import annotations
 
@@ -31,6 +33,9 @@ CONFIG_PATH = REPO_ROOT / "config" / "llm.yaml"
 
 # Nombres que el usuario puede poner en LLM_PROVIDER / config/llm.yaml.
 PROVIDER_ALIASES = {
+    "litellm": "litellm",
+    "lite": "litellm",
+    "proxy": "litellm",
     "x": "xai",
     "xai": "xai",
     "grok": "xai",
@@ -42,6 +47,12 @@ PROVIDER_ALIASES = {
 }
 
 PROVIDERS = {
+    "litellm": {
+        "base_url": "http://192.168.10.5:4000/v1",
+        "key_env": "LITELLM_API_KEY",
+        "style": "chat",
+        "default_model": "qwen3.8-flash",
+    },
     "xai": {
         "base_url": "https://api.x.ai/v1",
         "key_env": "XAI_API_KEY",
@@ -97,7 +108,7 @@ def load_llm_config(
         provider
         or environ.get("LLM_PROVIDER")
         or file_cfg.get("provider")
-        or "xai"
+        or "litellm"
     )
     resolved = PROVIDER_ALIASES.get(str(raw_provider).strip().lower())
     if not resolved:
@@ -220,10 +231,34 @@ def _read_yaml(path: Path) -> dict:
     return loaded if isinstance(loaded, dict) else {}
 
 
+def list_models(
+    *,
+    config: Optional[LlmConfig] = None,
+    session: Optional[requests.Session] = None,
+) -> list[str]:
+    """GET /models del proxy. Útil para ver los ids que LiteLLM expone."""
+    cfg = config or load_llm_config()
+    http = session or requests
+    headers = {}
+    if cfg.api_key:
+        headers["Authorization"] = f"Bearer {cfg.api_key}"
+    response = http.get(f"{cfg.base_url}/models", headers=headers, timeout=cfg.timeout_seconds)
+    response.raise_for_status()
+    data = response.json()
+    return [item.get("id") for item in data.get("data") or [] if item.get("id")]
+
+
 def _smoke() -> int:
-    """Humo en vivo: una completion mínima. No imprime la API key."""
+    """Humo en vivo: lista modelos y una completion mínima. No imprime la API key."""
     cfg = load_llm_config()
     print(f"provider={cfg.provider} model={cfg.model} base_url={cfg.base_url}")
+    try:
+        models = list_models(config=cfg)
+        print("models=" + ",".join(models[:20]))
+        if models and cfg.model not in models:
+            print(f"aviso: {cfg.model!r} no está en /models; el proxy puede aliasarlo igual.")
+    except Exception as exc:
+        print(f"aviso: no pude listar /models ({exc})")
     text = complete("Reply with exactly OK.", system="You are a ping probe. No extra text.")
     print(text)
     return 0

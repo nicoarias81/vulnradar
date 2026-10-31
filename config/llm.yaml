@@ -1,5 +1,6 @@
 # Cliente LLM. Las env LLM_PROVIDER y LLM_MODEL pisan estos valores.
-# Aliases de proveedor: x, xai, grok, spacexai → api.x.ai
-provider: xai
-model: grok-4.7
+# litellm → proxy local OpenAI-compatible (http://192.168.10.5:4000/v1)
+# x / xai / grok → api.x.ai (Responses API)
+provider: litellm
+model: qwen3.8-flash
 timeout_seconds: 60

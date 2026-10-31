@@ -118,6 +118,34 @@ def test_complete_xai_usa_responses_y_no_guarda(tmp_path: Path):
     assert call["headers"]["Authorization"] == "Bearer test-key"
 
 
+def test_litellm_apunta_al_proxy_local(tmp_path: Path):
+    cfg = load_llm_config(
+        env={"LLM_PROVIDER": "litellm", "LLM_MODEL": "grok-4.7", "LITELLM_API_KEY": "sk-proxy"},
+        yaml_path=tmp_path / "n.yaml",
+    )
+
+    assert cfg.provider == "litellm"
+    assert cfg.base_url == "http://192.168.10.5:4000/v1"
+    assert cfg.style == "chat"
+    assert cfg.api_key == "sk-proxy"
+
+
+def test_complete_litellm_usa_chat_completions(tmp_path: Path):
+    session = _FakeSession({"choices": [{"message": {"content": "OK"}}]})
+    cfg = load_llm_config(
+        env={"LLM_PROVIDER": "proxy", "LLM_MODEL": "mi-modelo", "LITELLM_API_KEY": "sk-proxy"},
+        yaml_path=tmp_path / "n.yaml",
+    )
+
+    text = complete("ping", config=cfg, session=session)
+
+    assert text == "OK"
+    call = session.calls[0]
+    assert call["url"] == "http://192.168.10.5:4000/v1/chat/completions"
+    assert call["json"]["model"] == "mi-modelo"
+    assert call["headers"]["Authorization"] == "Bearer sk-proxy"
+
+
 def test_complete_openai_usa_chat_completions(tmp_path: Path):
     session = _FakeSession({"choices": [{"message": {"content": "hola"}}]})
     cfg = load_llm_config(
