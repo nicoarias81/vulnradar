@@ -54,13 +54,17 @@ def _filters(since=None, until=None, category=None, severity=None, query=None):
         text = str(query).strip()
         if text:
             like = f"%{text}%"
-            # cve_id/brand_name por ILIKE (trigramas); descripción por full-text:
-            # el ILIKE '%...%' sobre 400k textos tardaba ~1,5 s por request.
-            clauses.append(
-                "(c.cve_id ILIKE ? OR e.brand_name ILIKE ? "
-                "OR to_tsvector('english', coalesce(c.description, '')) "
-                "   @@ plainto_tsquery('english', ?))"
-            )
+            # Cada vía usa su propio índice (trigram para id/apodo, GIN full-text
+            # para descripción). Un OR suelto forzaba seq scan: 20 s por request.
+            clauses.append("""s.cve_id IN (
+            SELECT cve_id FROM cves WHERE cve_id ILIKE ?
+            UNION
+            SELECT cve_id FROM enrichments WHERE brand_name ILIKE ?
+            UNION
+            SELECT cve_id FROM cves
+            WHERE to_tsvector('english', coalesce(description, ''))
+                  @@ plainto_tsquery('english', ?)
+        )""")
             params.extend([like, like, text])
     return clauses, params
 

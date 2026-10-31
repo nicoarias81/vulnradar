@@ -18,8 +18,51 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from agents.enrichment_agent import heuristic_branding
+from agents.enrichment_agent import analyze_tone_batch, heuristic_branding, upsert_tone
 from core.db import get_db, init_db
+
+LLM_BATCH = 8
+
+
+def top_without_brand(conn, limit: int) -> list:
+    """CVEs con más hype que todavía no tienen apodo (para preguntarle al LLM)."""
+    rows = conn.execute("""
+        SELECT s.cve_id AS cve_id, c.description AS description
+        FROM scores s
+        JOIN cves c ON c.cve_id = s.cve_id
+        LEFT JOIN enrichments e ON e.cve_id = s.cve_id
+        WHERE e.brand_name IS NULL OR btrim(e.brand_name) = ''
+        ORDER BY s.hype DESC NULLS LAST
+        LIMIT ?
+    """, (max(0, int(limit)),)).fetchall()
+    return [
+        {"cve_id": row["cve_id"], "title": (row["description"] or "")[:280]}
+        for row in rows
+    ]
+
+
+def llm_backfill(conn, limit: int, batch_size: int = LLM_BATCH) -> dict:
+    """Pide al LLM el apodo de marketing de los CVEs más visibles.
+
+    Sólo escribe brand_name cuando la respuesta viene del LLM: el heurístico
+    sobre una descripción NVD levanta CamelCase de productos (Chrome, Windows).
+    """
+    targets = top_without_brand(conn, limit)
+    named = written = 0
+    for start in range(0, len(targets), batch_size):
+        chunk = targets[start:start + batch_size]
+        results = analyze_tone_batch(chunk)
+        for item in results:
+            if item.get("source") != "llm":
+                item.pop("brand_name", None)
+                item["branding"] = False
+            elif item.get("brand_name"):
+                named += 1
+        written += upsert_tone(conn, results)
+        conn.commit()
+        print(f"  {min(start + batch_size, len(targets))}/{len(targets)} "
+              f"apodos={named}", flush=True)
+    return {"targets": len(targets), "written": written, "named": named}
 
 
 def latest_titles(conn) -> dict:
@@ -38,7 +81,7 @@ def latest_titles(conn) -> dict:
     return titles
 
 
-def main(dry_run: bool = False) -> dict:
+def main(dry_run: bool = False, llm_limit: int = 0) -> dict:
     init_db()
     conn = get_db()
     try:
@@ -81,10 +124,20 @@ def main(dry_run: bool = False) -> dict:
                 print(f"  ... {written}/{len(found)}")
         conn.commit()
         print(f"escritos: {written}")
+        if llm_limit and not dry_run:
+            print(f"LLM: apodos para los {llm_limit} CVEs con mas hype ...", flush=True)
+            print("llm:", llm_backfill(conn, llm_limit), flush=True)
         return {"candidates": len(found), "written": written}
     finally:
         conn.close()
 
 
 if __name__ == "__main__":
-    main(dry_run="--dry-run" in sys.argv)
+    args = sys.argv[1:]
+    limit = 0
+    for i, arg in enumerate(args):
+        if arg.startswith("--llm="):
+            limit = int(arg.split("=", 1)[1])
+        elif arg == "--llm" and i + 1 < len(args):
+            limit = int(args[i + 1])
+    main(dry_run="--dry-run" in args, llm_limit=limit)
