@@ -1,0 +1,11 @@
+# Blue-green: Caddy publica el puerto público y enruta al slot activo.
+# El slot activo se cambia reescribiendo upstream.caddy + `caddy reload`
+# (recarga atómica: las conexiones en curso terminan contra el slot viejo).
+{
+	admin 0.0.0.0:2019
+	auto_https off
+}
+
+:{$LISTEN_PORT:8501} {
+	import /etc/caddy/upstream.caddy
+}

@@ -1,11 +1,7 @@
-# Ambiente local con blue-green: dos slots (a/b) contra el mismo PostgreSQL.
-# Uso: ./scripts/local_ab.sh up | deploy | switch | status | down
-#
-#   docker compose -f docker-compose.local.yml up -d --build
-#
-# El slot activo se publica en 8501. El inactivo queda en 8502 para verificar
-# antes de mover el tráfico. Los dos hablan con la misma base, así que cambiar
-# de slot no requiere migrar datos.
+# Ambiente local con blue-green real: Caddy publica 8500 y enruta al slot
+# activo (dashboard-a o dashboard-b). Los slots se publican en 8511/8512 sólo
+# para inspección directa; el tráfico público no pasa por ahí.
+# Uso: ./scripts/ab.sh up | deploy | status | rollback
 
 services:
   postgres:
@@ -30,7 +26,7 @@ services:
     build: .
     container_name: vulnradar-a
     ports:
-      - "8501:8501"
+      - "127.0.0.1:8511:8501"
     environment:
       DATABASE_URL: postgresql://vuln:vuln@postgres:5432/vulnradar
       CVE_LIST_PATH: /app/data/cvelistV5
@@ -45,12 +41,20 @@ services:
       postgres:
         condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8501/health')"]
+      interval: 15s
+      timeout: 5s
+      # El dashboard tarda ~2 min en quedar listo: con start_period corto se
+      # marcaba unhealthy mientras todavía estaba arrancando.
+      start_period: 240s
+      retries: 3
 
   dashboard-b:
     build: .
     container_name: vulnradar-b
     ports:
-      - "8503:8501"
+      - "127.0.0.1:8512:8501"
     environment:
       DATABASE_URL: postgresql://vuln:vuln@postgres:5432/vulnradar
       CVE_LIST_PATH: /app/data/cvelistV5
@@ -65,6 +69,30 @@ services:
       postgres:
         condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8501/health')"]
+      interval: 15s
+      timeout: 5s
+      # El dashboard tarda ~2 min en quedar listo: con start_period corto se
+      # marcaba unhealthy mientras todavía estaba arrancando.
+      start_period: 240s
+      retries: 3
+
+  proxy:
+    image: caddy:2-alpine
+    container_name: vulnradar-proxy
+    ports:
+      - "127.0.0.1:8500:8500"
+    environment:
+      LISTEN_PORT: "8500"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./deploy/upstream.caddy:/etc/caddy/upstream.caddy:ro
+      - caddy_data:/data
+    depends_on:
+      - dashboard-a
+    restart: unless-stopped
 
 volumes:
   pgdata-local:
+  caddy_data:
