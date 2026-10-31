@@ -323,6 +323,41 @@ def rerank_entries(entries, *, config=None, completer=None, batch_size=RERANK_BA
     return out
 
 
+RERANK_URL_TTL_DAYS = 45
+
+
+def _reranked_urls(conn, entries) -> set:
+    """URLs que ya pasaron por el rerank dentro de la ventana de retención."""
+    urls = [e.get("url") for e in entries if e.get("url")]
+    if not urls:
+        return set()
+    try:
+        rows = conn.execute(
+            "SELECT url FROM reranked_urls WHERE url = ANY(?) "
+            "AND reranked_at > CURRENT_TIMESTAMP - INTERVAL '%d days'"
+            % RERANK_URL_TTL_DAYS,
+            (urls,),
+        ).fetchall()
+    except Exception:
+        return set()  # base sin la tabla (schema viejo): se reprocesa, no se rompe
+    return {row["url"] for row in rows}
+
+
+def _mark_reranked(conn, entries, reranked) -> None:
+    """Registra sólo las entradas que el LLM contestó: los lotes caídos se reintentan."""
+    try:
+        for entry, verdict in zip(entries, reranked):
+            url = entry.get("url")
+            if not url or not verdict:
+                continue
+            conn.execute(
+                "INSERT INTO reranked_urls (url) VALUES (?) ON CONFLICT (url) DO NOTHING",
+                (url,),
+            )
+    except Exception:
+        pass
+
+
 def mentions_from_rerank(entries, reranked) -> list:
     """Menciones a partir del rerank; las que no son de una vuln se descartan."""
     mentions = []
@@ -365,8 +400,16 @@ def load_rss(conn, feeds, *, session=None, timeout=30, rerank=False,
         entries = parse_feed(content, source=_host(url))
         if rerank:
             entries = entries[:RERANK_MAX_ENTRIES]
-            reranked = rerank_entries(entries, config=config, completer=completer)
-            mentions = mentions_from_rerank(entries, reranked)
+            # Los RSS rotan lento: lo ya rerankeado no se vuelve a mandar al LLM
+            # (medido: ~5 min de modelo por ciclo para 0 menciones nuevas).
+            known = _reranked_urls(conn, entries)
+            fresh = [e for e in entries if (e.get("url") or "") not in known]
+            if fresh:
+                reranked = rerank_entries(fresh, config=config, completer=completer)
+                mentions = mentions_from_rerank(fresh, reranked)
+                _mark_reranked(conn, fresh, reranked)
+            else:
+                mentions = []
         else:
             mentions = collect_mentions(entries)
         for cve_id, delta in upsert_media_mentions(conn, mentions).items():

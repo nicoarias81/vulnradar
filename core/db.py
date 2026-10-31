@@ -186,6 +186,10 @@ def get_db(path: Path | str | None = None) -> PgConnection:
     schema = schema_name(isolation)
     raw = psycopg.connect(database_url(), row_factory=_row_factory)
     raw.execute("SET timezone TO 'UTC'")
+    # Sin commit la sesión queda "idle in transaction" desde el primer SET: retiene
+    # locks y, si algo falla, cualquier sentencia siguiente muere con
+    # InFailedSqlTransaction (así se rompía init_db al arrancar).
+    raw.commit()
     if schema != "public":
         ident = sql.Identifier(schema)
         raw.execute(sql.SQL("CREATE SCHEMA IF NOT EXISTS {}").format(ident))

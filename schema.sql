@@ -45,6 +45,13 @@ CREATE TABLE IF NOT EXISTS media_mentions (
     FOREIGN KEY (cve_id) REFERENCES cves(cve_id)
 );
 
+-- URLs de feed ya pasadas por el rerank del LLM. Sin esto cada ciclo re-manda al
+-- modelo las mismas entradas (los RSS rotan lento) y quema minutos para nada.
+CREATE TABLE IF NOT EXISTS reranked_urls (
+    url TEXT PRIMARY KEY,
+    reranked_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
 -- UNIQUE(cve_id): un solo score vigente por CVE. El scoring hace UPSERT
 -- (ON CONFLICT(cve_id) DO UPDATE) en lugar de acumular filas históricas.
 CREATE TABLE IF NOT EXISTS scores (
