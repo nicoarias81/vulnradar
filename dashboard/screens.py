@@ -12,6 +12,7 @@ from dashboard.data import (
     hype_components,
     load_agent_stats,
     load_daily_averages,
+    load_highlights,
     load_products,
     load_latest_score,
     load_mentions,
@@ -158,7 +159,13 @@ def overview(qp: dict | None = None) -> str:
         )
 
     scatter_div = scatter_svg(scatter_rows) if scatter_rows else '<p class="empty">Ningún CVE pasa los filtros actuales.</p>'
-    timeline_div = timeline_svg(series)
+    timeline_div = timeline_svg(
+        series,
+        highlights=load_highlights(
+            conn, since=since_s, until=until_s, category=category,
+            severity=severity, product=product, limit=3,
+        ),
+    )
 
     return overview_html(
         logo_html=logo(),

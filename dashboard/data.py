@@ -286,8 +286,38 @@ def load_daily_averages(conn, since=None, until=None, category=None, severity=No
     return _attach_top_cves(conn, series, clauses, params)
 
 
+def load_highlights(conn, since=None, until=None, category=None, severity=None,
+                    product=None, limit: int = 3) -> list:
+    """Los CVEs más ruidosos del período: el gráfico los etiqueta y los enlaza.
+
+    No alcanza con el top de cada día: el promedio diario siempre es bajo y
+    destacaría CVEs irrelevantes. Esto va por hype absoluto.
+    """
+    clauses, params = _filters(since, until, category, severity, None, product)
+    sql = (
+        f"SELECT s.cve_id, s.hype, s.reality, {_DAY_EXPR} AS day, e.brand_name "
+        "FROM scores s JOIN cves c ON c.cve_id = s.cve_id "
+        "LEFT JOIN enrichments e ON e.cve_id = s.cve_id"
+        + _where(clauses)
+        + "ORDER BY s.hype DESC, s.calculated_at DESC LIMIT ?"
+    )
+    try:
+        filas = conn.execute(sql, list(params) + [max(1, int(limit))]).fetchall()
+    except Exception:
+        return []  # sin destacados el gráfico sigue sirviendo
+    return [
+        {
+            "cve_id": f["cve_id"],
+            "hype": round(float(f["hype"]), 2) if f["hype"] is not None else 0.0,
+            "reality": round(float(f["reality"]), 2) if f["reality"] is not None else 0.0,
+            "date": str(f["day"])[:10],
+            "brand_name": f["brand_name"] or "",
+        }
+        for f in filas
+    ]
+
+
 def _attach_top_cves(conn, series, clauses, params) -> list:
-    """Suma a cada día su CVE más ruidoso: el gráfico lo etiqueta y lo enlaza."""
     if not series:
         return series
     sql = (

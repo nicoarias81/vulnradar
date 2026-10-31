@@ -554,10 +554,11 @@ def _fecha_larga(day: str) -> str:
         return str(day)[:10]
 
 
-def timeline_svg(series, width: int = 1200, height: int = 220) -> str:
+def timeline_svg(series, highlights=None, width: int = 1200, height: int = 220) -> str:
     if not series:
         return '<p class="muted">Sin fechas de publicación para armar la serie.</p>'
-    l, t, r, b = 40, 16, 16, 40
+    highlights = highlights or []
+    l, t, r, b = 44, 20, 16, 40
     pw, ph = width - l - r, height - t - b
     dates = [item["date"] for item in series]
     n = max(len(dates) - 1, 1)
@@ -570,13 +571,21 @@ def timeline_svg(series, width: int = 1200, height: int = 220) -> str:
             out.append(sum(chunk) / len(chunk))
         return out
 
-    # Auto-zoom: el eje se ajusta al máximo real en vez de quedar fijo en 10.
+    # Auto-zoom: el eje abraza el rango real. Con 0-10 fijo (o 0-techo) los
+    # promedios diarios, que viven entre 0.3 y 2, quedaban pegados al piso.
     hype_vals, reality_vals = smooth("hype"), smooth("reality")
-    pico = max(hype_vals + reality_vals + [0.0])
-    ymax = _nice_ceiling(pico)
+    todos = hype_vals + reality_vals
+    pico = max(todos + [0.0])
+    suelo = min(todos + [0.0])
+    techo = _nice_ceiling(pico)
+    base = 0.0
+    if techo > 0 and (pico - suelo) / techo < 0.5:
+        paso = techo / 5
+        base = max(0.0, math.floor(max(0.0, suelo - paso) / paso) * paso)
+    alto = max(techo - base, 0.1)
 
     def y_de(val):
-        return _xy(val, 0, ymax, t, ph, invert=True)
+        return _xy(max(0.0, float(val) - base), 0, alto, t, ph, invert=True)
 
     def points(vals):
         return [(l + (i / n) * pw, y_de(val)) for i, val in enumerate(vals)]
@@ -598,10 +607,10 @@ def timeline_svg(series, width: int = 1200, height: int = 220) -> str:
     yticks = []
     pasos = 5
     for i in range(pasos + 1):
-        valor = ymax * i / pasos
+        valor = base + alto * i / pasos
         y = y_de(valor)
         yticks.append(f'<line x1="{l}" y1="{y:.1f}" x2="{l+pw}" y2="{y:.1f}" stroke="#334155" opacity=".7"/>')
-        etiqueta = f"{valor:.0f}" if ymax >= 10 else f"{valor:.1f}"
+        etiqueta = f"{valor:.0f}" if alto >= 10 else f"{valor:.1f}"
         yticks.append(f'<text x="{l-6}" y="{y+4:.1f}" fill="#94A3B8" font-size="11" text-anchor="end">{etiqueta}</text>')
 
     # Hover: una franja por día; el tooltip nativo muestra fecha, scores y el CVE top.
@@ -629,37 +638,31 @@ def timeline_svg(series, width: int = 1200, height: int = 220) -> str:
         for x, y in points(vals)
     )
 
-    # Los días más calientes llevan su CVE a la vista, con enlace a la ficha.
-    destacados = sorted(range(len(series)), key=lambda i: -(series[i].get("hype") or 0))[:3]
-    marcas = []
-    for i in destacados:
-        item = series[i]
-        top = item.get("top_cve") or {}
-        if not top.get("cve_id"):
+    # Los CVEs más ruidosos del período se marcan en el día de su score y enlazan
+    # a la ficha: con promedios diarios solos no se ven en el gráfico.
+    indice_dia = {item["date"]: i for i, item in enumerate(series)}
+    marcas, nombres = [], []
+    for hito in highlights[:3]:
+        i = indice_dia.get(str(hito.get("date"))[:10])
+        cve = hito.get("cve_id") or ""
+        if i is None or not cve:
             continue
         x = l + (i / n) * pw
-        y = y_de(float(item.get("hype") or 0))
-        cve = top["cve_id"]
-        corto = cve.replace("CVE-", "")
+        y = y_de(float(hito.get("hype") or 0))
+        etiqueta = hito.get("brand_name") or cve.rsplit("-", 1)[-1]
+        titulo = f"{cve} · Hype {float(hito.get('hype') or 0):.1f} · Reality {float(hito.get('reality') or 0):.1f}"
         marcas.append(
             f'<a href="/cve?cve={escape(cve)}" class="tl-mark">'
             f'<circle cx="{x:.1f}" cy="{y:.1f}" r="5.5" fill="none" stroke="#FF6B00" stroke-width="1.6"/>'
-            f'<text x="{x:.1f}" y="{max(y-10, t+9):.1f}" fill="#FF6B00" font-size="10" '
-            f'text-anchor="middle">{escape(corto)}</text>'
-            f'<title>{escape(cve + (" · " + top["brand_name"] if top.get("brand_name") else ""))}</title></a>'
+            f'<text x="{x:.1f}" y="{max(y - 9, t + 10):.1f}" fill="#FF6B00" font-size="10" '
+            f'text-anchor="middle">{escape(etiqueta[:20])}</text>'
+            f"<title>{escape(titulo)}</title></a>"
         )
+        nombres.append(f'<a href="/cve?cve={escape(cve)}">{escape(etiqueta[:26])}</a>')
 
-    leyenda_destacados = ""
-    nombres = [
-        f'<a href="/cve?cve={escape((series[i].get("top_cve") or {}).get("cve_id"))}">'
-        f'{escape((series[i].get("top_cve") or {}).get("cve_id"))}</a>'
-        for i in destacados
-        if (series[i].get("top_cve") or {}).get("cve_id")
-    ]
-    if nombres:
-        leyenda_destacados = (
-            '<p class="tl-legend">Destacados: ' + " · ".join(dict.fromkeys(nombres)) + "</p>"
-        )
+    leyenda_destacados = (
+        f'<p class="tl-legend">Destacados: {" · ".join(nombres)}</p>' if nombres else ""
+    )
 
     return (
         f'<svg viewBox="0 0 {width} {height}" width="100%" height="{height}" role="img">'
