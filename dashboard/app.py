@@ -77,7 +77,7 @@ with left:
         type="line", x0=0, y0=0, x1=10, y1=10,
         line=dict(dash="dash", color="gray"),
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
 with right:
     st.subheader("Scores")
@@ -87,7 +87,7 @@ with right:
             "cvss_score", "tone_score", "alertado",
         ]],
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
     )
 
 st.subheader("Detalle")
