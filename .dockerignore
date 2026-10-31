@@ -10,6 +10,9 @@ __pycache__
 .coverage
 htmlcov
 .grok
+# Nunca dentro de la imagen: el env de prod (secretos) vive sólo en el server.
 .env
+.env.*
+deploy
 *.md
 !README.md

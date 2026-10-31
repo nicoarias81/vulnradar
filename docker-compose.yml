@@ -5,7 +5,30 @@ services:
       - "8501:8501"
     environment:
       DB_PATH: /app/data/humo.db
+      CVE_LIST_PATH: /app/data/cvelistV5
       SEED_DEMO: "1"
+      SOC_USER: ${SOC_USER:-soc}
+      SOC_PASSWORD: ${SOC_PASSWORD:-}
+    env_file:
+      - .env
     volumes:
       - ./data:/app/data
     restart: unless-stopped
+
+  worker:
+    build: .
+    command: python scripts/run_worker.py
+    healthcheck:
+      disable: true
+    environment:
+      DB_PATH: /app/data/humo.db
+      CVE_LIST_PATH: /app/data/cvelistV5
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    stop_grace_period: 2m
+    depends_on:
+      dashboard:
+        condition: service_started

@@ -175,6 +175,7 @@ def load_agent_stats(conn) -> dict:
         if row:
             sync_at = row[0]
 
+    last = load_last_agent_status(conn)
     return {
         "cves": n_cves,
         "enrichments": n_enrich,
@@ -183,7 +184,50 @@ def load_agent_stats(conn) -> dict:
         "avg_hype": avg_hype,
         "avg_reality": avg_reality,
         "synced_at": sync_at,
+        "agents": last,
     }
+
+
+def load_recent_events(conn, limit: int = 15) -> list:
+    if not _has_table(conn, "agent_events"):
+        return []
+    cursor = conn.execute(
+        """
+        SELECT ts, agent, event_type, details, status
+        FROM agent_events
+        ORDER BY id DESC
+        LIMIT ?
+        """,
+        (limit,),
+    )
+    names = [column[0] for column in cursor.description]
+    return [dict(zip(names, raw)) for raw in cursor.fetchall()]
+
+
+def load_last_agent_status(conn) -> dict:
+    """Último evento por agente (sync/enrich/score/alert)."""
+    if not _has_table(conn, "agent_events"):
+        return {}
+    out = {}
+    for agent in ("sync", "enrich", "score", "alert", "worker"):
+        row = conn.execute(
+            """
+            SELECT ts, event_type, details, status
+            FROM agent_events
+            WHERE agent = ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (agent,),
+        ).fetchone()
+        if row:
+            out[agent] = {
+                "ts": row[0],
+                "event_type": row[1],
+                "details": row[2],
+                "status": row[3],
+            }
+    return out
 
 
 def hype_components(row) -> list:

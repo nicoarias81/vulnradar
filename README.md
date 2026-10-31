@@ -31,50 +31,59 @@ Versión base open source. La capa de contexto (inventario de assets + criticida
 
 ## Quick Start
 
+El sistema es autónomo: un worker en loop hace sync → enrich → score → alert.
+No hace falta entrar a correr agentes a mano.
+
 ```bash
-# 1. Clonar y entrar
-cd humo-vs-miedo
+cp .env.example .env   # LITELLM_API_KEY, webhooks, opcional GITHUB_TOKEN
+docker compose up --build -d
+# Dashboard: http://localhost:8501
+docker compose logs -f worker
+```
 
-# 2. Instalar dependencias (incluye pytest)
+`docker compose up --build -d` levanta **dashboard + worker**. El worker corre
+solo, en loop (`SYNC_INTERVAL_MINUTES`, default 15):
+
+1. `git fetch --depth 1` + merge ff-only del mirror CVE List V5 (clone `--depth 1` si no existe; si origin reescribió historia, `reset --hard` al tip remoto)
+2. sync incremental a SQLite
+3. enrichment (KEV, EPSS, RSS, GitHub, LLM)
+4. scoring
+5. alertas (si hay webhook configurado)
+
+La UI queda en http://localhost:8501 (seed de 8 CVEs para no arrancar vacío;
+el worker va sumando CVEs reales).
+
+```bash
+docker compose down
+```
+
+### One-shot local (sin Docker)
+
+```bash
 pip install -r requirements.txt
-
-# 3. Inicializar base de datos (crea data/humo.db)
 python -m core.db
-
-# 4. Primera sincronización (recorre todo el mirror, puede tardar)
-python agents/sync_agent.py --full
-
-# 5. Correr enriquecimiento + scoring
-python agents/enrichment_agent.py
-python agents/scoring_agent.py
-
-# 6. Dashboard
+python scripts/run_worker.py          # loop autónomo
+# o un ciclo: python scripts/run_worker.py --once
 streamlit run dashboard/app.py
 ```
 
-### Demo local con Docker
-
-Sin clonar CVE List V5. Levanta el dashboard con 8 CVEs de muestra (las 4 categorías):
-
-```bash
-docker compose up --build -d
-# http://localhost:8501
-```
-
-La base queda en `./data/humo.db`. Para parar: `docker compose down`.
-Para re-sembrar: `SEED_DEMO=force docker compose up --build -d`.
+Los `make sync` / `make enrich` / `make score` siguen existiendo para debug.
 
 ## Dashboard
 
-`streamlit run dashboard/app.py` (o `make dashboard`) abre el tablero con los
-scores vigentes: scatter **Hype vs Reality** coloreado por categoría con la
-diagonal `x=y` de referencia, conteo por categoría, tabla, detalle de un CVE y
-un flag `alertado` cuando ese CVE ya disparó una alerta (`alerts_sent`). La
-barra lateral filtra categorías y mínimos de hype/reality.
+El tablero **público** está en http://localhost:8501: scatter **Hype vs Reality**
+coloreado por categoría, tabla de CVEs y ficha de detalle. Lo sirve
+`python scripts/run_dashboard.py` (o `make dashboard`) en el puerto 8501.
 
-Con la base vacía la página no rompe: muestra qué comandos correr
-(`python -m core.db` → sync → enrich → score). La carga y el filtrado viven en
-`dashboard/data.py`, sin Streamlit, y se testean con `pytest`.
+El panel **SOC monitoring** (estado de los 4 agentes, feed y logs) vive en
+http://localhost:8501/soc y **no es público**. Pide `SOC_USER` / `SOC_PASSWORD`
+del `.env`. Sin `SOC_PASSWORD` el login queda cerrado. `Salir` borra la cookie.
+La pantalla pública no enlaza al SOC.
+
+Con la base vacía la página no rompe: el worker autónomo llena scores en el
+próximo ciclo; con `SEED_DEMO=1` hay 8 CVEs de ejemplo. La carga y el filtrado
+viven en `dashboard/data.py` y se testean con `pytest`. El panel SOC se
+refresca solo con los eventos de `agent_events`.
 
 ## Sync incremental
 
@@ -91,15 +100,20 @@ El watermark es el **SHA de HEAD del mirror git local** (`sync_state.cvelist_hea
 no `dateUpdated`: un CVE se puede republicar sin mover su fecha, y un archivo
 puede cambiar por una corrección de metadatos. En cada corrida incremental:
 
-1. `git pull --ff-only` sobre el mirror.
-2. Si no hay watermark guardado (primera vez o base nueva): recorrido completo.
-3. Si el HEAD no cambió: 0 archivos, watermark igual, exit 0.
-4. Si cambió: `git diff --name-only OLD NEW` y se procesan sólo los
+1. `git fetch --depth 1` + `merge --ff-only` sobre el mirror (el diff se
+   calcula **antes** del merge: en un clone shallow el commit viejo puede
+   desaparecer después). Si origin reescribió `main`, `reset --hard FETCH_HEAD`.
+2. Si no hay watermark y el pull trajo un delta: sólo esos archivos.
+3. Si no hay watermark y la DB ya tiene CVEs: se adopta el HEAD actual,
+   sin re-escanear el árbol (reinicio del worker).
+4. Si no hay watermark y la DB está vacía (primera vez): recorrido completo.
+5. Si el HEAD no cambió: 0 archivos, watermark igual, exit 0.
+6. Si cambió: `git diff --name-only OLD NEW` y se procesan sólo los
    `cves/**/*.json` añadidos o modificados. Los borrados se ignoran (no se
    borran filas locales).
-5. Si el SHA viejo ya no existe en el mirror (re-clone, historia reescrita),
+7. Si el SHA viejo ya no existe en el mirror (re-clone, historia reescrita),
    se degrada a recorrido completo en lugar de fallar.
-6. Al terminar se guarda el HEAD actual en `sync_state`.
+8. Al terminar se guarda el HEAD actual en `sync_state`.
 
 Para tests se puede inyectar el mirror y la base:
 `sync(full=False, cve_list_path="...", db_path="...")` o `--cve-list-path`/
@@ -163,6 +177,9 @@ humo-vs-miedo/
 │   ├── enrichment_agent.py
 │   ├── scoring_agent.py
 │   └── alert_agent.py
+├── scripts/
+│   ├── run_dashboard.py
+│   └── run_worker.py          # loop autónomo sync→enrich→score→alert
 ├── core/
 │   ├── scoring.py          # Fórmulas v2
 │   ├── models.py

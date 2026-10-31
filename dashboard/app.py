@@ -1,31 +1,10 @@
 """
-Dashboard Streamlit — Humo vs Miedo.
+Dashboard Humo vs Miedo.
 
-Tres pantallas alineadas a los mockups: overview (scatter + tabla + timeline),
-ficha de CVE y panel de agentes. La carga vive en `dashboard.data`.
+La UI es HTML servido por `dashboard.server` (puerto 8501). Streamlit ya no
+pinta las pantallas: el CSS de los mockups no sobrevive a su layout.
 """
-import sys
-from pathlib import Path
+from dashboard.server import main
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-import streamlit as st
-
-from dashboard.screens import agents, detail, overview
-
-st.set_page_config(
-    page_title="Humo vs Miedo",
-    layout="wide",
-    initial_sidebar_state="collapsed",
-)
-
-page = st.navigation(
-    {
-        "Humo vs Miedo": [
-            st.Page(overview, title="Dashboard", icon="🔥", default=True),
-            st.Page(detail, title="CVE", icon="🎯"),
-            st.Page(agents, title="Agentes", icon="📡"),
-        ]
-    }
-)
-page.run()
+if __name__ == "__main__":
+    raise SystemExit(main())

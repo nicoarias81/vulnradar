@@ -1,0 +1,122 @@
+"""Servidor HTTP del dashboard Humo vs Miedo (HTML estático generado, puerto 8501)."""
+from __future__ import annotations
+
+import sys
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
+from pathlib import Path
+from urllib.parse import parse_qs, urlparse
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from dashboard import auth
+from dashboard.markup import login_html
+from dashboard.screens import agents, detail, overview
+
+SOC_PATHS = {"/soc", "/agentes", "/agents"}
+
+
+class DashboardHandler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
+    def log_message(self, fmt: str, *args) -> None:
+        sys.stderr.write("%s - %s\n" % (self.address_string(), fmt % args))
+
+    def do_GET(self) -> None:  # noqa: N802
+        parsed = urlparse(self.path)
+        path = parsed.path.rstrip("/") or "/"
+        qp = {k: (v[-1] if v else "") for k, v in parse_qs(parsed.query).items()}
+
+        if path in ("/health", "/_stcore/health"):
+            self._send(200, b"ok", "text/plain; charset=utf-8")
+            return
+        if path == "/favicon.ico":
+            self._send(204, b"", "image/x-icon")
+            return
+        if path == "/soc/logout":
+            self._redirect("/soc", extra_headers=[("Set-Cookie", auth.clear_cookie_header())])
+            return
+
+        try:
+            if path in ("/", "/dashboard"):
+                html = overview(qp)
+            elif path == "/cve":
+                html = detail(qp)
+            elif path in SOC_PATHS:
+                html = self._soc(qp)
+            else:
+                self._send(404, b"Not found", "text/plain; charset=utf-8")
+                return
+        except Exception as exc:
+            sys.stderr.write(f"dashboard error: {exc}\n")
+            self._send(500, f"<pre>{exc}</pre>".encode(), "text/html; charset=utf-8")
+            return
+
+        self._send(200, html.encode("utf-8"), "text/html; charset=utf-8")
+
+    def do_POST(self) -> None:  # noqa: N802
+        parsed = urlparse(self.path)
+        path = parsed.path.rstrip("/") or "/"
+        if path not in SOC_PATHS:
+            self._send(405, b"Method not allowed", "text/plain; charset=utf-8")
+            return
+        length = int(self.headers.get("Content-Length") or 0)
+        raw = self.rfile.read(length) if length else b""
+        fields = parse_qs(raw.decode("utf-8", "replace"))
+        user = (fields.get("user") or [""])[-1]
+        password = (fields.get("password") or [""])[-1]
+        if auth.check(user, password):
+            self._redirect("/soc", extra_headers=[("Set-Cookie", auth.cookie_header())])
+            return
+        if not auth.configured():
+            error = "Panel SOC no configurado: definí SOC_PASSWORD."
+        else:
+            error = "Usuario o contraseña inválidos."
+        html = login_html(error=error)
+        self._send(200, html.encode("utf-8"), "text/html; charset=utf-8")
+
+    def _soc(self, qp: dict) -> str:
+        if auth.authorized(self.headers.get("Cookie")):
+            return agents(qp)
+        if not auth.configured():
+            return login_html(error="Panel SOC no configurado: definí SOC_PASSWORD.")
+        return login_html()
+
+    def _send(self, code: int, body: bytes, content_type: str) -> None:
+        self.send_response(code)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(body)
+
+    def _redirect(self, location: str, extra_headers: list | None = None) -> None:
+        self.send_response(303)
+        self.send_header("Location", location)
+        for name, value in extra_headers or []:
+            self.send_header(name, value)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def do_HEAD(self) -> None:  # noqa: N802
+        self.do_GET()
+
+
+def serve(host: str = "0.0.0.0", port: int = 8501) -> None:
+    httpd = ThreadingHTTPServer((host, port), DashboardHandler)
+    print(f"Humo vs Miedo en http://{host}:{port}", flush=True)
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        httpd.server_close()
+
+
+def main() -> int:
+    serve()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

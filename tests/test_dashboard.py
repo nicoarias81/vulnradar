@@ -10,6 +10,8 @@ from dashboard.data import (
     guess_vuln_type,
     hype_components,
     load_agent_stats,
+    load_last_agent_status,
+    load_recent_events,
     load_scores,
 )
 
@@ -152,3 +154,21 @@ def test_guess_vuln_type_y_daily_averages(conn):
     assert stats["scores"] == 2
     comps = hype_components(rows[0])
     assert {item["key"] for item in comps} == {"cvss", "media", "tone", "branding", "pocs"}
+
+
+def test_load_recent_events_y_ultimo_status(conn):
+    conn.execute(
+        "INSERT INTO agent_events (agent, event_type, details, status) "
+        "VALUES ('sync', 'SYNC', 'ok', 'SUCCESS')"
+    )
+    conn.execute(
+        "INSERT INTO agent_events (agent, event_type, details, status) "
+        "VALUES ('sync', 'SYNC', 'start', 'RUNNING')"
+    )
+    conn.commit()
+    events = load_recent_events(conn, 10)
+    assert events[0]["status"] == "RUNNING"
+    last = load_last_agent_status(conn)
+    assert last["sync"]["status"] == "RUNNING"
+    stats = load_agent_stats(conn)
+    assert stats["agents"]["sync"]["status"] == "RUNNING"

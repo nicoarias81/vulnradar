@@ -1,0 +1,64 @@
+# Producción — personal-1 (Hetzner CAX21, ARM64), acceso sólo por Cloudflare Tunnel.
+#
+#   docker compose -f deploy/docker-compose.server.yml --env-file deploy/.env.prod up -d --build
+#
+# - Publica SÓLO en 127.0.0.1:8501 (el túnel entra ahí). Nada escucha en 0.0.0.0.
+# - `default` = bridge con salida a internet (worker: git/CISA/EPSS/RSS/GitHub).
+# - `litellm` = red `internal` compartida con el LiteLLM de /opt/stack (proxy en litellm:4000).
+# - `../data` (bind mount) guarda humo.db y el mirror cvelistV5: NUNCA se pisa con git archive.
+name: vulnradar
+
+services:
+  dashboard:
+    build:
+      context: ..
+    image: vulnradar:latest
+    env_file:
+      - .env.prod
+    environment:
+      DB_PATH: /app/data/humo.db
+      CVE_LIST_PATH: /app/data/cvelistV5
+      # Sitio público: nunca datos de demo.
+      SEED_DEMO: "0"
+      LLM_BASE_URL: http://litellm:4000/v1
+      TZ: Europe/Madrid
+    ports:
+      - "127.0.0.1:8501:8501"
+    volumes:
+      - ../data:/app/data
+    networks: [default, litellm]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8501/health')"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+  worker:
+    image: vulnradar:latest
+    command: ["python", "scripts/run_worker.py"]
+    env_file:
+      - .env.prod
+    environment:
+      DB_PATH: /app/data/humo.db
+      CVE_LIST_PATH: /app/data/cvelistV5
+      LLM_BASE_URL: http://litellm:4000/v1
+      TZ: Europe/Madrid
+    volumes:
+      - ../data:/app/data
+    networks: [default, litellm]
+    restart: unless-stopped
+    # Un ciclo de sync/enrich puede tardar; que el SIGTERM no corte una escritura SQLite.
+    stop_grace_period: 2m
+    healthcheck:
+      disable: true
+    depends_on:
+      dashboard:
+        condition: service_started
+
+networks:
+  default: {}
+  litellm:
+    external: true
+    name: internal

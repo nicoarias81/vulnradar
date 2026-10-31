@@ -48,8 +48,11 @@ def score_all(conn) -> int:
     return len(rows)
 
 
-def run():
-    conn = get_db()
+def run(db_path=None):
+    from core.db import init_db
+
+    path = init_db(db_path)
+    conn = get_db(path)
     try:
         count = score_all(conn)
         conn.commit()

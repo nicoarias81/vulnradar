@@ -1,4 +1,4 @@
-"""Arranca el dashboard: init DB, seed de demo si hace falta, Streamlit."""
+"""Arranca el dashboard: init DB, seed de demo si hace falta, servidor HTML."""
 from __future__ import annotations
 
 import os
@@ -27,16 +27,9 @@ def main() -> int:
         seed()
         print(f"scores en DB: {_score_count()}")
 
-    os.execvp(
-        "streamlit",
-        [
-            "streamlit", "run", "dashboard/app.py",
-            "--server.port=8501",
-            "--server.address=0.0.0.0",
-            "--server.headless=true",
-            "--browser.gatherUsageStats=false",
-        ],
-    )
+    from dashboard.server import serve
+
+    serve(host="0.0.0.0", port=8501)
     return 0
 
 

@@ -292,6 +292,96 @@ def test_watermark_desconocido_cae_a_full_sin_explotar(mirror, db_path, no_pull)
     assert stats["processed"] == 1
 
 
+def test_sin_watermark_con_db_poblada_no_recorre_todo(mirror, db_path, no_pull, processed):
+    """Reinicio del worker: la DB ya tiene CVEs, no hay que reingestar 300k JSON."""
+    _write_cve(mirror, "CVE-2026-0001")
+    _commit_all(mirror, "un cve")
+    _run(mirror, db_path)
+    processed.clear()
+
+    conn = get_db(db_path)
+    try:
+        conn.execute("DELETE FROM sync_state WHERE key = ?", (sync_agent.HEAD_KEY,))
+        conn.commit()
+    finally:
+        conn.close()
+
+    stats = _run(mirror, db_path)
+
+    assert stats["mode"] == "incremental"
+    assert stats["reason"] == "sin watermark, DB ya poblada"
+    assert stats["files"] == 0
+    assert processed == []
+    conn = get_db(db_path)
+    try:
+        assert sync_agent.get_state(conn, sync_agent.HEAD_KEY) == sync_agent.git_head(mirror)
+    finally:
+        conn.close()
+
+
+def test_sin_watermark_usa_delta_del_pull(mirror, db_path, monkeypatch, processed):
+    _write_cve(mirror, "CVE-2026-0001")
+    _commit_all(mirror, "uno")
+    extra = _write_cve(mirror, "CVE-2026-0002")
+    _commit_all(mirror, "dos")
+    head = sync_agent.git_head(mirror)
+    monkeypatch.setattr(
+        sync_agent,
+        "clone_or_pull",
+        lambda path: {
+            "mode": "pull",
+            "old_head": "a" * 40,
+            "new_head": head,
+            "delta_files": [extra],
+        },
+    )
+
+    stats = _run(mirror, db_path)
+
+    assert stats["mode"] == "incremental"
+    assert stats["reason"] == "sin watermark, delta del pull"
+    assert stats["processed"] == 1
+    assert processed == ["CVE-2026-0002.json"]
+    assert _cve_ids(db_path) == {"CVE-2026-0002"}
+
+
+def test_clone_or_pull_reset_si_origin_reescribe_historia(tmp_path):
+    """CVE List V5 a veces force-pushea main: el shallow clone queda unrelated."""
+    origin = tmp_path / "origin"
+    origin.mkdir()
+    _git(origin, "init", "-q", "-b", "main")
+    _git(origin, "config", "user.email", "sync-tests@example.com")
+    _git(origin, "config", "user.name", "Sync Tests")
+    _git(origin, "config", "commit.gpgsign", "false")
+    _git(origin, "config", "core.autocrlf", "false")
+    _write_cve(origin, "CVE-2026-0001")
+    _commit_all(origin, "historia vieja")
+
+    mirror = tmp_path / "mirror"
+    subprocess.run(
+        ["git", "clone", "--depth", "1", str(origin), str(mirror)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    old = sync_agent.git_head(mirror)
+
+    _git(origin, "checkout", "--orphan", "rewritten")
+    for leftover in (origin / "cves").rglob("*.json"):
+        leftover.unlink()
+    _write_cve(origin, "CVE-2026-0002", "Historia reescrita.")
+    _commit_all(origin, "historia nueva")
+    _git(origin, "branch", "-M", "main")
+
+    result = sync_agent.clone_or_pull(mirror)
+
+    assert result["mode"] == "pull"
+    assert result["old_head"] == old
+    assert result["new_head"] != old
+    assert result["new_head"] == sync_agent.git_head(mirror)
+    assert (mirror / "cves" / "2026" / "CVE-2026-0002.json").exists()
+
+
 def test_cli_full_es_opt_in_y_el_default_es_incremental():
     assert sync_agent.build_parser().parse_args([]).full is False
     assert sync_agent.build_parser().parse_args(["--full"]).full is True

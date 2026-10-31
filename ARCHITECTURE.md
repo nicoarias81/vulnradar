@@ -46,6 +46,12 @@ Aplica fórmulas v2. Genera Hype, Reality y categoría.
 - Dashboard (Streamlit)
 - Alertas (Slack, webhook, email)
 
+### Worker autónomo
+`scripts/run_worker.py` (servicio `worker` en Compose) corre en loop:
+sync incremental → enrich → score → alert. Intervalo: `SYNC_INTERVAL_MINUTES`
+(default 15). Un paso que falla no cancela los siguientes. El dashboard de
+Agentes lee `agent_events`. No requiere comandos manuales.
+
 ## Flujo de datos
 
 ```

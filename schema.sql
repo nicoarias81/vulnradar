@@ -78,6 +78,17 @@ CREATE TABLE IF NOT EXISTS sync_state (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Bitácora del worker autónomo. El dashboard de agentes lee las últimas filas.
+CREATE TABLE IF NOT EXISTS agent_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    agent TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    details TEXT,
+    status TEXT NOT NULL DEFAULT 'SUCCESS'
+);
+CREATE INDEX IF NOT EXISTS idx_agent_events_ts ON agent_events(ts DESC);
+
 CREATE TABLE IF NOT EXISTS assets (
     asset_id TEXT PRIMARY KEY,
     name TEXT,

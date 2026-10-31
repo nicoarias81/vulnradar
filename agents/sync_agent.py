@@ -73,34 +73,81 @@ def set_state(conn, key: str, value: str) -> None:
 # --------------------------------------------------------------------------
 # I/O de git (aislado para poder mockearlo en tests)
 # --------------------------------------------------------------------------
-def clone_or_pull(cve_list_path: Path) -> str:
-    """Clona el mirror la primera vez y después hace pull. Devuelve el modo usado."""
+def clone_or_pull(cve_list_path: Path) -> dict:
+    """
+    Clona el mirror la primera vez y después hace fetch + merge ff-only.
+
+    Devuelve old_head / new_head y, si el diff se pudo calcular ANTES del
+    merge, delta_files. En un clone shallow el commit viejo puede desaparecer
+    después del merge: por eso el diff va antes.
+    """
     if not cve_list_path.exists():
         print(f"Clonando CVE List V5 en {cve_list_path}...")
         subprocess.run(
             ["git", "clone", "--depth", "1", REPO_URL, str(cve_list_path)],
             check=True,
         )
-        return "clone"
+        head = git_head(cve_list_path)
+        return {"mode": "clone", "old_head": None, "new_head": head, "delta_files": None}
 
     print(f"Actualizando CVE List V5 en {cve_list_path}...")
-    # --ff-only: si el mirror local divergió, falla en vez de mezclar historia.
+    old = git_head(cve_list_path)
     subprocess.run(
-        ["git", "-C", str(cve_list_path), "pull", "--ff-only"],
+        ["git", "-C", str(cve_list_path), "fetch", "--depth", "1", "origin"],
         check=True,
     )
-    return "pull"
+    remote = git_rev_parse(cve_list_path, "FETCH_HEAD")
+    if not remote or remote == old:
+        return {"mode": "pull", "old_head": old, "new_head": old, "delta_files": []}
+
+    delta_files = None
+    try:
+        delta_files = git_diff_cve_files(cve_list_path, old, remote)
+    except subprocess.CalledProcessError as exc:
+        print(f"Aviso: no se pudo diff {short_sha(old)}..{short_sha(remote)} ({exc}).")
+
+    # --ff-only si se puede; si origin reescribió historia (forced update /
+    # unrelated histories) alineamos el mirror al tip remoto. El diff ya se
+    # calculó contra FETCH_HEAD; si no se pudo, sync() cae a full.
+    try:
+        subprocess.run(
+            ["git", "-C", str(cve_list_path), "merge", "--ff-only", "FETCH_HEAD"],
+            check=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        print(
+            f"Aviso: merge --ff-only falló ({exc}); origin reescribió historia. "
+            "reset --hard FETCH_HEAD."
+        )
+        subprocess.run(
+            ["git", "-C", str(cve_list_path), "reset", "--hard", "FETCH_HEAD"],
+            check=True,
+        )
+    return {
+        "mode": "pull",
+        "old_head": old,
+        "new_head": git_head(cve_list_path),
+        "delta_files": delta_files,
+    }
 
 
-def git_head(cve_list_path: Path) -> str:
+def git_rev_parse(cve_list_path: Path, ref: str) -> str | None:
     result = subprocess.run(
-        ["git", "-C", str(cve_list_path), "rev-parse", "HEAD"],
-        check=True,
+        ["git", "-C", str(cve_list_path), "rev-parse", "--verify", "-q", ref],
         capture_output=True,
         text=True,
         encoding="utf-8",
     )
-    return result.stdout.strip()
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip() or None
+
+
+def git_head(cve_list_path: Path) -> str:
+    head = git_rev_parse(cve_list_path, "HEAD")
+    if not head:
+        raise RuntimeError(f"no hay HEAD en {cve_list_path}")
+    return head
 
 
 def git_diff_cve_files(cve_list_path: Path, old_sha: str, new_sha: str) -> list:
@@ -211,17 +258,37 @@ def sync(full: bool = False, cve_list_path=None, db_path=None) -> dict:
     mirror = Path(cve_list_path) if cve_list_path is not None else CVE_LIST_PATH
     target_db = Path(db_path) if db_path is not None else None
 
-    clone_or_pull(mirror)
-    new_head = git_head(mirror)
+    pull = clone_or_pull(mirror)
+    if isinstance(pull, dict) and pull.get("new_head"):
+        new_head = pull["new_head"]
+        pull_delta = pull.get("delta_files")
+        pull_old = pull.get("old_head")
+    else:
+        # Tests y stubs viejos pueden devolver "pull"/"clone".
+        new_head = git_head(mirror)
+        pull_delta = None
+        pull_old = None
 
     # init_db es idempotente y garantiza sync_state en bases creadas antes de Fase 2.
     init_db(target_db)
     conn = get_db(target_db)
     try:
         old_head = get_state(conn, HEAD_KEY)
-        mode, files, reason = plan_files(mirror, old_head, new_head, full)
+        n_cves = conn.execute("SELECT COUNT(*) FROM cves").fetchone()[0]
+        if (
+            not full
+            and not old_head
+            and pull_old
+            and pull_delta is not None
+        ):
+            mode, files, reason = "incremental", pull_delta, "sin watermark, delta del pull"
+        elif not full and not old_head and n_cves:
+            # Restart del worker con DB ya ingerida: no re-escanear 300k JSON.
+            mode, files, reason = "incremental", [], "sin watermark, DB ya poblada"
+        else:
+            mode, files, reason = plan_files(mirror, old_head, new_head, full)
         print(
-            f"Modo: {mode} ({reason}) | HEAD {short_sha(old_head)} -> {short_sha(new_head)}"
+            f"Modo: {mode} ({reason}) | HEAD {short_sha(old_head or pull_old)} -> {short_sha(new_head)}"
         )
 
         stats = process_files(files, conn)

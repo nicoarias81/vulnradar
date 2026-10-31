@@ -9,6 +9,8 @@ data/
 
 # Entorno
 .env
+deploy/.env.prod
+deploy/.env.prod.bak-*
 .venv/
 venv/
 env/

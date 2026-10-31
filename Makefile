@@ -1,6 +1,7 @@
 # Makefile simple
+# Autónomo: `make demo` (dashboard + worker en loop). El resto es one-shot / debug.
 
-.PHONY: init sync sync-delta enrich score alerts alerts-dry test dashboard demo demo-down
+.PHONY: init sync sync-delta enrich score alerts alerts-dry test dashboard demo demo-down worker
 
 init:
 	python -m core.db
@@ -30,7 +31,7 @@ test:
 	python -m pytest -q
 
 dashboard:
-	streamlit run dashboard/app.py
+	python scripts/run_dashboard.py
 
 demo:
 	docker compose up --build -d
@@ -38,5 +39,8 @@ demo:
 
 demo-down:
 	docker compose down
+
+worker:
+	python scripts/run_worker.py
 
 all: init sync enrich score
