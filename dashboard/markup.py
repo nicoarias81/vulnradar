@@ -871,6 +871,14 @@ def overview_html(
     <p class="muted">Daily average Hype and Reality scores over time</p>
     {timeline_div}
   </div>
+  <div class="footer">
+    <span>Fuente: CVE List V5 · CISA KEV · FIRST EPSS · GitHub · RSS</span>
+    <span class="foot-right">
+      <a href="https://nan.builders/?ref=built-with-nan" target="_blank" rel="noopener">
+        <img src="https://nan.builders/badge/built-with-nan-compact.svg" alt="Built with NaN" height="20">
+      </a>
+    </span>
+  </div>
 </div>
 """
     # Recarga la portada cada minuto: los scores se recalculan seguido y la
