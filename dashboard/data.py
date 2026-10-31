@@ -51,7 +51,8 @@ def _filters(since=None, until=None, category=None, severity=None, query=None, p
         clauses.append("upper(c.cvss_severity) = ?")
         params.append(str(severity).upper())
     if product and product not in ("All products",):
-        clauses.append("c.product = ?")
+        # ILIKE: el selector deja escribir el nombre a mano, no sólo elegirlo.
+        clauses.append("c.product ILIKE ?")
         params.append(str(product))
     if query:
         text = str(query).strip()
@@ -179,17 +180,43 @@ def count_scores(conn, since=None, until=None, category=None, severity=None, que
 
 
 def load_products(conn, since=None, until=None, limit: int = 40) -> list:
-    """Productos con más CVEs en el rango: opciones del selector de la home."""
+    """Productos con más CVEs del rango: opciones iniciales del selector.
+
+    Orden alfabético: el desplegable sirve para buscar por nombre, no para
+    mostrar un ranking por volumen.
+    """
     clauses, params = _filters(since, until)
     clauses = clauses + ["c.product IS NOT NULL", "btrim(c.product) <> ''"]
     sql = (
         "SELECT c.product AS product, COUNT(*) AS n "
         "FROM scores s JOIN cves c ON c.cve_id = s.cve_id\n"
         + _where(clauses)
-        + "    GROUP BY c.product ORDER BY n DESC, c.product\n"
+        + "    GROUP BY c.product ORDER BY lower(c.product), c.product\n"
         "    LIMIT ?\n"
     )
     return _fetch_dicts(conn.execute(sql, list(params) + [int(limit)]))
+
+
+def search_products(conn, query: str = "", limit: int = 20) -> list:
+    """Productos que contienen `query`, ordenados alfabéticamente.
+
+    Alimenta el autocompletado del filtro: con 60k productos distintos no se
+    puede mandar la lista entera al navegador, así que se busca en el servidor.
+    """
+    clauses = ["c.product IS NOT NULL", "btrim(c.product) <> ''"]
+    params: list = []
+    text = (query or "").strip()
+    if text:
+        clauses.append("c.product ILIKE ?")
+        params.append(f"%{text}%")
+    sql = (
+        "SELECT c.product AS product, COUNT(*) AS n FROM cves c"
+        + _where(clauses)
+        + "    GROUP BY c.product ORDER BY lower(c.product), c.product"
+        + "    LIMIT ?"
+    )
+    params.append(int(limit))
+    return _fetch_dicts(conn.execute(sql, params))
 
 
 def load_scores(

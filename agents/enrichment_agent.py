@@ -256,9 +256,12 @@ Items:
 {items}
 """
 
-RERANK_BATCH = 10
-RERANK_TITLE_CHARS = 180
-RERANK_SUMMARY_CHARS = 260
+RERANK_BATCH = 6
+RERANK_TITLE_CHARS = 160
+RERANK_SUMMARY_CHARS = 180
+# Tope por feed y corrida: el rerank es el paso caro (LLM), y los feeds
+# republican decenas de notas viejas que no aportan menciones nuevas.
+RERANK_MAX_ENTRIES = 40
 
 
 def build_rerank_prompt(entries) -> str:
@@ -361,6 +364,7 @@ def load_rss(conn, feeds, *, session=None, timeout=30, rerank=False,
             continue
         entries = parse_feed(content, source=_host(url))
         if rerank:
+            entries = entries[:RERANK_MAX_ENTRIES]
             reranked = rerank_entries(entries, config=config, completer=completer)
             mentions = mentions_from_rerank(entries, reranked)
         else:

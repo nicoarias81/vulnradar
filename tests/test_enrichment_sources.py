@@ -477,3 +477,78 @@ def test_select_tone_targets_toma_un_titular_por_cve(conn, rss_session):
 
     assert [item["cve_id"] for item in targets] == [CVE_2, CVE_1]  # id DESC
     assert all(item["title"] for item in targets)
+
+
+# --------------------------------------------------------------------------
+# Rerank LLM de feeds: descarta no-vulns, resuelve CVE y captura apodos
+# --------------------------------------------------------------------------
+def test_parse_rerank_reply_acepta_fences_y_prosa():
+    reply = (
+        "Aca va:\n```json\n"
+        '[{"i": 1, "cve_id": "CVE-2026-1111", "brand_name": "Log4Shell", "relevant": true}]\n'
+        "```"
+    )
+
+    items = agent.parse_rerank_reply(reply)
+
+    assert items[0]["cve_id"] == "CVE-2026-1111"
+    assert items[0]["brand_name"] == "Log4Shell"
+
+
+def test_parse_rerank_reply_sin_json_devuelve_vacio():
+    assert agent.parse_rerank_reply("no pude procesar") == []
+    assert agent.parse_rerank_reply(None) == []
+    assert agent.parse_rerank_reply("[{roto}]") == []
+
+
+def test_rerank_entries_mapea_por_indice_y_descarta_cve_invalido():
+    entries = [
+        {"title": "Uno", "summary": ""},
+        {"title": "Dos", "summary": ""},
+        {"title": "Tres", "summary": ""},
+    ]
+    reply = json.dumps([
+        {"i": 1, "cve_id": "cve-2026-2222", "brand_name": "Heartbleed", "relevant": True},
+        {"i": 2, "cve_id": "no-es-cve", "brand_name": "Inventado", "relevant": True},
+        {"i": 3, "cve_id": None, "brand_name": "SinCve", "relevant": False},
+    ])
+
+    out = agent.rerank_entries(entries, completer=lambda prompt: reply)
+
+    assert out[0]["cve_id"] == "CVE-2026-2222"  # se normaliza a mayúsculas
+    assert out[0]["brand_name"] == "Heartbleed"
+    assert out[1]["cve_id"] is None  # formato inválido no se propaga
+    assert out[1]["brand_name"] is None
+    assert out[2]["relevant"] is False
+    assert out[2]["brand_name"] is None  # apodo sin CVE no sirve
+
+
+def test_rerank_entries_llm_caido_no_pierde_entradas():
+    entries = [{"title": "Uno"}, {"title": "Dos"}]
+
+    def boom(prompt):
+        raise RuntimeError("litellm timeout")
+
+    out = agent.rerank_entries(entries, completer=boom)
+
+    assert out == [{}, {}]
+
+
+def test_mentions_from_rerank_solo_toma_vulns_con_cve():
+    entries = [
+        {"title": "Chrome RCE", "url": "https://x/1", "source": "x"},
+        {"title": "Conferencia anual", "url": "https://x/2", "source": "x"},
+        {"title": "Sin cve", "url": "https://x/3", "source": "x"},
+    ]
+    reranked = [
+        {"cve_id": "CVE-2026-3333", "brand_name": "ShuffleShock", "relevant": True},
+        {"cve_id": None, "brand_name": None, "relevant": False},
+        {"cve_id": None, "brand_name": None, "relevant": True},
+    ]
+
+    mentions = agent.mentions_from_rerank(entries, reranked)
+
+    assert len(mentions) == 1
+    assert mentions[0]["cve_id"] == "CVE-2026-3333"
+    assert mentions[0]["brand_name"] == "ShuffleShock"
+    assert mentions[0]["url"] == "https://x/1"

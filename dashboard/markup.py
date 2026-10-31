@@ -74,12 +74,13 @@ a { color: inherit; }
   font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
   color: var(--text-muted); font-weight: 600;
 }
-.filter select, .filter input[type="search"], .range {
+.filter select, .filter input[type="search"], .filter input[type="text"], .range {
   background: var(--bg); border: 1px solid var(--border); color: var(--text);
   border-radius: 8px; height: 36px; font: 13px Inter, sans-serif;
 }
 .filter select { padding: 0 12px; min-width: 148px; }
 .filter input[type="search"] { padding: 0 12px; min-width: 210px; }
+.filter input[type="text"] { padding: 0 12px; min-width: 168px; }
 .range {
   display: flex; align-items: center; gap: 6px; padding: 0 10px; min-width: 240px;
 }
@@ -294,6 +295,16 @@ def document(body: str, *, refresh: int | None = None) -> str:
         '<script defer src="https://analytics.munalabs.eu/script.js" data-website-id="2f0e03ec-fd86-48cd-b7d0-c916b987c564"></script>'
         f"<style>{PAGE_CSS}</style></head><body>{body}"
         "<script>(function(){"
+        "var pi=document.getElementById('product-filter'),pl=document.getElementById('product-list');"
+        "if(pi&&pl){var t=null,last='';"
+        "pi.addEventListener('input',function(){var q=pi.value.trim();"
+        "if(q===last)return;last=q;clearTimeout(t);"
+        "if(q.length<2){pl.replaceChildren();return;}"
+        "t=setTimeout(function(){fetch('/api/products?q='+encodeURIComponent(q))"
+        ".then(function(r){return r.json();}).then(function(rows){"
+        "pl.replaceChildren();(rows||[]).forEach(function(row){"
+        "var o=document.createElement('option');o.value=row.p;pl.appendChild(o);});})"
+        ".catch(function(){});},160);});}"
         "var f=document.getElementById('filters');if(f){"
         "f.querySelectorAll('select,input').forEach(function(el){el.addEventListener('change',function(){f.submit();});});}"
         "var b=document.getElementById('back-dash');"
@@ -576,8 +587,10 @@ def overview_html(
     products=None,
 ) -> str:
     product_options = "".join(
-        _opt(str(row["product"]), str(row["product"]), product) for row in (products or [])
+        f'<option value="{escape(str(row["product"]))}">' for row in (products or [])
     )
+    # El valor viaja en el input de texto; "All products" es el placeholder.
+    product_value = "" if product in (None, "", "All products") else str(product)
     start = page * page_size + 1 if total else 0
     end = min(total, page * page_size + page_size)
     max_page = max(0, (total - 1) // page_size) if total else 0
@@ -628,10 +641,10 @@ def overview_html(
         </select>
       </div>
       <div class="filter"><label>Product</label>
-        <select name="product">
-          {_opt("All products", "All products", product)}
-          {product_options}
-        </select>
+        <input type="text" name="product" id="product-filter" list="product-list"
+               placeholder="All products" autocomplete="off" spellcheck="false"
+               value="{escape(product_value)}">
+        <datalist id="product-list">{product_options}</datalist>
       </div>
       <div class="filter"><label>Category</label>
         <select name="category">

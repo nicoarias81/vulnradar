@@ -1,6 +1,7 @@
 """Servidor HTTP del dashboard Humo vs Miedo (HTML estático generado, puerto 8501)."""
 from __future__ import annotations
 
+import json
 import sys
 import threading
 import time
@@ -11,7 +12,7 @@ from urllib.parse import parse_qs, urlparse
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from dashboard import auth
-from dashboard.data import find_cve_id
+from dashboard.data import find_cve_id, search_products
 from dashboard.markup import login_html
 from dashboard.screens import agents, detail, overview
 from core.db import get_db
@@ -80,6 +81,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if path == "/favicon.ico":
             self._send(204, b"", "image/x-icon")
             return
+        if path == "/api/products":
+            self._products(qp)
+            return
         if path == "/soc/logout":
             self._redirect("/soc", extra_headers=[("Set-Cookie", auth.clear_cookie_header())])
             return
@@ -125,6 +129,25 @@ class DashboardHandler(BaseHTTPRequestHandler):
             error = "Usuario o contraseña inválidos."
         html = login_html(error=error)
         self._send(200, html.encode("utf-8"), "text/html; charset=utf-8")
+
+    def _products(self, qp: dict) -> None:
+        """Autocompletado del filtro de producto.
+
+        Son 60k productos distintos: se manda sólo lo que matchea lo escrito.
+        """
+        text = (qp.get("q") or "").strip()
+        if len(text) < 2:
+            self._send(200, b"[]", "application/json")
+            return
+        conn = get_db()
+        try:
+            rows = search_products(conn, text, limit=20)
+        finally:
+            conn.close()
+        payload = json.dumps(
+            [{"p": row["product"], "n": row["n"]} for row in rows]
+        ).encode("utf-8")
+        self._send(200, payload, "application/json")
 
     def _soc(self, qp: dict) -> str:
         if auth.authorized(self.headers.get("Cookie")):
