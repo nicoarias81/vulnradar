@@ -6,7 +6,8 @@
 # - `default` = bridge con salida a internet (worker: git/CISA/EPSS/RSS/GitHub).
 # - `litellm` = red `internal` compartida con el LiteLLM de /opt/stack (proxy en litellm:4000).
 # - `../data` (bind mount) guarda el mirror cvelistV5: NUNCA se pisa con git archive.
-# - La DB es PostgreSQL externo (`DATABASE_URL` en `.env.prod`).
+# - La DB es PostgreSQL externo (`DATABASE_URL` en `.env.prod`), contenedor `postgres`
+#   de /opt/stack, alcanzable por la red `db` (alias `postgres:5432`).
 name: vulnradar
 
 services:
@@ -26,7 +27,7 @@ services:
       - "127.0.0.1:8501:8501"
     volumes:
       - ../data:/app/data
-    networks: [default, litellm]
+    networks: [default, litellm, db]
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8501/health')"]
@@ -46,7 +47,7 @@ services:
       TZ: Europe/Madrid
     volumes:
       - ../data:/app/data
-    networks: [default, litellm]
+    networks: [default, litellm, db]
     restart: unless-stopped
     # Un ciclo de sync/enrich puede tardar; que el SIGTERM no corte una escritura.
     stop_grace_period: 2m
@@ -61,3 +62,6 @@ networks:
   litellm:
     external: true
     name: internal
+  db:
+    external: true
+    name: db
