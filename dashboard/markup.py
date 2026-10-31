@@ -823,7 +823,9 @@ def overview_html(
   </div>
 </div>
 """
-    return document(body)
+    # Recarga la portada cada minuto: los scores se recalculan seguido y la
+    # lectura es pasiva. track=False para no inflar las métricas de visita.
+    return document(body, refresh=60)
 
 
 def detail_html(
