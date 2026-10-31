@@ -1,6 +1,6 @@
 # Makefile simple
 
-.PHONY: init sync sync-delta enrich score test dashboard
+.PHONY: init sync sync-delta enrich score alerts alerts-dry test dashboard
 
 init:
 	python -m core.db
@@ -17,6 +17,14 @@ enrich:
 
 score:
 	python agents/scoring_agent.py
+
+# Una pasada de alertas: envía sólo lo que no esté en alerts_sent.
+alerts:
+	python agents/alert_agent.py --once
+
+# Ensayo: evalúa e imprime, sin POST ni escrituras.
+alerts-dry:
+	python agents/alert_agent.py --dry-run
 
 test:
 	python -m pytest -q

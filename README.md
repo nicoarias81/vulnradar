@@ -97,6 +97,23 @@ responde o devuelve JSON roto.
 Flags: `--skip-kev --skip-epss --skip-rss --skip-github --skip-llm`, más
 `--rss-only` (prueba local) y `--llm-smoke` (una llamada real al proveedor).
 
+## Alertas
+
+`python agents/alert_agent.py` lee los scores vigentes (JOIN `cves` +
+`enrichments`) y avisa por Slack y/o webhook genérico. Reglas opt-in:
+`Overhyped`, `Earned the hype`, `Sleeper` y **humo** (`tone_score >= 7` con
+`reality < 5`, ajustable con `--humo-tone`/`--humo-reality`).
+
+Canales por entorno: `SLACK_WEBHOOK_URL` (incoming webhook, `{text, blocks}`) y
+`ALERT_WEBHOOK_URL` (JSON plano); sin URL, ese canal se omite. `alerts_sent`
+deduplica por `UNIQUE(cve_id, channel, rule)` y sólo se escribe **después** de
+un POST exitoso: un 4xx/5xx deja la alerta pendiente para la próxima corrida.
+
+```bash
+make alerts-dry                      # evalúa e imprime: no POSTea ni escribe
+python agents/alert_agent.py --once  # pasada real (make alerts)
+```
+
 ## Tests
 
 ```bash
@@ -133,6 +150,7 @@ humo-vs-miedo/
 │   ├── test_scoring.py
 │   ├── test_normalizer.py
 │   ├── test_db_upsert.py
+│   ├── test_alerts.py
 │   └── test_sync_incremental.py
 └── dashboard/
     └── app.py

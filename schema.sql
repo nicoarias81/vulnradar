@@ -55,6 +55,21 @@ CREATE TABLE IF NOT EXISTS scores (
     FOREIGN KEY (cve_id) REFERENCES cves(cve_id)
 );
 
+-- Bitácora de alertas enviadas. UNIQUE(cve_id, channel, rule) es el candado
+-- anti-spam: la misma alerta no se repite en la misma corrida ni en las
+-- siguientes. Sólo se inserta DESPUÉS de un POST exitoso: un 4xx/5xx no marca
+-- la alerta como enviada.
+CREATE TABLE IF NOT EXISTS alerts_sent (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    cve_id TEXT NOT NULL,
+    channel TEXT NOT NULL,     -- slack | webhook
+    rule TEXT NOT NULL,        -- overhyped | earned_the_hype | humo | sleeper | threshold
+    payload_hash TEXT,         -- sha256 del JSON enviado (auditoría)
+    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(cve_id, channel, rule),
+    FOREIGN KEY (cve_id) REFERENCES cves(cve_id)
+);
+
 -- Estado del sync incremental. El watermark es el SHA de HEAD del mirror
 -- git, no dateUpdated: un CVE se puede republicar sin mover su fecha.
 CREATE TABLE IF NOT EXISTS sync_state (
