@@ -38,22 +38,31 @@ UPSERT_SQL = """
 
 
 def score_all(conn) -> int:
-    """Un score vigente por CVE (UNIQUE(cve_id)): reemplaza, no acumula filas."""
-    rows = conn.execute(SELECT_ENRICHED).fetchall()
-    for row in rows:
+    """Un score vigente por CVE (UNIQUE(cve_id)): reemplaza, no acumula filas.
+
+    Recorre en orden de cve_id y cometea por tandas: sin el orden, este barrido
+    y un backfill puntuando otro lote toman las filas de `scores` en distinto
+    orden y Postgres mata a uno por deadlock.
+    """
+    rows = conn.execute(SELECT_ENRICHED + " ORDER BY c.cve_id").fetchall()
+    for i, row in enumerate(rows, 1):
         # Fila unida: las columnas de cves y de enrichments viven en la misma fila.
         signals = build_signals(row, row)
         score = Score(cve_id=row["cve_id"], **score_cve(signals))
         conn.execute(UPSERT_SQL, (score.cve_id, score.hype, score.reality, score.category))
+        if i % 2000 == 0:
+            conn.commit()
     return len(rows)
 
 
 def score_cves(conn, cve_ids) -> int:
     """Recalcula sólo los CVEs indicados: 398k filas por corrida no es viable."""
-    ids = list(dict.fromkeys(i for i in (cve_ids or []) if i))
+    ids = sorted({i for i in (cve_ids or []) if i})
     if not ids:
         return 0
-    rows = conn.execute(SELECT_ENRICHED + " AND c.cve_id = ANY(?)", (ids,)).fetchall()
+    rows = conn.execute(
+        SELECT_ENRICHED + " AND c.cve_id = ANY(?) ORDER BY c.cve_id", (ids,)
+    ).fetchall()
     for row in rows:
         signals = build_signals(row, row)
         score = Score(cve_id=row["cve_id"], **score_cve(signals))

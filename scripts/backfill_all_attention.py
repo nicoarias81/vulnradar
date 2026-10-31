@@ -185,8 +185,11 @@ def main() -> int:
             conn.rollback()
             print(f"  tono: {type(exc).__name__}: {str(exc)[:90]}")
 
-    puntuados = score_cves(conn, procesados)
-    conn.commit()
+    puntuados = 0
+    for i in range(0, len(sorted(procesados)), 250):
+        trozo = sorted(procesados)[i:i + 250]
+        puntuados += score_cves(conn, trozo)
+        conn.commit()
 
     resto = conn.execute(PENDING).fetchone()["pendientes"]
     print(f"lote listo: {len(procesados)} CVEs ({con_prensa} con prensa nueva) "
