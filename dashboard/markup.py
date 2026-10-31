@@ -62,6 +62,10 @@ a { color: inherit; }
   gap: 16px; height: 64px; margin-bottom: 16px;
 }
 .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; flex-shrink: 0; }
+.brandwrap { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.nan-chip { display: inline-flex; align-items: center; flex-shrink: 0; opacity: .7; transition: opacity .15s ease; }
+.nan-chip:hover { opacity: 1; }
+.nan-chip img { display: block; height: 18px; }
 .flame { width: 40px; height: 40px; display: block; flex-shrink: 0; }
 .title { font-size: 22px; font-weight: 700; margin: 0; color: var(--text); line-height: 1.1; white-space: nowrap; }
 .title .humo { color: var(--hype); }
@@ -386,9 +390,15 @@ def document(body: str, *, refresh: int | None = None, track: bool | None = None
 def logo(subtitle: str = "") -> str:
     sub = f'<p class="sub">{escape(subtitle)}</p>' if subtitle else ""
     return (
+        '<div class="brandwrap">'
         f'<a class="brand" href="/">{FLAME_SVG}<div>'
         '<p class="title">Vuln<span class="humo">Radar</span></p>'
         f"{sub}</div></a>"
+        '<a class="nan-chip" href="https://nan.builders/?ref=built-with-nan" '
+        'target="_blank" rel="noopener" title="Built with NaN">'
+        '<img src="https://nan.builders/badge/built-with-nan-compact.svg" '
+        'alt="Built with NaN" height="18"></a>'
+        "</div>"
     )
 
 
@@ -873,11 +883,7 @@ def overview_html(
   </div>
   <div class="footer">
     <span>Fuente: CVE List V5 · CISA KEV · FIRST EPSS · GitHub · RSS</span>
-    <span class="foot-right">
-      <a href="https://nan.builders/?ref=built-with-nan" target="_blank" rel="noopener">
-        <img src="https://nan.builders/badge/built-with-nan-compact.svg" alt="Built with NaN" height="20">
-      </a>
-    </span>
+    <span>VulnRadar</span>
   </div>
 </div>
 """
@@ -964,11 +970,7 @@ def detail_html(
   </div>
   <div class="footer">
     <span>Fuente: CVE List V5 · CISA KEV · FIRST EPSS · GitHub · RSS</span>
-    <span class="foot-right">
-      <a href="https://nan.builders/?ref=built-with-nan" target="_blank" rel="noopener">
-        <img src="https://nan.builders/badge/built-with-nan-compact.svg" alt="Built with NaN" height="20">
-      </a>
-    </span>
+    <span>VulnRadar</span>
   </div>
 </div>
 """
