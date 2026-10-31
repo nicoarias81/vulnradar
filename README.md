@@ -263,6 +263,22 @@ Ver `docs/EXTENSION_CONTEXT.md`.
 | Hacker News (Algolia) | Prensa de CVEs fuera de los feeds | https://hn.algolia.com/api |
 | GitHub Search | PoCs | API pública |
 
+## Ambiente local con A/B
+
+`docker-compose.local.yml` levanta un PostgreSQL propio (puerto 5433) y dos
+slots del dashboard contra la misma base: `a` en 8501 y `b` en 8502. Cambiar de
+slot no migra datos, así que el candidato se puede probar completo antes de
+mover el tráfico.
+
+    ./scripts/local_ab.sh up       # postgres + slot a, activo en 8501
+    ./scripts/local_ab.sh deploy   # buildea el slot inactivo, espera /health y lo promueve
+    ./scripts/local_ab.sh switch   # vuelve al otro slot (rollback)
+    ./scripts/local_ab.sh status   # qué slot está activo y si los tres puertos responden
+
+El slot activo queda en `.ab-active`, que no se versiona. En Windows con Docker
+Desktop hay que consultar `localhost` y no `127.0.0.1`: el puerto se publica en
+IPv6 y la IP de loopback devuelve "empty reply".
+
 ## Licencia
 
 MIT.

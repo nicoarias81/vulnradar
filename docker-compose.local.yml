@@ -1,0 +1,70 @@
+# Ambiente local con blue-green: dos slots (a/b) contra el mismo PostgreSQL.
+# Uso: ./scripts/local_ab.sh up | deploy | switch | status | down
+#
+#   docker compose -f docker-compose.local.yml up -d --build
+#
+# El slot activo se publica en 8501. El inactivo queda en 8502 para verificar
+# antes de mover el tráfico. Los dos hablan con la misma base, así que cambiar
+# de slot no requiere migrar datos.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: vulnradar-pg-local
+    environment:
+      POSTGRES_USER: vuln
+      POSTGRES_PASSWORD: vuln
+      POSTGRES_DB: vulnradar
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata-local:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vuln -d vulnradar"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  dashboard-a:
+    build: .
+    container_name: vulnradar-a
+    ports:
+      - "8501:8501"
+    environment:
+      DATABASE_URL: postgresql://vuln:vuln@postgres:5432/vulnradar
+      CVE_LIST_PATH: /app/data/cvelistV5
+      SEED_DEMO: "1"
+      SLOT: a
+      SOC_USER: ${SOC_USER:-soc}
+      SOC_PASSWORD: ${SOC_PASSWORD:-soc-local}
+      LLM_PROVIDER: ${LLM_PROVIDER:-none}
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  dashboard-b:
+    build: .
+    container_name: vulnradar-b
+    ports:
+      - "8502:8501"
+    environment:
+      DATABASE_URL: postgresql://vuln:vuln@postgres:5432/vulnradar
+      CVE_LIST_PATH: /app/data/cvelistV5
+      SEED_DEMO: "0"
+      SLOT: b
+      SOC_USER: ${SOC_USER:-soc}
+      SOC_PASSWORD: ${SOC_PASSWORD:-soc-local}
+      LLM_PROVIDER: ${LLM_PROVIDER:-none}
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata-local:
