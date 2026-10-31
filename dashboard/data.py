@@ -28,7 +28,7 @@ SELECT_SCORES_BASE = """
     SELECT s.cve_id, s.hype, s.reality, s.category, s.calculated_at,
            c.description, c.cvss_score, c.cvss_severity, c.published,
            e.tone_score, e.media_count, e.in_kev, e.epss, e.poc_count,
-           e.branding, e.brand_name
+           e.branding, e.brand_name, e.kev_date
     FROM scores s
     JOIN cves c ON c.cve_id = s.cve_id
     LEFT JOIN enrichments e ON e.cve_id = s.cve_id
@@ -353,6 +353,23 @@ def daily_averages(rows) -> list:
             "n": len(group),
         })
     return series
+
+
+def load_pocs(conn, cve_id: str, limit: int = 40) -> list:
+    """Repos de PoC con métricas para la ficha del CVE."""
+    if not has_table(conn, "pocs"):
+        return []
+    cursor = conn.execute(
+        """
+        SELECT repo, url, stars, forks, language, pushed_at, created_at
+        FROM pocs
+        WHERE cve_id = ?
+        ORDER BY stars DESC, repo
+        LIMIT ?
+        """,
+        (cve_id, max(1, int(limit))),
+    )
+    return _fetch_dicts(cursor)
 
 
 def load_mentions(conn, cve_id: str) -> list:

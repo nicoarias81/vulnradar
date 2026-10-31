@@ -505,34 +505,94 @@ def build_poc_query(template, cve_id) -> str:
     return rendered if "poc" in rendered.lower() else f"{rendered} poc"
 
 
-def fetch_poc_count(cve_id, *, session=None, token=None, template=DEFAULT_POC_QUERY,
-                    timeout=20) -> int:
-    """
-    Cuenta repos que probablemente son PoC. Sin GITHUB_TOKEN la API puede
-    devolver 403 por rate limit: se loguea y se sigue con 0.
-    """
+def fetch_poc_repos(cve_id, *, session=None, token=None, template=DEFAULT_POC_QUERY,
+                    timeout=20, per_page=30) -> tuple:
+    """(total en GitHub, repos con métricas). Una llamada sirve para contar y listar."""
     http = session or requests
     resolved_token = os.getenv("GITHUB_TOKEN") if token is None else token
     headers = {"Accept": "application/vnd.github+json", "User-Agent": USER_AGENT}
     if resolved_token:
         headers["Authorization"] = f"Bearer {resolved_token}"
 
-    params = {"q": build_poc_query(template, cve_id), "per_page": 1}
+    params = {
+        "q": build_poc_query(template, cve_id),
+        "per_page": max(1, int(per_page)),
+        "sort": "stars",
+        "order": "desc",
+    }
     try:
         response = http.get(GITHUB_SEARCH_URL, params=params, headers=headers, timeout=timeout)
         response.raise_for_status()
         data = response.json() or {}
     except Exception as exc:
         print(f"GitHub {cve_id}: {exc}")
-        return 0
+        return 0, []
 
     total = data.get("total_count")
     if total is None:
         total = len(data.get("items") or [])
     try:
-        return max(0, int(total))
+        total = max(0, int(total))
     except (TypeError, ValueError):
-        return 0
+        total = 0
+
+    repos = []
+    for item in data.get("items") or []:
+        nombre = (item.get("full_name") or "").strip()
+        if not nombre:
+            continue
+        repos.append({
+            "repo": nombre,
+            "url": item.get("html_url") or f"https://github.com/{nombre}",
+            "stars": int(item.get("stargazers_count") or 0),
+            "forks": int(item.get("forks_count") or 0),
+            "language": item.get("language"),
+            "pushed_at": item.get("pushed_at"),
+            "created_at": item.get("created_at"),
+        })
+    return total, repos
+
+
+def upsert_pocs(conn, cve_id, repos) -> int:
+    """Guarda los repos con sus métricas: se refrescan en cada pasada."""
+    guardados = 0
+    for repo in repos or []:
+        nombre = (repo.get("repo") or "").strip()
+        if not nombre:
+            continue
+        conn.execute(
+            """
+            INSERT INTO pocs (cve_id, repo, url, stars, forks, language, pushed_at, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT (cve_id, repo) DO UPDATE SET
+                url = EXCLUDED.url,
+                stars = EXCLUDED.stars,
+                forks = EXCLUDED.forks,
+                language = EXCLUDED.language,
+                pushed_at = EXCLUDED.pushed_at,
+                seen_at = CURRENT_TIMESTAMP
+            """,
+            (
+                cve_id, nombre, repo.get("url") or f"https://github.com/{nombre}",
+                int(repo.get("stars") or 0), int(repo.get("forks") or 0),
+                repo.get("language"), repo.get("pushed_at"), repo.get("created_at"),
+            ),
+        )
+        guardados += 1
+    return guardados
+
+
+def fetch_poc_count(cve_id, *, session=None, token=None, template=DEFAULT_POC_QUERY,
+                    timeout=20) -> int:
+    """
+    Cuenta repos que probablemente son PoC. Sin GITHUB_TOKEN la API puede
+    devolver 403 por rate limit: se loguea y se sigue con 0.
+    """
+    total, _ = fetch_poc_repos(
+        cve_id, session=session, token=token, template=template, timeout=timeout,
+        per_page=1,
+    )
+    return total
 
 
 def upsert_poc_count(conn, cve_id, count) -> None:
@@ -565,9 +625,11 @@ def load_pocs(conn, cve_ids, *, session=None, token=None,
               template=DEFAULT_POC_QUERY) -> int:
     count = 0
     for cve_id in cve_ids or []:
-        upsert_poc_count(conn, cve_id, fetch_poc_count(
+        total, repos = fetch_poc_repos(
             cve_id, session=session, token=token, template=template,
-        ))
+        )
+        upsert_poc_count(conn, cve_id, total)
+        upsert_pocs(conn, cve_id, repos)
         count += 1
     return count
 

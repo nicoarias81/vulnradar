@@ -220,6 +220,28 @@ a.link:hover { text-decoration: underline; }
   box-shadow: 0 0 0 3px rgba(34,211,238,.18);
 }
 .agent-head { display: flex; align-items: center; gap: 10px; }
+/* Menciones y PoCs: listado expandible sin JS */
+.mention { margin: 8px 0; }
+.mention a { text-decoration: none; }
+.mention a:hover { text-decoration: underline; }
+details.expand { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 8px; }
+details.expand > summary {
+  cursor: pointer; color: var(--hype); font-size: 12px; letter-spacing: .04em;
+  list-style: none; display: flex; align-items: center; gap: 6px;
+}
+details.expand > summary::-webkit-details-marker { display: none; }
+details.expand > summary::before { content: "▸"; transition: transform .15s; }
+details.expand[open] > summary::before { transform: rotate(90deg); }
+details.expand > summary:hover { text-decoration: underline; }
+table.mini { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12px; }
+table.mini th {
+  text-align: left; font-weight: 600; color: var(--text-muted); font-size: 10px;
+  letter-spacing: .08em; text-transform: uppercase; padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+}
+table.mini td { padding: 5px 6px; border-bottom: 1px solid rgba(255,255,255,.04); }
+table.mini td.num { text-align: right; font-variant-numeric: tabular-nums; color: var(--hype); font-weight: 600; }
+table.mini tr:hover td { background: rgba(255,255,255,.03); }
 .agent-icon {
   width: 40px; height: 40px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center; flex-shrink: 0;
@@ -706,7 +728,8 @@ def detail_html(
     category: str,
     events: str,
     mentions: str,
-    pocs: int,
+    pocs_html: str,
+    poc_count: int,
     now: str,
     mention_count: int = 0,
     brand_name: str = "",
@@ -761,13 +784,12 @@ def detail_html(
         <div class="tl">{events}</div>
       </div>
       <div class="card" style="margin-bottom:16px">
-        <p class="h3">Menciones recientes en medios</p>
+        <p class="h3">Menciones en medios</p>
         {mentions}
       </div>
       <div class="card">
         <p class="h3">PoCs en GitHub</p>
-        <div class="score hype" style="font-size:40px">{pocs}</div>
-        <p class="muted">Repositorios con PoC</p>
+        {pocs_html}
       </div>
     </div>
   </div>

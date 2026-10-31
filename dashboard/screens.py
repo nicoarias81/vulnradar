@@ -15,6 +15,7 @@ from dashboard.data import (
     load_products,
     load_latest_score,
     load_mentions,
+    load_pocs,
     load_recent_events,
     load_score,
     load_scores,
@@ -183,6 +184,7 @@ def detail(qp: dict | None = None) -> str:
             )
         cve_id = row["cve_id"]
         mentions = load_mentions(conn, cve_id)
+        poc_repos = load_pocs(conn, cve_id)
     finally:
         conn.close()
 
@@ -216,26 +218,95 @@ def detail(qp: dict | None = None) -> str:
         for item in components_data
     )
 
-    events = [
-        ("Publicado", str(row.get("published") or "—")[:16]),
-        ("Score calculado", str(row.get("calculated_at") or "—")[:16]),
+    def _dt(valor):
+        texto = str(valor or "").strip()
+        if not texto or texto in ("—", "None"):
+            return None
+        try:
+            return datetime.fromisoformat(texto.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+
+    def _sello(momento):
+        return momento.strftime("%d %b %Y, %H:%M") if momento else ""
+
+    fechas = [d for d in (_dt(m.get("published")) for m in mentions) if d]
+
+    # Hitos con fecha real, en orden cronológico; los datos sin fecha van al final.
+    hitos = [
+        (_dt(row.get("published")), "Publicado"),
+        (_dt(row.get("kev_date")), "Añadido al catálogo KEV (CISA)"),
+        (min(fechas) if fechas else None, "Primera mención en prensa"),
+        (max(fechas) if fechas else None, "Última mención en prensa"),
+        (_dt(row.get("calculated_at")), "Score calculado"),
     ]
-    if kev:
-        events.append(("Añadido al catálogo KEV (CISA)", "sí"))
+    con_fecha = sorted((h for h in hitos if h[0]), key=lambda h: h[0])
+    poc_count = int(row.get("poc_count") or 0)
+    sin_fecha = []
     if row.get("brand_name"):
-        events.append(("Nombre", str(row["brand_name"])))
-    if int(row.get("poc_count") or 0):
-        events.append(("Publicación de PoC en GitHub", str(int(row["poc_count"]))))
+        sin_fecha.append(("Nombre", str(row["brand_name"])))
+    if poc_count:
+        sin_fecha.append(("PoCs en GitHub", f"{poc_count} repositorios"))
+
     ev_html = "".join(
-        f'<div class="tl-item"><b>{escape(title)}</b>'
-        f'<div class="muted">{escape(str(when))}</div></div>'
-        for title, when in events
+        f'<div class="tl-item"><b>{escape(titulo)}</b>'
+        f'<div class="muted">{escape(_sello(momento))}</div></div>'
+        for momento, titulo in con_fecha
+    ) + "".join(
+        f'<div class="tl-item"><b>{escape(titulo)}</b>'
+        f'<div class="muted">{escape(valor)}</div></div>'
+        for titulo, valor in sin_fecha
     )
-    men_html = "".join(
-        f'<div style="margin:8px 0"><b>{escape(m.get("source") or "media")}</b>'
-        f'<div class="muted">{escape(m.get("title") or m.get("url") or "")}</div></div>'
-        for m in mentions[:5]
-    ) or '<p class="muted">Sin menciones RSS todavía.</p>'
+
+    def _mencion_html(m, con_titulo=True):
+        fuente = m.get("source") or "media"
+        url = (m.get("url") or "").strip()
+        fecha = _sello(_dt(m.get("published"))) or "sin fecha"
+        cabeza = (
+            f'<a class="link" href="{escape(url)}" target="_blank" rel="noopener">{escape(fuente)}</a>'
+            if url else f"<b>{escape(fuente)}</b>"
+        )
+        titulo = escape(m.get("title") or "") if con_titulo else ""
+        detalle = escape(fecha) + (f" · {titulo}" if titulo else "")
+        return f'<div class="mention">{cabeza}<div class="muted">{detalle}</div></div>'
+
+    if mentions:
+        visibles = "".join(_mencion_html(m) for m in mentions[:5])
+        resto = "".join(_mencion_html(m) for m in mentions[5:])
+        men_html = visibles + (
+            f'<details class="expand"><summary>Ver las {len(mentions)} menciones</summary>'
+            f'{resto}</details>' if resto else ""
+        )
+    else:
+        men_html = '<p class="muted">Sin menciones todavía.</p>'
+
+    if poc_repos:
+        filas = "".join(
+            "<tr>"
+            f'<td><a class="link" href="{escape(r.get("url") or "")}" target="_blank" '
+            f'rel="noopener">{escape(r.get("repo") or "")}</a></td>'
+            f'<td class="num">{int(r.get("stars") or 0):,}</td>'
+            f'<td class="num">{int(r.get("forks") or 0):,}</td>'
+            f'<td class="muted">{escape(r.get("language") or "—")}</td>'
+            f'<td class="muted">{escape(_sello(_dt(r.get("pushed_at"))) or "—")}</td>'
+            "</tr>"
+            for r in poc_repos
+        )
+        pocs_html = (
+            f'<div class="score hype" style="font-size:40px">{poc_count}</div>'
+            '<p class="muted" style="margin-top:0">Repositorios con PoC</p>'
+            f'<details class="expand"><summary>Ver {len(poc_repos)} repos con métricas</summary>'
+            '<table class="mini"><thead><tr><th>Repositorio</th><th>Stars</th><th>Forks</th>'
+            f'<th>Lenguaje</th><th>Actualizado</th></tr></thead><tbody>{filas}</tbody></table>'
+            "</details>"
+        )
+    else:
+        nota = ("<p class=\"muted\">El detalle de repos se trae en la próxima pasada.</p>"
+                if poc_count else "")
+        pocs_html = (
+            f'<div class="score hype" style="font-size:40px">{poc_count}</div>'
+            f'<p class="muted">Repositorios con PoC</p>{nota}'
+        )
 
     return detail_html(
         cve_id=cve_id,
@@ -247,7 +318,8 @@ def detail(qp: dict | None = None) -> str:
         category=row.get("category") or "Quiet",
         events=ev_html,
         mentions=men_html,
-        pocs=int(row.get("poc_count") or 0),
+        pocs_html=pocs_html,
+        poc_count=poc_count,
         now=now,
         mention_count=len(mentions),
         brand_name=str(row.get("brand_name") or "").strip(),

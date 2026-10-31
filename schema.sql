@@ -52,6 +52,20 @@ CREATE TABLE IF NOT EXISTS reranked_urls (
     reranked_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Repos de PoC con sus métricas: la ficha del CVE los muestra expandibles.
+CREATE TABLE IF NOT EXISTS pocs (
+    cve_id TEXT NOT NULL,
+    repo TEXT NOT NULL,
+    url TEXT NOT NULL,
+    stars INTEGER DEFAULT 0,
+    forks INTEGER DEFAULT 0,
+    language TEXT,
+    pushed_at TEXT,
+    created_at TEXT,
+    seen_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (cve_id, repo)
+);
+
 -- CVEs ya pasados por el backfill de atención: el runner es reanudable y no
 -- repite trabajo entre corridas.
 CREATE TABLE IF NOT EXISTS attention_backfill (
