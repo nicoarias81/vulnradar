@@ -136,6 +136,12 @@ def overview(qp: dict | None = None) -> str:
         series = load_daily_averages(
             conn, since=since, until=until, category=cat, severity=sev, product=prod,
         )
+        # Dentro del bloque: después del close() la conexión ya no sirve y la
+        # consulta fallaba en silencio, dejando el gráfico sin destacados.
+        highlights = load_highlights(
+            conn, since=since, until=until, category=cat, severity=sev,
+            product=prod, limit=3,
+        )
     finally:
         conn.close()
 
@@ -159,13 +165,7 @@ def overview(qp: dict | None = None) -> str:
         )
 
     scatter_div = scatter_svg(scatter_rows) if scatter_rows else '<p class="empty">Ningún CVE pasa los filtros actuales.</p>'
-    timeline_div = timeline_svg(
-        series,
-        highlights=load_highlights(
-            conn, since=since_s, until=until_s, category=category,
-            severity=severity, product=product, limit=3,
-        ),
-    )
+    timeline_div = timeline_svg(series, highlights=highlights)
 
     return overview_html(
         logo_html=logo(),
