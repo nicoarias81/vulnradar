@@ -77,12 +77,16 @@ step "chequeos de env (sin imprimir valores)"
 ssh_srv "grep -q '^SOC_PASSWORD=.' $REMOTE/deploy/.env.prod && echo 'soc: password configurado' || { echo 'soc: SOC_PASSWORD vacio en .env.prod -> abortado' >&2; exit 1; }"
 ssh_srv "grep -q '^LITELLM_API_KEY=.' $REMOTE/deploy/.env.prod && echo 'llm: key presente' || echo 'llm: SIN key -> tone/branding caen a heuristica'"
 
+step "limpieza de huérfanos de proyectos viejos"
+# Contenedores de un compose anterior quedan como `<hash>_vulnradar-<svc>` y se
+# quedan con el nombre del servicio: el `up` los reconoce, los deja en `created`
+# y no arranca nada. Se borran antes de levantar.
+ssh_srv "docker ps -a --format '{{.Names}}' | grep -E '^[0-9a-f]{12}_vulnradar-' | xargs -r docker rm -f 2>&1 | tail -5 || true"
+
 step "build + up"
-if [ "$BUILD" -eq 1 ]; then
-  ssh_srv "cd $REMOTE && docker compose -f deploy/docker-compose.server.yml --env-file deploy/.env.prod up -d --build 2>&1 | tail -20"
-else
-  ssh_srv "cd $REMOTE && docker compose -f deploy/docker-compose.server.yml --env-file deploy/.env.prod up -d 2>&1 | tail -20"
-fi
+UP_ARGS="up -d --remove-orphans"
+if [ "$BUILD" -eq 1 ]; then UP_ARGS="$UP_ARGS --build"; fi
+ssh_srv "cd $REMOTE && docker compose -f deploy/docker-compose.server.yml --env-file deploy/.env.prod $UP_ARGS 2>&1 | tail -20"
 
 step "cloudflare (ingress + DNS público)"
 if [ "$CF" -eq 1 ]; then
@@ -95,6 +99,12 @@ step "verificación"
 UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
 sleep 5
 ssh_srv "docker compose -f $REMOTE/deploy/docker-compose.server.yml --env-file $REMOTE/deploy/.env.prod ps --format '{{.Service}} {{.State}} {{.Status}}'"
+DOWN=$(ssh_srv "docker compose -f $REMOTE/deploy/docker-compose.server.yml --env-file $REMOTE/deploy/.env.prod ps --format '{{.Service}} {{.State}}' | grep -v running || true")
+if [ -n "$DOWN" ]; then
+  echo "servicios que no quedaron corriendo:" >&2
+  echo "$DOWN" >&2
+  exit 1
+fi
 ssh_srv "
   echo -n 'local /health      : '; curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8501/health
   echo -n 'local /            : '; curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8501/
