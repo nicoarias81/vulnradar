@@ -44,8 +44,7 @@ cambios sin commitear), `--no-build` (sólo recreate por cambio de env), `--skip
 - `docker compose -f deploy/docker-compose.server.yml --env-file deploy/.env.prod config --quiet` → válido.
 - Ingress + DNS **creados** (`vulnradar.munalabs.eu` → `http://localhost:8501`, CNAME proxied al túnel,
   catch-all intacto, sin Access app). Backup previo del ingress: `/root/cf-backups/tunnel-ingress-*.json`.
-  Hoy el dominio responde **502** porque el backend todavía no está levantado.
-- Falta sólo: commit del código y `bash deploy/deploy.sh`.
+- **Deployado y en producción** (dashboard healthy, worker con ciclos completos, sitio público 200).
 
 ### Notas de verificación desde esta máquina
 
