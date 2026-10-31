@@ -95,12 +95,14 @@ def sync_exploitdb(conn, *, csv_text=None, session=None, url=EXPLOITDB_URL,
     if not with_ids:
         return {"cves": 0, "con_exploit": 0}
 
-    # El FK de enrichments exige el CVE padre.
+    # Orden determinista: dos procesos que insertan el mismo conjunto en
+    # distinto orden se bloquean mutuamente y Postgres corta con deadlock.
+    pares = sorted(with_ids.items())
     conn.executemany(
         "INSERT INTO cves (cve_id) VALUES (?) ON CONFLICT (cve_id) DO NOTHING",
-        [(cve,) for cve in with_ids],
+        [(cve,) for cve, _ in pares],
     )
-    conn.executemany(POC_COUNT_SQL, list(with_ids.items()))
+    conn.executemany(POC_COUNT_SQL, pares)
     return {"cves": len(por_cve), "con_exploit": len(with_ids)}
 
 
@@ -114,13 +116,17 @@ def fetch_sightings_page(date_from, *, page=1, per_page=1000, session=None,
     return respuesta.json()
 
 
-def sync_sightings(conn, *, days=7, date_from=None, max_pages=60, session=None,
-                   timeout=60) -> dict:
+def sync_sightings(conn, *, days=7, date_from=None, max_pages=400, session=None,
+                   timeout=60, per_page=100) -> dict:
     """Marca ``wild_confirmation`` para CVEs con sintoma de explotación real.
 
     Pagina la API pública de CIRCL desde ``date_from`` (o hoy - ``days``) y se
     queda sólo con los sightings de tipo ``exploited``: un ``seen`` es una
     mención, no una prueba de que alguien lo haya explotado.
+
+    ``per_page`` va bajo a propósito: con 1000 la API devuelve ~23 MB por
+    página y la respuesta se corta (JSONDecodeError) en el server de prod.
+    Una página que falla se saltea en vez de tumbar la corrida entera.
     """
     if date_from is None:
         date_from = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
@@ -128,9 +134,22 @@ def sync_sightings(conn, *, days=7, date_from=None, max_pages=60, session=None,
     vistos = 0
     explotados = set()
     paginas = 0
+    fallidas = 0
     for page in range(1, max_pages + 1):
-        payload = fetch_sightings_page(date_from, page=page, session=session,
-                                       timeout=timeout)
+        payload = None
+        for intento in (1, 2):
+            try:
+                payload = fetch_sightings_page(date_from, page=page, per_page=per_page,
+                                               session=session, timeout=timeout)
+                break
+            except (ValueError, requests.RequestException):
+                payload = None
+        if payload is None:
+            fallidas += 1
+            # Un corte de red no debe costar la señal de todo el día.
+            if fallidas >= 3:
+                break
+            continue
         datos = payload.get("data") or []
         if not datos:
             break
@@ -146,14 +165,15 @@ def sync_sightings(conn, *, days=7, date_from=None, max_pages=60, session=None,
             break
 
     if explotados:
+        ordenados = sorted(explotados)
         conn.executemany(
             "INSERT INTO cves (cve_id) VALUES (?) ON CONFLICT (cve_id) DO NOTHING",
-            [(cve,) for cve in explotados],
+            [(cve,) for cve in ordenados],
         )
-        conn.executemany(WILD_SQL, [(cve,) for cve in explotados])
+        conn.executemany(WILD_SQL, [(cve,) for cve in ordenados])
 
     return {"date_from": date_from, "sightings": vistos, "paginas": paginas,
-            "cves_explotados": len(explotados)}
+            "paginas_fallidas": fallidas, "cves_explotados": len(explotados)}
 
 
 def fetch_ghsa_page(*, page=1, per_page=100, session=None, timeout=60) -> list:
