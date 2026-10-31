@@ -7,6 +7,7 @@ Uso: python scripts/seed_demo.py
 from __future__ import annotations
 
 import sys
+from datetime import datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -33,7 +34,7 @@ DEMOS = [
         "tone_score": 9.5,
         "branding": 1,
         "brand_name": "GhostShell",
-        "published": "2026-05-12T09:00:00",
+        "days_ago": 3,
         "alert": True,
         "mentions": [
             ("The Hacker News", "GhostShell: CMS RCE compared to Log4Shell", "https://example.test/thn/ghostshell"),
@@ -54,7 +55,7 @@ DEMOS = [
         "tone_score": 7.0,
         "branding": 0,
         "brand_name": None,
-        "published": "2026-05-18T11:00:00",
+        "days_ago": 6,
         "alert": True,
         "mentions": [
             ("SecurityWeek", "CISA adds VPN auth bypass to KEV", "https://example.test/sw/vpn"),
@@ -74,7 +75,7 @@ DEMOS = [
         "tone_score": 2.0,
         "branding": 0,
         "brand_name": None,
-        "published": "2026-05-22T08:00:00",
+        "days_ago": 9,
         "alert": False,
     },
     {
@@ -91,7 +92,7 @@ DEMOS = [
         "tone_score": 1.0,
         "branding": 0,
         "brand_name": None,
-        "published": "2026-05-28T10:00:00",
+        "days_ago": 12,
         "alert": False,
     },
     {
@@ -108,7 +109,7 @@ DEMOS = [
         "tone_score": 8.5,
         "branding": 1,
         "brand_name": "Log4Boom",
-        "published": "2026-06-01T09:00:00",
+        "days_ago": 15,
         "alert": False,
     },
     {
@@ -125,7 +126,7 @@ DEMOS = [
         "tone_score": 6.0,
         "branding": 0,
         "brand_name": None,
-        "published": "2026-06-04T12:00:00",
+        "days_ago": 18,
         "alert": False,
     },
     {
@@ -142,7 +143,7 @@ DEMOS = [
         "tone_score": 3.0,
         "branding": 0,
         "brand_name": None,
-        "published": "2026-06-07T15:00:00",
+        "days_ago": 21,
         "alert": False,
     },
     {
@@ -159,7 +160,7 @@ DEMOS = [
         "tone_score": 0.5,
         "branding": 0,
         "brand_name": None,
-        "published": "2026-06-11T10:00:00",
+        "days_ago": 25,
         "alert": False,
     },
 ]
@@ -206,15 +207,28 @@ UPSERT_SCORE = """
 """
 
 
+def _published(item: dict) -> str:
+    """Fecha de publicación relativa a hoy.
+
+    Las fechas fijas dejaban la demo fuera del rango por defecto del dashboard
+    (mes en curso) y la página aparecía vacía aunque hubiera datos.
+    """
+    if "days_ago" in item:
+        return (datetime.now() - timedelta(days=item["days_ago"])).strftime("%Y-%m-%dT%H:%M:%S")
+    return item["published"]
+
+
 def seed(db_path=None) -> int:
     init_db(db_path)
     conn = get_db(db_path)
     n = 0
     try:
         for item in DEMOS:
+            cve_params = {k: item[k] for k in ("cve_id", "description", "cvss_score", "cvss_severity")}
+            cve_params["published"] = _published(item)
             conn.execute(
                 UPSERT_CVE,
-                {k: item[k] for k in ("cve_id", "description", "cvss_score", "cvss_severity", "published")},
+                cve_params,
             )
             conn.execute(
                 UPSERT_ENRICHMENT,
@@ -248,7 +262,7 @@ def seed(db_path=None) -> int:
                     VALUES (?, ?, ?, ?, ?)
                     ON CONFLICT DO NOTHING
                     """,
-                    (item["cve_id"], url, title, source, item.get("published")),
+                    (item["cve_id"], url, title, source, _published(item)),
                 )
             if item["alert"]:
                 conn.execute(
