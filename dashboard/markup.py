@@ -284,8 +284,17 @@ a.link:hover { text-decoration: underline; }
 """
 
 
-def document(body: str, *, refresh: int | None = None) -> str:
+def document(body: str, *, refresh: int | None = None, track: bool | None = None) -> str:
     meta = f'<meta http-equiv="refresh" content="{int(refresh)}">' if refresh else ""
+    # Las vistas con auto-refresh (/soc recarga cada 8s) cuentan cada recarga como
+    # una visita y se comen la mitad de las métricas de Umami: no se trackean.
+    if track is None:
+        track = refresh is None
+    analytics = (
+        '<script defer src="https://analytics.munalabs.eu/script.js" '
+        'data-website-id="2f0e03ec-fd86-48cd-b7d0-c916b987c564"></script>'
+        if track else ""
+    )
     return (
         "<!DOCTYPE html><html lang='es'><head>"
         '<meta charset="utf-8">'
@@ -294,7 +303,7 @@ def document(body: str, *, refresh: int | None = None) -> str:
         "<title>Humo vs Miedo</title>"
         '<link rel="preconnect" href="https://fonts.googleapis.com">'
         '<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">'
-        '<script defer src="https://analytics.munalabs.eu/script.js" data-website-id="2f0e03ec-fd86-48cd-b7d0-c916b987c564"></script>'
+        f"{analytics}"
         f"<style>{PAGE_CSS}</style></head><body>{body}"
         "<script>(function(){"
         "var pi=document.getElementById('product-filter'),pl=document.getElementById('product-list');"
