@@ -236,6 +236,88 @@ def search_mentions(cve_id, brand_name=None, *, session=None,
     return salida
 
 
+HN_SEARCH_URL = "https://hn.algolia.com/api/v1/search"
+
+
+def google_disponible(session=None, timeout=10) -> bool:
+    """Google News responde 503 a IPs que ya hizo miles de consultas.
+
+    Un probe por ciclo evita gastar 20 s de timeout por objetivo cuando la
+    fuente está caída: si falla, el ciclo entero usa HN.
+    """
+    http = session or requests
+    try:
+        r = http.get(SEARCH_NEWS_URL.format(query="CVE-2024-3400"), timeout=timeout,
+                     headers={"User-Agent": USER_AGENT})
+        return r.status_code == 200
+    except Exception:
+        return False
+
+
+def search_mentions_hn(cve_id, *, session=None, timeout=20, limit=30) -> list:
+    """Menciones en Hacker News (Algolia). Sin key; ~30 req/min sostenidos.
+
+    Alternativa a search_mentions cuando Google bloquea. Sólo stories: los
+    comentarios mencionan CVEs al pasar y ensucian el conteo.
+    """
+    http = session or requests
+    try:
+        r = http.get(HN_SEARCH_URL, params={"query": cve_id, "hitsPerPage": limit},
+                     timeout=timeout, headers={"User-Agent": USER_AGENT})
+        if r.status_code != 200:
+            return []
+        hits = r.json().get("hits", [])
+    except Exception:
+        return []
+    salida, vistas = [], set()
+    for hit in hits:
+        if "story" not in (hit.get("_tags") or []):
+            continue
+        titulo = (hit.get("title") or "").strip()
+        url = (hit.get("url") or "").strip()
+        if not titulo:
+            continue
+        if not url:
+            url = f"https://news.ycombinator.com/item?id={hit.get('objectID')}"
+        if url in vistas:
+            continue
+        vistas.add(url)
+        salida.append({
+            "cve_id": cve_id,
+            "url": url,
+            "title": titulo,
+            "source": "Hacker News",
+            "published": hit.get("created_at"),
+        })
+    return salida
+
+
+def load_attention(conn, limit=15, *, session=None) -> dict:
+    """Busca prensa para los CVEs donde la atención importa (KEV/PoC/recientes).
+
+    Google primero, HN como respaldo: en producción Google lleva bloqueado desde
+    el primer día, así que HN es la fuente que realmente trae datos.
+    """
+    http = session or requests.Session()
+    objetivos = select_attention_targets(conn, limit)
+    if not objetivos:
+        return {"objetivos": 0, "nuevas": 0, "google": 0, "hn": 0}
+    usa_google = google_disponible(http)
+    total = con_google = con_hn = 0
+    for cve_id, brand_name in objetivos:
+        menciones = search_mentions(cve_id, brand_name, session=http) if usa_google else []
+        if menciones:
+            con_google += 1
+        else:
+            menciones = search_mentions_hn(cve_id, session=http)
+            if menciones:
+                con_hn += 1
+        nuevas = upsert_media_mentions(conn, menciones)
+        total += sum(nuevas.values())
+    return {"objetivos": len(objetivos), "nuevas": total,
+            "google": con_google, "hn": con_hn}
+
+
 def select_attention_targets(conn, limit=40) -> list:
     """CVEs donde la atención importa: con PoCs, en KEV o recientes.
 
@@ -317,6 +399,9 @@ RERANK_SUMMARY_CHARS = 180
 # Tope por feed y corrida: el rerank es el paso caro (LLM), y los feeds
 # republican decenas de notas viejas que no aportan menciones nuevas.
 RERANK_MAX_ENTRIES = 40
+# Advisories con CVE en el titular: no pasan por el modelo, pero un catálogo
+# como el de MSRC trae miles de entradas y sólo interesa el tramo reciente.
+REGEX_MAX_ENTRIES = 250
 
 
 def build_rerank_prompt(entries) -> str:
@@ -435,14 +520,20 @@ def mentions_from_rerank(entries, reranked) -> list:
 
 
 def load_rss(conn, feeds, *, session=None, timeout=30, rerank=False,
-             config=None, completer=None) -> dict:
+             config=None, completer=None, regex_feeds=None) -> dict:
     """Descarga los feeds y acumula menciones. Un feed caído no corta el resto.
 
     Con `rerank` cada entrada pasa por el LLM: descarta lo que no es una
     vulnerabilidad concreta, resuelve el CVE del texto y, cuando el titular usa
     un apodo (Log4Shell), lo guarda como brand_name del CVE.
+
+    `regex_feeds` son los que ya traen el CVE en el titular (advisories de
+    vendor y CERT): ahí el regex alcanza. Van sin LLM y sin el tope de 40, que
+    en un catálogo de miles siempre deja entrar los mismos 40 y nunca los
+    nuevos.
     """
     http = session or requests
+    regex_set = set(regex_feeds or ())
     nuevas: dict = {}
     for url in feeds or []:
         try:
@@ -453,7 +544,7 @@ def load_rss(conn, feeds, *, session=None, timeout=30, rerank=False,
             print(f"RSS {url}: {exc}")
             continue
         entries = parse_feed(content, source=_host(url))
-        if rerank:
+        if rerank and url not in regex_set:
             entries = entries[:RERANK_MAX_ENTRIES]
             # Los RSS rotan lento: lo ya rerankeado no se vuelve a mandar al LLM
             # (medido: ~5 min de modelo por ciclo para 0 menciones nuevas).
@@ -466,7 +557,9 @@ def load_rss(conn, feeds, *, session=None, timeout=30, rerank=False,
             else:
                 mentions = []
         else:
-            mentions = collect_mentions(entries)
+            # Los catálogos vienen de más nuevo a más viejo: el tope deja el
+            # tramo reciente y el upsert se encarga del resto.
+            mentions = collect_mentions(entries[:REGEX_MAX_ENTRIES])
         for cve_id, delta in upsert_media_mentions(conn, mentions).items():
             nuevas[cve_id] = nuevas.get(cve_id, 0) + delta
         apply_mention_brands(conn, mentions)
@@ -851,13 +944,14 @@ def load_sources_config(path=None) -> dict:
 
 
 def run(*, skip_kev=False, skip_epss=False, skip_rss=False, skip_github=False,
-        skip_llm=False, db_path=None, sources_path=None, github_limit=25,
-        llm_limit=50, llm_batch_size=10, session=None, completer=None) -> dict:
-    """Corre las cinco señales en orden y devuelve un resumen de conteos."""
+        skip_llm=False, skip_attention=False, db_path=None, sources_path=None,
+        github_limit=25, llm_limit=50, llm_batch_size=10, session=None,
+        completer=None) -> dict:
+    """Corre las seis señales en orden y devuelve un resumen de conteos."""
     sources = load_sources_config(sources_path)
     path = init_db(db_path)  # idempotente: crea media_mentions si falta
     conn = get_db(path)
-    summary = {"kev": 0, "epss": 0, "rss": {}, "poc": 0, "tone": 0}
+    summary = {"kev": 0, "epss": 0, "rss": {}, "poc": 0, "tone": 0, "attention": {}}
     try:
         if not skip_kev:
             summary["kev"] = load_kev(conn)
@@ -868,6 +962,7 @@ def run(*, skip_kev=False, skip_epss=False, skip_rss=False, skip_github=False,
             summary["rss"] = load_rss(
                 conn, sources.get("rss") or [], session=session,
                 rerank=bool(sources.get("rerank_feeds")), completer=None,
+                regex_feeds=sources.get("rss_regex_only") or [],
             )
 
         github_cfg = sources.get("github_search") or {}
@@ -884,6 +979,12 @@ def run(*, skip_kev=False, skip_epss=False, skip_rss=False, skip_github=False,
                 conn, limit=llm_limit, batch_size=llm_batch_size,
                 completer=completer,
             )
+
+        attention_cfg = sources.get("attention") or {}
+        if not skip_attention and attention_cfg.get("enabled", True):
+            summary["attention"] = load_attention(
+                conn, int(attention_cfg.get("limit", 15)), session=session,
+            )
         conn.commit()
     finally:
         conn.close()
@@ -899,6 +1000,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--skip-rss", action="store_true", help="No lee los feeds RSS.")
     parser.add_argument("--skip-github", action="store_true", help="No busca PoCs en GitHub.")
     parser.add_argument("--skip-llm", action="store_true", help="No llama al LLM (no escribe tone/branding).")
+    parser.add_argument("--skip-attention", action="store_true",
+                        help="No busca prensa de los CVEs con KEV/PoC/recencia (Google + HN).")
     parser.add_argument("--rss-only", action="store_true", help="Sólo RSS (local): implica los demás --skip-*.")
     parser.add_argument("--github-limit", type=int, default=25, help="CVEs a buscar en GitHub (default 25).")
     parser.add_argument("--llm-limit", type=int, default=50, help="CVEs a analizar con el LLM (default 50).")
@@ -920,17 +1023,20 @@ def main(argv=None) -> int:
         skip_rss=args.skip_rss,
         skip_github=args.skip_github or args.rss_only,
         skip_llm=args.skip_llm or args.rss_only,
+        skip_attention=args.skip_attention or args.rss_only,
         db_path=args.db_path,
         sources_path=args.sources,
         github_limit=args.github_limit,
         llm_limit=args.llm_limit,
         llm_batch_size=args.llm_batch_size,
     )
+    att = summary.get("attention") or {}
     print(
         f"Enrichment listo: kev={summary['kev']} epss={summary['epss']} "
         f"rss_cves={len(summary['rss'])} "
         f"rss_menciones_nuevas={sum(summary['rss'].values())} "
-        f"poc_cves={summary['poc']} tone_cves={summary['tone']}"
+        f"poc_cves={summary['poc']} tone_cves={summary['tone']} "
+        f"attention={att.get('objetivos', 0)}obj/{att.get('nuevas', 0)}nuevas"
     )
     return 0
 

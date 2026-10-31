@@ -25,6 +25,42 @@ sources:
     # le da al rerank un CVE explícito. nvd-rss-analyzed.xml murió (404) y el de
     # CISA responde 403.
     - https://cvefeed.io/rssfeed/latest.xml
+    # Blogs de vendors y research: traen el CVE en el titular y explican el
+    # mecanismo, que es lo que los feeds de prensa general no dan.
+    - https://blog.talosintelligence.com/rss/
+    - https://www.zerodayinitiative.com/blog?format=rss
+    - https://unit42.paloaltonetworks.com/feed/
+    - https://googleprojectzero.blogspot.com/feeds/posts/default
+    - https://security.googleblog.com/feeds/posts/default
+    - https://blog.cloudflare.com/rss/
+    - https://www.tenable.com/blog/feed
+    - https://krebsonsecurity.com/feed/
+    - https://cyberscoop.com/feed/
+    - https://labs.watchtowr.com/rss/
+    - https://www.horizon3.ai/feed/
+    - https://research.checkpoint.com/feed/
+    - https://cloudblog.withgoogle.com/topics/threat-intelligence/rss/
+    - https://www.rapid7.com/blog/rss/
+    - https://portswigger.net/research/rss
+    - https://www.sonarsource.com/blog/rss.xml
+    - https://isc.sans.edu/rssfeed_full.xml
+    - https://www.sentinelone.com/labs/feed/
+
+  # Advisories que ya traen el CVE en el titular: no pasan por el modelo.
+  # El rerank cuesta una llamada por entrada y acá el regex del titular alcanza.
+  # Incluye catálogos grandes (MSRC lista todo Patch Tuesday): el tope por
+  # corrida toma el tramo reciente y el upsert descarta lo ya visto.
+  rss_regex_only:
+    - https://api.msrc.microsoft.com/update-guide/rss
+    - https://sec.cloudapps.cisco.com/security/center/psirtrss20/CiscoSecurityAdvisory.xml
+    - https://www.zerodayinitiative.com/rss/published/
+    - https://security.paloaltonetworks.com/rss.xml
+    - https://www.ivanti.com/blog/topics/security-advisory/rss
+    - https://www.fortiguard.com/rss/ir.xml
+    - https://www.cert.ssi.gouv.fr/alerte/feed/
+    - https://www.incibe.es/incibe-cert/alerta-temprana/avisos/feed
+    - https://cert.europa.eu/publications/security-advisories-rss
+    - https://www.exploit-db.com/rss.xml
 
   # Cada entrada pasa por el LLM: descarta lo que no es una vulnerabilidad
   # concreta, resuelve el CVE del texto y guarda el apodo del titular
@@ -35,3 +71,11 @@ sources:
     enabled: true
     # {cve_id} se reemplaza por el CVE completo; el enrich lo lanza así tal cual.
     query_template: "{cve_id} poc"
+
+  # Prensa para los CVEs que importan aunque no estén en los feeds de hoy:
+  # los de KEV, los que tienen PoCs y los recién publicados. Google News
+  # responde 503 desde el VPS, así que el ciclo cae a Hacker News (Algolia).
+  attention:
+    enabled: true
+    limit: 15
+

@@ -9,6 +9,8 @@
   </picture>
 </a>
 
+**Demo:** https://vulnradar.munalabs.eu · **Repo:** https://github.com/nicoarias81/vulnradar
+
 Versión base open source. La capa de contexto (inventario de assets + criticidad) es opcional y se enchufa sin modificar el core.
 
 ## Características
@@ -140,6 +142,17 @@ EPSS, menciones de prensa (RSS de `config/sources.yaml`), PoCs en GitHub y
 `tone_score`/branding. Cada fuente escribe **sólo sus columnas**, así que KEV,
 EPSS, media, PoCs y tone conviven en la misma fila de `enrichments`.
 
+Las menciones entran por dos caminos. El ciclo procesa los feeds del día y,
+aparte, prioriza un lote de CVEs (KEV, con PoC, recientes) y busca cada uno en
+Hacker News vía Algolia: es lo que recupera prensa de un CVE que ya salió de
+los feeds. Si un CVE aparece en los dos, la URL dedupe.
+
+`config/sources.yaml` separa dos clases de feed. Los de prensa y research pasan
+por el LLM, que descarta lo que no es una vulnerabilidad concreta y resuelve el
+CVE del texto. Los advisories de vendors y CERT (`rss_regex_only`) ya traen el
+CVE en el titular, así que van por regex, sin modelo: 10 feeds de ese tipo
+aportan ~600 CVEs en 11 segundos.
+
 El RSS deduplica por URL en `media_mentions` (una URL nueva suma 1 a
 `media_count`); los PoCs **reemplazan** `poc_count`; y el tone/branding sale de
 un lote de 10 titulares por llamada al LLM configurable (LiteLLM en
@@ -245,7 +258,9 @@ Ver `docs/EXTENSION_CONTEXT.md`.
 | CVE List V5 | Mirror principal | https://github.com/CVEProject/cvelistV5 |
 | CISA KEV | Reality fuerte | https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json |
 | FIRST EPSS | Probabilidad | https://epss.empiricalsecurity.com/epss_scores-current.csv.gz |
-| RSS seguridad | Cobertura mediática | THN, BleepingComputer, etc. |
+| RSS seguridad | Cobertura mediática | 25 feeds: THN, BleepingComputer, Talos, Unit 42, Project Zero, watchTowr, etc. |
+| Advisories vendor/CERT | CVE explícito, sin LLM | MSRC, Cisco PSIRT, ZDI, Palo Alto, Ivanti, Fortinet, CERT-FR, INCIBE, CERT-EU, Exploit-DB |
+| Hacker News (Algolia) | Prensa de CVEs fuera de los feeds | https://hn.algolia.com/api |
 | GitHub Search | PoCs | API pública |
 
 ## Licencia

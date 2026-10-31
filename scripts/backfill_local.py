@@ -45,18 +45,30 @@ def iso_date(entry):
 
 
 def buscar(cve_id, brand_name, sesion, timeout=20):
-    """Menciones de prensa para un CVE. Dos consultas: el id y el apodo."""
+    """Menciones de prensa para un CVE. Dos consultas: el id y el apodo.
+
+    Devuelve (menciones, estado). El estado importa: Google responde 503 cuando
+    nos throttle, y eso NO es "este CVE no tuvo prensa". Tratarlo igual hacía
+    que el runner marcara miles de CVEs como hechos con cero menciones.
+    """
     consultas = [cve_id]
     if brand_name and brand_name.strip():
         consultas.append(brand_name.strip())
     vistas, salida = set(), []
+    bloqueado = False
+    completo = False
     for query in consultas:
         try:
             r = sesion.get(URL.format(query=quote_plus(query)), timeout=timeout,
                            headers={"User-Agent": UA})
-            r.raise_for_status()
         except Exception:
             continue
+        if r.status_code in (429, 503):
+            bloqueado = True
+            continue
+        if r.status_code != 200:
+            continue
+        completo = True
         for entry in feedparser.parse(r.content).entries[:LIMITE_POR_CONSULTA]:
             url = (entry.get("link") or "").strip()
             if not url or url in vistas:
@@ -72,7 +84,11 @@ def buscar(cve_id, brand_name, sesion, timeout=20):
                 "source": (medio or "").strip(),
                 "published": iso_date(entry),
             })
-    return salida
+    if bloqueado and not completo:
+        return salida, "bloqueado"
+    if not completo:
+        return salida, "error"
+    return salida, "ok"
 
 
 def main():
@@ -140,29 +156,51 @@ def main():
         return cve, buscar(cve, marca, sesion())
 
     t0 = time.perf_counter()
-    con_datos = total = 0
+    con_datos = total = bloqueos = 0
+
+    def abortar(motivo):
+        print(f"\nABORTADO: {motivo}\n"
+              f"Los CVEs con error no se marcaron como hechos: al volver a correr "
+              f"se reintentan solos.", flush=True)
+
     with open(ndjson, "a", encoding="utf-8") as out, \
             open(hechos, "a", encoding="utf-8") as done, \
             ThreadPoolExecutor(max_workers=args.hilos) as pool:
         futuros = {pool.submit(procesar, par): par[0] for par in pendientes}
-        for k, fut in enumerate(as_completed(futuros), 1):
-            try:
-                cve, menciones = fut.result()
-            except Exception as exc:
-                print(f"  {futuros[fut]}: {type(exc).__name__}: {str(exc)[:80]}", flush=True)
-                continue
-            for m in menciones:
-                out.write(json.dumps(m, ensure_ascii=False) + "\n")
-            total += len(menciones)
-            if menciones:
-                con_datos += 1
-            done.write(cve + "\n")
-            if k % 200 == 0:
-                out.flush()
-                done.flush()
-                dt = time.perf_counter() - t0
-                print(f"{k}/{len(pendientes)}  {k/dt:5.1f} CVE/s  "
-                      f"menciones={total}", flush=True)
+        try:
+            for k, fut in enumerate(as_completed(futuros), 1):
+                try:
+                    cve, (menciones, estado) = fut.result()
+                except Exception as exc:
+                    print(f"  {futuros[fut]}: {type(exc).__name__}: {str(exc)[:80]}",
+                          flush=True)
+                    continue
+                if estado != "ok":
+                    # Sin datos no sabemos nada del CVE: dejarlo pendiente.
+                    bloqueos += 1
+                    if bloqueos >= 25:
+                        for pend in futuros:
+                            pend.cancel()
+                        abortar(f"{bloqueos} consultas seguidas sin respuesta útil "
+                                f"({estado}) — nos están frenando")
+                        return
+                    continue
+                bloqueos = 0
+                for m in menciones:
+                    out.write(json.dumps(m, ensure_ascii=False) + "\n")
+                total += len(menciones)
+                if menciones:
+                    con_datos += 1
+                done.write(cve + "\n")
+                if k % 200 == 0:
+                    out.flush()
+                    done.flush()
+                    dt = time.perf_counter() - t0
+                    print(f"{k}/{len(pendientes)}  {k/dt:5.1f} CVE/s  "
+                          f"menciones={total}", flush=True)
+        finally:
+            out.flush()
+            done.flush()
 
     dt = time.perf_counter() - t0
     print(f"fin: {len(pendientes)} CVEs en {dt:.0f}s "

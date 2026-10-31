@@ -65,6 +65,9 @@ def main():
     p.add_argument("archivo", help="NDJSON con menciones")
     p.add_argument("--lote", type=int, default=5000)
     p.add_argument("--no-score", action="store_true")
+    p.add_argument("--no-marcar", action="store_true",
+                   help="no tocar attention_backfill: deja la cola de Google intacta "
+                        "cuando las menciones vienen de otra fuente (HN)")
     p.add_argument("--dry-run", action="store_true")
     args = p.parse_args()
 
@@ -103,12 +106,13 @@ def main():
 
     if cves_tocados:
         cur = conn.cursor()
-        cur.executemany(
-            "INSERT INTO attention_backfill (cve_id) VALUES (?) "
-            "ON CONFLICT (cve_id) DO NOTHING",
-            [(c,) for c in cves_tocados],
-        )
-        conn.commit()
+        if not args.no_marcar:
+            cur.executemany(
+                "INSERT INTO attention_backfill (cve_id) VALUES (?) "
+                "ON CONFLICT (cve_id) DO NOTHING",
+                [(c,) for c in cves_tocados],
+            )
+            conn.commit()
         if not args.no_score:
             from agents.scoring_agent import score_cves
             for i in range(0, len(cves_tocados), 500):
