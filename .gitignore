@@ -28,6 +28,9 @@ build/
 .coverage
 htmlcov/
 
+# Watchdog de subagentes (timestamps / strikes)
+.grok/watchdog-state.json
+
 # IDE / OS
 .idea/
 .vscode/
