@@ -233,8 +233,122 @@ def upsert_media_mentions(conn, mentions) -> dict:
     return nuevas
 
 
-def load_rss(conn, feeds, *, session=None, timeout=30) -> dict:
-    """Descarga los feeds y acumula menciones. Un feed caído no corta el resto."""
+RERANK_SYSTEM = (
+    "You extract structured facts from security news items. "
+    "Reply with a JSON array only, no prose and no markdown fences."
+)
+
+RERANK_PROMPT = """\
+For each security news item below, extract three fields.
+
+cve_id: the CVE identifier the item is about (format CVE-YYYY-NNNN). Use the id
+that appears in the text. If the text names no CVE, use null — do not guess.
+brand_name: the marketing nickname the item itself uses for that vulnerability
+(Log4Shell, Heartbleed, ShuffleShock, regreSSHion). Null when the text uses no
+nickname; never invent one.
+relevant: true only if the item is about a specific software vulnerability.
+Events, policy, funding, opinion pieces and product launches are false.
+
+Reply with a JSON array, one object per item, in the same order:
+[{{"i": 1, "cve_id": null, "brand_name": null, "relevant": false}}]
+
+Items:
+{items}
+"""
+
+RERANK_BATCH = 10
+RERANK_TITLE_CHARS = 180
+RERANK_SUMMARY_CHARS = 260
+
+
+def build_rerank_prompt(entries) -> str:
+    lines = []
+    for index, entry in enumerate(entries, 1):
+        title = (entry.get("title") or "").replace('"', "'")[:RERANK_TITLE_CHARS]
+        summary = (entry.get("summary") or "").replace('"', "'")[:RERANK_SUMMARY_CHARS]
+        lines.append(f'{index}. title="{title}" summary="{summary}"')
+    return RERANK_PROMPT.format(items="\n".join(lines))
+
+
+def parse_rerank_reply(reply) -> list:
+    """Saca el array JSON de la respuesta, tolerando fences o prosa alrededor."""
+    text = (reply or "").strip()
+    if not text:
+        return []
+    start, end = text.find("["), text.rfind("]")
+    if start == -1 or end <= start:
+        return []
+    try:
+        data = json.loads(text[start:end + 1])
+    except ValueError:
+        return []
+    return [item for item in data if isinstance(item, dict)]
+
+
+def rerank_entries(entries, *, config=None, completer=None, batch_size=RERANK_BATCH) -> list:
+    """Pasa las entradas por el LLM y devuelve {cve_id, brand_name, relevant}.
+
+    Mismo orden que `entries`. Si el LLM falla en un lote, esas entradas quedan
+    sin rerank (cve_id None) y el llamador decide: no se pierde el feed.
+    """
+    call = completer or (lambda prompt: llm_client.complete(
+        prompt, system=RERANK_SYSTEM, config=config))
+    out: list = [{} for _ in entries]
+    for start in range(0, len(entries), batch_size):
+        chunk = entries[start:start + batch_size]
+        try:
+            reply = call(build_rerank_prompt(chunk))
+        except Exception as exc:  # LLM caído no debe tumbar el enrich
+            print(f"rerank: {type(exc).__name__}: {str(exc)[:120]}")
+            continue
+        for item in parse_rerank_reply(reply):
+            index = item.get("i")
+            if not isinstance(index, int) or not 1 <= index <= len(chunk):
+                continue
+            cve_id = str(item.get("cve_id") or "").strip().upper() or None
+            if cve_id and not CVE_PATTERN.fullmatch(cve_id):
+                cve_id = None
+            brand = str(item.get("brand_name") or "").strip() or None
+            # Un apodo sin CVE no se puede colgar de ninguna fila.
+            if brand and len(brand) > 48:
+                brand = None
+            out[start + index - 1] = {
+                "cve_id": cve_id,
+                "brand_name": brand if cve_id else None,
+                "relevant": bool(item.get("relevant")),
+            }
+    return out
+
+
+def mentions_from_rerank(entries, reranked) -> list:
+    """Menciones a partir del rerank; las que no son de una vuln se descartan."""
+    mentions = []
+    for entry, verdict in zip(entries, reranked):
+        if not verdict or verdict.get("relevant") is False:
+            continue
+        cve_id = verdict.get("cve_id")
+        if not cve_id:
+            continue
+        url = entry.get("url") or ""
+        mentions.append({
+            "cve_id": cve_id,
+            "url": url or f"urn:cve:{cve_id}",
+            "title": entry.get("title"),
+            "source": entry.get("source"),
+            "published": entry.get("published"),
+            "brand_name": verdict.get("brand_name"),
+        })
+    return mentions
+
+
+def load_rss(conn, feeds, *, session=None, timeout=30, rerank=False,
+             config=None, completer=None) -> dict:
+    """Descarga los feeds y acumula menciones. Un feed caído no corta el resto.
+
+    Con `rerank` cada entrada pasa por el LLM: descarta lo que no es una
+    vulnerabilidad concreta, resuelve el CVE del texto y, cuando el titular usa
+    un apodo (Log4Shell), lo guarda como brand_name del CVE.
+    """
     http = session or requests
     nuevas: dict = {}
     for url in feeds or []:
@@ -246,9 +360,42 @@ def load_rss(conn, feeds, *, session=None, timeout=30) -> dict:
             print(f"RSS {url}: {exc}")
             continue
         entries = parse_feed(content, source=_host(url))
-        for cve_id, delta in upsert_media_mentions(conn, collect_mentions(entries)).items():
+        if rerank:
+            reranked = rerank_entries(entries, config=config, completer=completer)
+            mentions = mentions_from_rerank(entries, reranked)
+        else:
+            mentions = collect_mentions(entries)
+        for cve_id, delta in upsert_media_mentions(conn, mentions).items():
             nuevas[cve_id] = nuevas.get(cve_id, 0) + delta
+        apply_mention_brands(conn, mentions)
     return nuevas
+
+
+def apply_mention_brands(conn, mentions) -> int:
+    """Escribe en enrichments el apodo que el titular usa para el CVE.
+
+    El apodo sólo se acepta desde la prensa: es el único lugar donde aparece.
+    """
+    written = 0
+    for mention in mentions:
+        brand = (mention.get("brand_name") or "").strip()
+        cve_id = (mention.get("cve_id") or "").strip().upper()
+        if not brand or not cve_id:
+            continue
+        current = conn.execute(
+            "SELECT brand_name FROM enrichments WHERE cve_id = ?", (cve_id,)
+        ).fetchone()
+        if current and (current["brand_name"] or "").strip():
+            continue  # no se pisa un apodo ya establecido
+        ensure_cve_stub(conn, cve_id)
+        conn.execute("""
+            INSERT INTO enrichments (cve_id, branding, brand_name) VALUES (?, 1, ?)
+            ON CONFLICT(cve_id) DO UPDATE SET
+                branding = 1, brand_name = excluded.brand_name,
+                updated_at = CURRENT_TIMESTAMP
+        """, (cve_id, brand))
+        written += 1
+    return written
 
 
 # --------------------------------------------------------------------------
@@ -554,7 +701,10 @@ def run(*, skip_kev=False, skip_epss=False, skip_rss=False, skip_github=False,
             summary["epss"] = load_epss(conn)
 
         if not skip_rss:
-            summary["rss"] = load_rss(conn, sources.get("rss") or [], session=session)
+            summary["rss"] = load_rss(
+                conn, sources.get("rss") or [], session=session,
+                rerank=bool(sources.get("rerank_feeds")), completer=None,
+            )
 
         github_cfg = sources.get("github_search") or {}
         if not skip_github and github_cfg.get("enabled"):

@@ -17,6 +17,17 @@ sources:
     - https://feeds.feedburner.com/TheHackersNews
     - https://www.bleepingcomputer.com/feed/
     - https://www.securityweek.com/feed/
+    - https://www.helpnetsecurity.com/feed/
+    - https://therecord.media/feed
+    - https://www.darkreading.com/rss.xml
+    - https://www.cisa.gov/cybersecurity-advisories/all.xml
+    # Nuevos CVE tal como NVD los analiza: titular + descripción técnica.
+    - https://nvd.nist.gov/feeds/xml/cve/misc/nvd-rss-analyzed.xml
+
+  # Cada entrada pasa por el LLM: descarta lo que no es una vulnerabilidad
+  # concreta, resuelve el CVE del texto y guarda el apodo del titular
+  # (Log4Shell) como brand_name. Apagalo si el LLM no está disponible.
+  rerank_feeds: true
 
   github_search:
     enabled: true

@@ -291,6 +291,7 @@ def document(body: str, *, refresh: int | None = None) -> str:
         "<title>Humo vs Miedo</title>"
         '<link rel="preconnect" href="https://fonts.googleapis.com">'
         '<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">'
+        '<script defer src="https://analytics.munalabs.eu/script.js" data-website-id="2f0e03ec-fd86-48cd-b7d0-c916b987c564"></script>'
         f"<style>{PAGE_CSS}</style></head><body>{body}"
         "<script>(function(){"
         "var f=document.getElementById('filters');if(f){"
@@ -571,11 +572,18 @@ def overview_html(
     until: str,
     show_all: bool = False,
     query: str = "",
+    product: str = "",
+    products=None,
 ) -> str:
+    product_options = "".join(
+        _opt(str(row["product"]), str(row["product"]), product) for row in (products or [])
+    )
     start = page * page_size + 1 if total else 0
     end = min(total, page * page_size + page_size)
     max_page = max(0, (total - 1) // page_size) if total else 0
     common = dict(severity=severity, category=category, since=since, until=until)
+    if product and product != "All products":
+        common["product"] = product
     if query:
         common["q"] = query
     if show_all:
@@ -620,7 +628,10 @@ def overview_html(
         </select>
       </div>
       <div class="filter"><label>Product</label>
-        <select name="product"><option>All products</option></select>
+        <select name="product">
+          {_opt("All products", "All products", product)}
+          {product_options}
+        </select>
       </div>
       <div class="filter"><label>Category</label>
         <select name="category">

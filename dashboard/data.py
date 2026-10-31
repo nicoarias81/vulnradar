@@ -35,7 +35,7 @@ SELECT_SCORES_BASE = """
 """
 
 
-def _filters(since=None, until=None, category=None, severity=None, query=None):
+def _filters(since=None, until=None, category=None, severity=None, query=None, product=None):
     clauses: list[str] = []
     params: list = []
     if since:
@@ -50,22 +50,27 @@ def _filters(since=None, until=None, category=None, severity=None, query=None):
     if severity and severity not in ("All severities",):
         clauses.append("upper(c.cvss_severity) = ?")
         params.append(str(severity).upper())
+    if product and product not in ("All products",):
+        clauses.append("c.product = ?")
+        params.append(str(product))
     if query:
         text = str(query).strip()
         if text:
             like = f"%{text}%"
-            # Cada vía usa su propio índice (trigram para id/apodo, GIN full-text
-            # para descripción). Un OR suelto forzaba seq scan: 20 s por request.
+            # Cada vía usa su propio índice (trigram para id/apodo/producto, GIN
+            # full-text para descripción). Un OR suelto forzaba seq scan: 20 s.
             clauses.append("""s.cve_id IN (
             SELECT cve_id FROM cves WHERE cve_id ILIKE ?
             UNION
             SELECT cve_id FROM enrichments WHERE brand_name ILIKE ?
             UNION
+            SELECT cve_id FROM cves WHERE product ILIKE ?
+            UNION
             SELECT cve_id FROM cves
             WHERE to_tsvector('english', coalesce(description, ''))
                   @@ plainto_tsquery('english', ?)
         )""")
-            params.extend([like, like, text])
+            params.extend([like, like, like, text])
     return clauses, params
 
 
@@ -160,8 +165,9 @@ def load_alert_counts(conn, cve_ids=None) -> dict:
     return {row[0]: int(row[1]) for row in rows}
 
 
-def count_scores(conn, since=None, until=None, category=None, severity=None, query=None) -> int:
-    clauses, params = _filters(since, until, category, severity, query)
+def count_scores(conn, since=None, until=None, category=None, severity=None, query=None,
+                 product=None) -> int:
+    clauses, params = _filters(since, until, category, severity, query, product)
     sql = (
         "SELECT COUNT(*) FROM scores s "
         "JOIN cves c ON c.cve_id = s.cve_id "
@@ -170,6 +176,20 @@ def count_scores(conn, since=None, until=None, category=None, severity=None, que
     )
     row = conn.execute(sql, params).fetchone()
     return int(row[0] if row and row[0] is not None else 0)
+
+
+def load_products(conn, since=None, until=None, limit: int = 40) -> list:
+    """Productos con más CVEs en el rango: opciones del selector de la home."""
+    clauses, params = _filters(since, until)
+    clauses = clauses + ["c.product IS NOT NULL", "btrim(c.product) <> ''"]
+    sql = (
+        "SELECT c.product AS product, COUNT(*) AS n "
+        "FROM scores s JOIN cves c ON c.cve_id = s.cve_id\n"
+        + _where(clauses)
+        + "    GROUP BY c.product ORDER BY n DESC, c.product\n"
+        "    LIMIT ?\n"
+    )
+    return _fetch_dicts(conn.execute(sql, list(params) + [int(limit)]))
 
 
 def load_scores(
@@ -182,14 +202,15 @@ def load_scores(
     offset=0,
     order="calculated_at",
     query=None,
+    product=None,
 ) -> list:
     """
     Scores vigentes con su CVE y su enrichment.
 
     Base vacía -> lista vacía. `limit`/`offset` capan en SQL (home: tabla y scatter).
-    `query` filtra por CVE id o apodo del CVE (brand_name).
+    `query` filtra por CVE id, apodo (brand_name), producto o descripción.
     """
-    clauses, params = _filters(since, until, category, severity, query)
+    clauses, params = _filters(since, until, category, severity, query, product)
     sql = SELECT_SCORES_BASE + _where(clauses) + _order_sql(order)
     if limit is not None:
         sql += "    LIMIT ? OFFSET ?\n"
@@ -211,9 +232,10 @@ def load_latest_score(conn):
     return rows[0] if rows else None
 
 
-def load_daily_averages(conn, since=None, until=None, category=None, severity=None) -> list:
+def load_daily_averages(conn, since=None, until=None, category=None, severity=None,
+                        product=None) -> list:
     """Promedio de hype/reality por día, agregado en SQL."""
-    clauses, params = _filters(since, until, category, severity)
+    clauses, params = _filters(since, until, category, severity, None, product)
     sql = (
         f"SELECT {_DAY_EXPR} AS date, "
         "AVG(s.hype) AS hype, AVG(s.reality) AS reality, COUNT(*) AS n "

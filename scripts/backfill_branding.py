@@ -18,7 +18,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from agents.enrichment_agent import analyze_tone_batch, heuristic_branding, upsert_tone
+from agents.enrichment_agent import (
+    KNOWN_BRANDS,
+    analyze_tone_batch,
+    heuristic_branding,
+    upsert_tone,
+)
 from core.db import get_db, init_db
 
 LLM_BATCH = 8
@@ -97,6 +102,11 @@ def main(dry_run: bool = False, llm_limit: int = 0) -> dict:
         for cve_id, title in titles.items():
             branding, brand = heuristic_branding(title)
             if not branding or not brand:
+                continue
+            # El heurístico también levanta CamelCase de productos y grupos
+            # (TeamViewer, GitLab, ShinyHunters): para el buscador sólo sirven
+            # apodos de marketing, así que se aceptan los de la lista curada.
+            if brand not in KNOWN_BRANDS:
                 continue
             if existing.get(cve_id) == brand:
                 continue

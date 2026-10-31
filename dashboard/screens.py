@@ -12,6 +12,7 @@ from dashboard.data import (
     hype_components,
     load_agent_stats,
     load_daily_averages,
+    load_products,
     load_latest_score,
     load_mentions,
     load_recent_events,
@@ -68,6 +69,9 @@ def overview(qp: dict | None = None) -> str:
     until_s = _qp(qp, "until")
     show_all = _qp(qp, "all") == "1"
     query = (_qp(qp, "q") or "").strip()
+    product = (_qp(qp, "product") or "").strip()
+    if product == "All products":
+        product = ""
     if not since_s and not until_s and not query:
         until_default = datetime.now(timezone.utc).date()
         since_default = until_default - timedelta(days=DEFAULT_RANGE_DAYS)
@@ -93,9 +97,12 @@ def overview(qp: dict | None = None) -> str:
 
     cat = None if category == "All categories" else category
     sev = None if severity == "All severities" else severity
+    prod = product or None
     conn = get_db()
     try:
-        total = count_scores(conn, since=since, until=until, category=cat, severity=sev, query=query)
+        total = count_scores(conn, since=since, until=until, category=cat, severity=sev,
+                             query=query, product=prod)
+        products = load_products(conn, since=since, until=until)
         if not total:
             empty = (
                 f'<p class="empty">Sin resultados para «{escape(query)}».</p>'
@@ -109,7 +116,7 @@ def overview(qp: dict | None = None) -> str:
                 table_rows="",
                 total=0, page=0, page_size=page_size,
                 severity=severity, category=category, since=since_s, until=until_s,
-                show_all=show_all, query=query,
+                show_all=show_all, query=query, product=product, products=products,
             )
         if show_all:
             page_size = VIEW_ALL_LIMIT
@@ -118,13 +125,14 @@ def overview(qp: dict | None = None) -> str:
         chunk = load_scores(
             conn, since=since, until=until, category=cat, severity=sev,
             limit=page_size, offset=page * page_size, order="published", query=query,
+            product=prod,
         )
         scatter_rows = load_scores(
             conn, since=since, until=until, category=cat, severity=sev,
-            limit=SCATTER_LIMIT, order="hype", query=query,
+            limit=SCATTER_LIMIT, order="hype", query=query, product=prod,
         )
         series = load_daily_averages(
-            conn, since=since, until=until, category=cat, severity=sev,
+            conn, since=since, until=until, category=cat, severity=sev, product=prod,
         )
     finally:
         conn.close()
@@ -158,7 +166,7 @@ def overview(qp: dict | None = None) -> str:
         table_rows="".join(table_rows),
         total=total, page=page, page_size=page_size,
         severity=severity, category=category, since=since_s, until=until_s,
-        show_all=show_all, query=query,
+        show_all=show_all, query=query, product=product, products=products,
     )
 
 

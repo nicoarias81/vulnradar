@@ -8,6 +8,8 @@ CREATE TABLE IF NOT EXISTS cves (
     cvss_score DOUBLE PRECISION,
     cvss_vector TEXT,
     cvss_severity TEXT,
+    vendor TEXT,
+    product TEXT,
     raw_json TEXT,
     synced_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
