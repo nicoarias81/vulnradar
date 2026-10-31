@@ -121,7 +121,7 @@ def overview(qp: dict | None = None) -> str:
         )
         scatter_rows = load_scores(
             conn, since=since, until=until, category=cat, severity=sev,
-            limit=SCATTER_LIMIT, order="hype",
+            limit=SCATTER_LIMIT, order="hype", query=query,
         )
         series = load_daily_averages(
             conn, since=since, until=until, category=cat, severity=sev,
