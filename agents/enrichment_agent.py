@@ -33,6 +33,9 @@ from core import llm as llm_client
 from core.db import REPO_ROOT, ensure_cve_stub, get_db, init_db
 
 KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
+# cisa.gov responde 403 "Access Denied" (Akamai) a IPs de datacenter: el repo oficial kev-data
+# publica el mismo catálogo en JSON, con idéntico formato y versión.
+KEV_MIRROR_URL = "https://raw.githubusercontent.com/cisagov/kev-data/main/known_exploited_vulnerabilities.json"
 EPSS_URL = "https://epss.empiricalsecurity.com/epss_scores-current.csv.gz"
 GITHUB_SEARCH_URL = "https://api.github.com/search/repositories"
 SOURCES_PATH = REPO_ROOT / "config" / "sources.yaml"
@@ -97,12 +100,26 @@ def upsert_epss(conn, rows) -> int:
 
 
 def load_kev(conn) -> int:
-    print("Descargando CISA KEV...")
-    data = requests.get(KEV_URL, timeout=30).json()
-    count = upsert_kev(conn, data.get("vulnerabilities", []))
-    conn.commit()
-    print(f"KEV cargado: {count} CVEs.")
-    return count
+    last_error = None
+    for url in (KEV_URL, KEV_MIRROR_URL):
+        print(f"Descargando CISA KEV desde {url}...")
+        try:
+            response = requests.get(url, timeout=60)
+            if response.status_code != 200:
+                raise RuntimeError(f"HTTP {response.status_code}")
+            data = response.json()
+            vulns = data.get("vulnerabilities") or []
+            if not vulns:
+                raise RuntimeError("JSON sin 'vulnerabilities'")
+        except Exception as exc:  # 403/HTML de Akamai, red, JSON inválido
+            last_error = exc
+            print(f"KEV: fuente descartada ({type(exc).__name__}: {exc})")
+            continue
+        count = upsert_kev(conn, vulns)
+        conn.commit()
+        print(f"KEV cargado: {count} CVEs (catalogo {data.get('catalogVersion', '?')}).")
+        return count
+    raise RuntimeError(f"KEV: ninguna fuente respondió ({last_error})")
 
 
 def load_epss(conn) -> int:
