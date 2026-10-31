@@ -49,6 +49,14 @@ def main() -> int:
             menciones = [dict(m, cve_id=cve_id) for m in fila.get("menciones") or []]
             if menciones:
                 nuevas_total += upsert_media_mentions(conn, menciones).get(cve_id, 0)
+                # Refresca título/medio/fecha de lo ya cargado sin tocar los conteos.
+                for m in menciones:
+                    conn.execute(
+                        "UPDATE media_mentions SET title = ?, source = ?, published = ? "
+                        "WHERE cve_id = ? AND url = ?",
+                        (m.get("title"), m.get("source"), m.get("published"),
+                         cve_id, m.get("url")),
+                    )
             pendientes.append(cve_id)
             if len(pendientes) >= 500:
                 for cid in pendientes:

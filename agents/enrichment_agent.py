@@ -170,13 +170,17 @@ def parse_feed(content, source=None) -> list:
 
     entries = []
     for entry in parsed.entries:
+        # Google News RSS pone el medio real en <source>: feed.title es la consulta.
+        medio = entry.get("source")
+        if isinstance(medio, dict):
+            medio = medio.get("title") or ""
         entries.append({
             "url": (entry.get("link") or "").strip(),
             "title": (entry.get("title") or "").strip(),
             "summary": _strip_html(entry.get("summary") or entry.get("description") or ""),
             "published": _iso_date(entry),
-            # El nombre del medio sale del propio feed; el host es el fallback.
-            "source": feed_title or source,
+            # El nombre del medio sale de la entrada; el feed y el host son fallback.
+            "source": (medio or "").strip() or feed_title or source,
         })
     return entries
 

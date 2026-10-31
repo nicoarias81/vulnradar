@@ -44,10 +44,14 @@ def fetch_mentions(cve_id, brand, session, limit=25, timeout=20):
             if not url or url in vistas:
                 continue
             vistas.add(url)
+            medio = entry.get("source")
+            if isinstance(medio, dict):
+                medio = medio.get("title") or ""
             salida.append({
                 "url": url,
                 "title": (entry.get("title") or "").strip(),
-                "source": (parsed.feed.get("title") or "").strip() if parsed.feed else "",
+                # Google News: el medio real está en <source>, no en el título del feed.
+                "source": (medio or "").strip() or "Google News",
                 "published": entry.get("published") or entry.get("updated"),
             })
     return salida
