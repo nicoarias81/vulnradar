@@ -14,6 +14,11 @@ SELECT_ENRICHED = """
            e.media_count, e.poc_count, e.tone_score, e.branding
     FROM cves c
     JOIN enrichments e ON e.cve_id = c.cve_id
+    -- Stubs de ensure_cve_stub() sólo tienen cve_id; EPSS masivo no debe puntuarlos.
+    WHERE c.raw_json IS NOT NULL
+       OR c.published IS NOT NULL
+       OR c.description IS NOT NULL
+       OR c.cvss_score IS NOT NULL
 """
 
 UPSERT_SQL = """

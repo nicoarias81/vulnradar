@@ -152,6 +152,15 @@ def test_scoring_ignora_cves_sin_enrichment(conn):
     assert _count(conn, "scores", "CVE-2026-1111") == 0
 
 
+def test_scoring_ignora_stubs_sin_datos_de_sync(conn):
+    """KEV/EPSS pueden crear stubs; no deben puntuar hasta que el sync llene el CVE."""
+    upsert_kev(conn, [{"cveID": "CVE-2026-7777", "dateAdded": "2026-02-01"}])
+    upsert_epss(conn, [{"cve": "CVE-2026-7777", "epss": "0.9", "percentile": "0.99"}])
+
+    assert score_all(conn) == 0
+    assert _count(conn, "scores", "CVE-2026-7777") == 0
+
+
 def test_process_cve_file_normaliza_y_hace_upsert(conn):
     path = FIXTURES / "CVE-2026-0001.json"
 
