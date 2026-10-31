@@ -22,6 +22,7 @@ import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import quote_plus
 
 import feedparser
 import requests
@@ -198,6 +199,52 @@ def collect_mentions(entries) -> list:
                 "published": entry.get("published"),
             })
     return mentions
+
+
+SEARCH_NEWS_URL = "https://news.google.com/rss/search?q={query}&hl=en-US&gl=US&ceid=US:en"
+
+
+def search_mentions(cve_id, brand_name=None, *, session=None,
+                    template=SEARCH_NEWS_URL, limit=25, timeout=20) -> list:
+    """Menciones de prensa buscando el CVE (y su apodo) fuera de los feeds fijos.
+
+    Los 7 feeds del ciclo sólo traen lo último publicado: un CVE que explotó hace
+    dos semanas desaparece del radar aunque tenga 700 PoCs y esté en KEV. Esto
+    levanta el historial completo desde la búsqueda de noticias.
+    """
+    http = session or requests.Session()
+    queries = [cve_id] + ([brand_name.strip()] if brand_name and brand_name.strip() else [])
+    vistas, salida = set(), []
+    for query in queries:
+        url = template.format(query=quote_plus(query))
+        try:
+            response = http.get(url, timeout=timeout, headers={"User-Agent": USER_AGENT})
+            response.raise_for_status()
+        except Exception:
+            continue
+        for entry in parse_feed(response.content, source=f"news:{query}")[:limit]:
+            clave = entry["url"]
+            if not clave or clave in vistas:
+                continue
+            vistas.add(clave)
+            entry["cve_id"] = cve_id
+            salida.append(entry)
+    return salida
+
+
+def select_attention_targets(conn, limit=40) -> list:
+    """CVEs donde la atención importa: con PoCs, en KEV o recientes."""
+    rows = conn.execute("""
+        SELECT e.cve_id AS cve_id, e.brand_name AS brand_name
+        FROM enrichments e
+        LEFT JOIN cves c ON c.cve_id = e.cve_id
+        WHERE COALESCE(e.poc_count, 0) > 0 OR COALESCE(e.in_kev, 0) = 1
+           OR c.published > CURRENT_TIMESTAMP - INTERVAL '60 days'
+        ORDER BY COALESCE(e.in_kev, 0) DESC, COALESCE(e.poc_count, 0) DESC,
+                 c.published DESC
+        LIMIT ?
+    """, (max(0, int(limit)),)).fetchall()
+    return [(row["cve_id"], row["brand_name"]) for row in rows]
 
 
 def upsert_media_mentions(conn, mentions) -> dict:
