@@ -192,9 +192,19 @@ def get_db(path: Path | str | None = None) -> PgConnection:
     raw.commit()
     if schema != "public":
         ident = sql.Identifier(schema)
-        raw.execute(sql.SQL("CREATE SCHEMA IF NOT EXISTS {}").format(ident))
+        # `CREATE SCHEMA IF NOT EXISTS` no es atómico entre sesiones: dashboard y
+        # worker arrancan a la vez y la segunda choca en pg_namespace_nspname_index.
+        # Esa UniqueViolation abortaba la transacción y dejaba el schema sin aplicar
+        # (el "Aviso: no se pudo aplicar el esquema" del deploy).
+        try:
+            raw.execute(sql.SQL("CREATE SCHEMA IF NOT EXISTS {}").format(ident))
+            raw.commit()
+        except psycopg.errors.UniqueViolation:
+            raw.rollback()  # otra sesión lo creó primero: el schema existe igual
+        # public va de respaldo: las extensiones (pg_trgm, unaccent) viven ahí y sin
+        # él los índices gin_trgm_ops de un schema aislado no resuelven.
+        raw.execute(sql.SQL("SET search_path TO {}, public").format(ident))
         raw.commit()
-        raw.execute(sql.SQL("SET search_path TO {}").format(ident))
     return PgConnection(raw)
 
 
@@ -214,6 +224,14 @@ def init_db(path: Path | str | None = None):
         # nunca llegaba a abrir el puerto. Mejor fallar rápido y seguir con el
         # esquema existente (schema.sql es idempotente).
         conn.execute("SET lock_timeout = '10s'")
+        # pg_trgm sostiene los índices gin_trgm_ops del schema: sin la extensión el
+        # script entero aborta y la base queda vacía (así fallaban los tests y el
+        # aviso de arranque). Si el rol no puede crearla, se sigue y se ve el error real.
+        try:
+            conn.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
+            conn.commit()
+        except Exception:
+            conn.rollback()
         try:
             conn.execute("SELECT pg_advisory_lock(hashtext(?))", (lock_key,))
             try:

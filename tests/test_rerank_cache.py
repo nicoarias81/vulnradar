@@ -6,6 +6,7 @@ nuevas, porque los RSS rotan lento y cada corrida re-analizaba las mismas notas.
 import json
 from pathlib import Path
 
+import psycopg
 import pytest
 
 from agents import enrichment_agent as agent
@@ -100,9 +101,11 @@ def test_segunda_corrida_no_gasta_llm(conn, session):
 def test_guarda_las_urls_procesadas(conn, session):
     _rerank(conn, session, _Counter())
 
-    urls = {row["url"] for row in conn.execute("SELECT url FROM reranked_urls").fetchall()}
-    assert "https://example.com/story-1" in urls
-    assert len(urls) == 3  # las tres entradas del fixture
+    guardadas = {row["url"] for row in conn.execute("SELECT url FROM reranked_urls").fetchall()}
+    del_fixture = {e["url"] for e in agent.parse_feed(session.content, source="x") if e.get("url")}
+
+    assert "https://example.com/story-1" in guardadas
+    assert guardadas == del_fixture
 
 
 def test_lote_caido_no_se_marca_y_se_reintenta(conn, session):
@@ -115,11 +118,11 @@ def test_lote_caido_no_se_marca_y_se_reintenta(conn, session):
     assert retry.calls > 0, "una entrada sin veredicto no puede quedar como procesada"
 
 
-def test_get_db_no_deja_transaccion_abierta(conn):
+def test_get_db_no_deja_transaccion_abierta(db_file):
     # Sin commit del SET inicial la sesión queda "idle in transaction" y cualquier
     # sentencia posterior muere con InFailedSqlTransaction si algo falló antes.
-    state = conn.execute(
-        "SELECT state FROM pg_stat_activity WHERE pid = pg_backend_pid()"
-    ).fetchone()["state"]
-
-    assert state == "idle", f"la conexión quedó {state}"
+    conn = get_db(db_file)
+    try:
+        assert conn._raw.info.transaction_status == psycopg.pq.TransactionStatus.IDLE
+    finally:
+        conn.close()
