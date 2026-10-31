@@ -126,7 +126,9 @@ def load_epss(conn) -> int:
     print("Descargando EPSS...")
     response = requests.get(EPSS_URL, timeout=60)
     with gzip.open(io.BytesIO(response.content), "rt", encoding="utf-8") as stream:
-        count = upsert_epss(conn, csv.DictReader(stream))
+        # EPSS antepone metadatos ("#model_version:...,score_date:...") antes del header real.
+        rows = (line for line in stream if line.strip() and not line.startswith("#"))
+        count = upsert_epss(conn, csv.DictReader(rows))
     conn.commit()
     print(f"EPSS cargado: {count} CVEs.")
     return count
