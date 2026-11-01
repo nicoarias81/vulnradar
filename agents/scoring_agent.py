@@ -15,7 +15,7 @@ from core.scoring import score_cve, exploitation_state
 
 SCORE_BATCH_SIZE = 2000
 # Bump whenever formulas, normalization or category thresholds change.
-SCORING_VERSION = "v4.4-poc-score-in-reality"
+SCORING_VERSION = "v4.5-ordinal-ladder"
 INPUT_HASH_SQL = f"""md5(jsonb_build_array(
     '{SCORING_VERSION}', c.cvss_score, c.cvss_vector,
     e.in_kev, CASE WHEN left(e.epss_date,10) >= to_char(CURRENT_TIMESTAMP - INTERVAL '7 days','YYYY-MM-DD') AND left(e.epss_date,10) <= to_char(CURRENT_TIMESTAMP,'YYYY-MM-DD') THEN e.epss ELSE NULL END,

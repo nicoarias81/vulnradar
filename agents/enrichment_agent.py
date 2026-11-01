@@ -48,6 +48,10 @@ SOURCES_PATH = REPO_ROOT / "config" / "sources.yaml"
 
 USER_AGENT = "vulnradar/0.3 (+https://github.com/nicoarias81/vulnradar)"
 DEFAULT_POC_QUERY = "{cve_id}"
+# Corroboration thresholds for a public PoC: below these a repo is a name grab
+# (squatters publish CVE-XXXX-NNNNN repos within hours of disclosure).
+VALIDATED_POC_STARS = 10
+VALIDATED_POC_FORKS = 5
 
 # CVE-YYYY-NNNN (sequence of 4+ digits).
 CVE_PATTERN = re.compile(r"\bCVE-\d{4}-\d{4,}\b", re.IGNORECASE)
@@ -771,7 +775,33 @@ def upsert_pocs(conn, cve_id, repos) -> int:
             ),
         )
         guardados += 1
+    if guardados:
+        refresh_validated_poc_count(conn, cve_id)
     return guardados
+
+
+def refresh_validated_poc_count(conn, cve_id) -> int:
+    """Counts corroborated repos into enrichments.validated_poc_count.
+
+    A repo nobody starred or forked is a name grab: it proves someone claimed a
+    PoC, not that one works. A repo the community kept (stars/forks) is the only
+    corroboration available without running the exploit. Until now this column was
+    never written by anyone: 0 rows in 398,927, which made the public-PoC branch
+    of the score dead code.
+    """
+    row = conn.execute(
+        """
+        SELECT count(*) FROM pocs
+        WHERE cve_id = ? AND (stars >= ? OR forks >= ?)
+        """,
+        (cve_id, VALIDATED_POC_STARS, VALIDATED_POC_FORKS),
+    ).fetchone()
+    total = int((row[0] if row else 0) or 0)
+    conn.execute(
+        "UPDATE enrichments SET validated_poc_count = ? WHERE cve_id = ?",
+        (total, cve_id),
+    )
+    return total
 
 
 def fetch_poc_count(cve_id, *, session=None, token=None, template=DEFAULT_POC_QUERY,

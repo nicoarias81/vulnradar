@@ -16,7 +16,9 @@ from core.scoring import score_cve, calculate_hype, calculate_reality, exploit_e
     ({'epss':0.01,'media_score':10,'tone_score':9,'branding':True},9.75,0.05,'Overhyped'),
     ({'cvss':10,'poc_score':10,'epss':0},0,0.5,'Quiet'),
     ({'cvss':10,'epss':0},0,0,'Quiet'),
-    ({'epss':0.9,'public_poc':True},0,5.5,'Watch'),
+    ({'epss':0.9,'public_poc':True},0,6,'Sleeper'),
+    ({'epss':0.9,'public_poc':True,'media_score':10,'tone_score':9,'branding':True},9.75,6,'Earned the hype'),
+    ({'public_poc':True},0,6,'Sleeper'),
     ({'epss':0.00457,'poc_score':10},0,0.52,'Quiet'),
     ({'epss':0.00457,'poc_score':2},0,0.12,'Quiet'),
 ])

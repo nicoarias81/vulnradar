@@ -64,27 +64,29 @@ def probability(value):
 
 
 def calculate_reality(signals: dict) -> float:
-    """Ordinal tiers: confirmed exploitation 7-8; predictive evidence 0-5.9.
+    """Ordinal ladder: 8 = KEV + ransomware, 7 = KEV, 6 = working public PoC, 0-5.9 predictive.
 
-    The floors are product safety rules, not fitted/calibrated probabilities.
-    EPSS retains its probability meaning only in the separate EPSS field: adding
-    it here duplicated the signal and painted 1,766 KEV entries into a 7.00-9.00
-    smear whose hundredths meant nothing. Ties are broken where the list is read
-    (epss DESC, kev date DESC), not by inflating the score.
-    Ease and repository popularity do not add correlated predictive evidence.
+    Each step is a different fact about the world, not a finer estimate of the
+    same one:
+      8  CISA says it was used in ransomware campaigns.
+      7  CISA says it was exploited in the wild (KEV).
+      6  Someone published code that other people starred or forked: the exploit
+         exists and was corroborated, but no authority confirms wild use.
+    0-5.9  Priors: EPSS probability plus, at most, +0.5 for uncorroborated repos.
+
+    EPSS keeps its probability meaning in the separate EPSS field: adding it here
+    painted 1,766 KEV entries into a 7.00-9.00 smear whose hundredths meant
+    nothing, and leaving the top tier as a single 7.0 made the lists unreadable.
     """
     epss = probability(signals.get('epss')) or 0.0
     if exploitation_state(signals) == 'confirmed-exploitation':
-        return 7.0 + (1.0 if signals.get('ransomware_use') else 0.0)
-    # Public exploit code is capability evidence, graded by provenance:
-    # ExploitDB/validated repos are strong (+1.0); raw GitHub hits are weak
-    # (up to +0.5 on the 0-10 poc_score scale) because auto-generated repos appear
-    # within hours of publication. Before this, poc_score was computed and never
-    # read by the score: 25,189 CVEs had public repos and the public-PoC inputs
-    # (exploitdb/validated counts) were 0 everywhere, so every prediction read 0.0.
-    strong_poc = 1.0 if signals.get('public_poc') else 0.0
+        return 8.0 if signals.get('ransomware_use') else 7.0
+    if signals.get('public_poc'):
+        return 6.0
+    # Raw GitHub hits stay in the predictive band: auto-generated repos appear
+    # within hours of publication and mean nothing until someone stars them.
     weak_poc = min(0.5, round(0.05 * bounded(signals.get('poc_score'), 10.0), 2))
-    return round(min(5.9, 5 * epss + strong_poc + weak_poc), 2)
+    return round(min(5.9, 5 * epss + weak_poc), 2)
 
 
 def calculate_hype(signals: dict) -> float:
@@ -109,8 +111,8 @@ def get_category(hype: float, reality: float) -> str:
 def score_cve(signals: dict) -> dict:
     hype, reality = calculate_hype(signals), calculate_reality(signals)
     state = exploitation_state(signals)
-    category = 'Unknown' if probability(signals.get('epss')) is None and state != 'confirmed-exploitation' else get_category(hype, reality)
-    if state != 'confirmed-exploitation' and probability(signals.get('epss')) is not None:
-        if probability(signals.get('epss')) >= 0.70 or signals.get('public_poc'):
+    category = 'Unknown' if probability(signals.get('epss')) is None and not reality else get_category(hype, reality)
+    if state != 'confirmed-exploitation' and reality < 6 and probability(signals.get('epss')) is not None:
+        if probability(signals.get('epss')) >= 0.70:
             category = 'Watch'
     return {'hype': hype, 'reality': reality, 'category': category}
