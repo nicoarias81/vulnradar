@@ -77,14 +77,13 @@ def calculate_reality(signals: dict) -> float:
     if exploitation_state(signals) == 'confirmed-exploitation':
         return 7.0 + (1.0 if signals.get('ransomware_use') else 0.0)
     # Public exploit code is capability evidence, graded by provenance:
-    # ExploitDB/validated repos are strong (+1.0); raw GitHub hits are weak (+0.5
-    # from three repos, +0.25 from one) because auto-generated repos appear within
-    # hours of publication. Before this, poc_count never reached the score at all:
-    # 25,189 CVEs had public repos and exploitdb/validated counts were 0 everywhere,
-    # so the public-PoC branch was dead code and every prediction read as 0.0.
+    # ExploitDB/validated repos are strong (+1.0); raw GitHub hits are weak
+    # (up to +0.5 on the 0-10 poc_score scale) because auto-generated repos appear
+    # within hours of publication. Before this, poc_score was computed and never
+    # read by the score: 25,189 CVEs had public repos and the public-PoC inputs
+    # (exploitdb/validated counts) were 0 everywhere, so every prediction read 0.0.
     strong_poc = 1.0 if signals.get('public_poc') else 0.0
-    repos = int(signals.get('poc_count') or 0)
-    weak_poc = 0.5 if repos >= 3 else (0.25 if repos >= 1 else 0.0)
+    weak_poc = min(0.5, round(0.05 * bounded(signals.get('poc_score'), 10.0), 2))
     return round(min(5.9, 5 * epss + strong_poc + weak_poc), 2)
 
 
