@@ -129,15 +129,15 @@ def test_repeated_scoring_leaves_a_single_current_score(conn):
     assert _count(conn, "scores") == 1
     assert first["hype"] == pytest.approx(0.0)  # cvss 9.8 -> hype from CVSS only
 
-    # A new EPSS signal raises reality and REPLACES the score, it does not duplicate it.
+    # A new EPSS signal raises the input fingerprint and REPLACES the score,
+    # but reality is ordinal: it no longer moves inside the confirmed tier.
     upsert_epss(conn, [{"cve": CVE_ID, "epss": "0.9", "percentile": "0.99"}])
     assert score_all(conn) == 1
 
     second = conn.execute("SELECT * FROM scores WHERE cve_id = ?", (CVE_ID,)).fetchone()
     assert _count(conn, "scores") == 1
-    assert second["reality"] > first["reality"]
-    assert second["reality"] == pytest.approx(7.9)  # 0.40*10 (KEV) + 0.25*9 (EPSS)
-    assert second["category"] == "Sleeper"  # low hype (1.96) and reality 6.25
+    assert second["reality"] == first["reality"] == pytest.approx(7.0)  # KEV tier floor
+    assert second["category"] == "Sleeper"  # low hype (1.96) and reality 7.0
 
 
 def test_score_history_stores_each_change_and_not_repeats(conn):
@@ -154,12 +154,18 @@ def test_score_history_stores_each_change_and_not_repeats(conn):
 
     upsert_epss(conn, [{"cve": CVE_ID, "epss": "0.9", "percentile": "0.99"}])
     score_all(conn)
+    # Prediction alone no longer moves an ordinal tier: no snapshot, no fake evolution.
+    assert _count(conn, "score_history") == 1
+
+    upsert_kev(conn, [{"cveID": CVE_ID, "dateAdded": "2026-01-10",
+                       "knownRansomwareCampaignUse": "Known"}])
+    score_all(conn)
     assert _count(conn, "score_history") == 2
 
     rows = conn.execute(
         "SELECT hype, reality FROM score_history WHERE cve_id = ? ORDER BY id", (CVE_ID,)
     ).fetchall()
-    assert [round(float(f["reality"]), 2) for f in rows] == [7.1, 7.9]
+    assert [round(float(f["reality"]), 2) for f in rows] == [7.0, 8.0]
 
 
 def test_load_score_history_returns_series_old_to_new(conn):
@@ -167,7 +173,8 @@ def test_load_score_history_returns_series_old_to_new(conn):
     upsert_kev(conn, [{"cveID": CVE_ID, "dateAdded": "2026-01-10"}])
     upsert_epss(conn, [{"cve": CVE_ID, "epss": "0.1", "percentile": "0.5"}])
     score_all(conn)
-    upsert_epss(conn, [{"cve": CVE_ID, "epss": "0.9", "percentile": "0.99"}])
+    upsert_kev(conn, [{"cveID": CVE_ID, "dateAdded": "2026-01-10",
+                       "knownRansomwareCampaignUse": "Known"}])
     score_all(conn)
 
     serie = load_score_history(conn, CVE_ID)

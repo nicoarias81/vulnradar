@@ -64,15 +64,18 @@ def probability(value):
 
 
 def calculate_reality(signals: dict) -> float:
-    """Ordinal tiers: confirmed 7-9; predictive evidence 0-5.9.
+    """Ordinal tiers: confirmed exploitation 7-8; predictive evidence 0-5.9.
 
     The floors are product safety rules, not fitted/calibrated probabilities.
-    EPSS retains its probability meaning only in the separate EPSS field.
+    EPSS retains its probability meaning only in the separate EPSS field: adding
+    it here duplicated the signal and painted 1,766 KEV entries into a 7.00-9.00
+    smear whose hundredths meant nothing. Ties are broken where the list is read
+    (epss DESC, kev date DESC), not by inflating the score.
     Ease and repository popularity do not add correlated predictive evidence.
     """
     epss = probability(signals.get('epss')) or 0.0
     if exploitation_state(signals) == 'confirmed-exploitation':
-        return round(7.0 + (1.0 if signals.get('ransomware_use') else 0.0) + epss, 2)
+        return 7.0 + (1.0 if signals.get('ransomware_use') else 0.0)
     return round(min(5.9, 5 * epss + (1.0 if signals.get('public_poc') else 0.0)), 2)
 
 
