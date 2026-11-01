@@ -8,6 +8,7 @@ from agents.enrichment_agent import upsert_epss, upsert_kev
 from agents.scoring_agent import score_all
 from agents.sync_agent import process_cve_file
 from core.db import get_db, init_db, list_tables
+from dashboard.data import load_score_history
 
 CVE_ID = "CVE-2026-0001"
 FIXTURES = Path(__file__).parent / "fixtures" / "cvelistV5"
@@ -137,6 +138,43 @@ def test_scoring_repetido_deja_un_solo_score_vigente(conn):
     assert second["reality"] > first["reality"]
     assert second["reality"] == pytest.approx(6.25)  # 0.40*10 (KEV) + 0.25*9 (EPSS)
     assert second["category"] == "Sleeper"  # hype bajo (1.96) y reality 6.25
+
+
+def test_score_history_guarda_cada_cambio_y_no_las_repeticiones(conn):
+    """La evolución vive en score_history: `scores` sólo conserva el vigente."""
+    _insert_cve(conn)
+    upsert_kev(conn, [{"cveID": CVE_ID, "dateAdded": "2026-01-10"}])
+    upsert_epss(conn, [{"cve": CVE_ID, "epss": "0.1", "percentile": "0.5"}])
+
+    score_all(conn)
+    assert _count(conn, "score_history") == 1  # primera captura
+
+    score_all(conn)  # mismo valor: no ensucia la serie
+    assert _count(conn, "score_history") == 1
+
+    upsert_epss(conn, [{"cve": CVE_ID, "epss": "0.9", "percentile": "0.99"}])
+    score_all(conn)
+    assert _count(conn, "score_history") == 2
+
+    filas = conn.execute(
+        "SELECT hype, reality FROM score_history WHERE cve_id = ? ORDER BY id", (CVE_ID,)
+    ).fetchall()
+    assert [round(float(f["reality"]), 2) for f in filas] == [4.25, 6.25]
+
+
+def test_load_score_history_devuelve_la_serie_de_viejo_a_nuevo(conn):
+    _insert_cve(conn)
+    upsert_kev(conn, [{"cveID": CVE_ID, "dateAdded": "2026-01-10"}])
+    upsert_epss(conn, [{"cve": CVE_ID, "epss": "0.1", "percentile": "0.5"}])
+    score_all(conn)
+    upsert_epss(conn, [{"cve": CVE_ID, "epss": "0.9", "percentile": "0.99"}])
+    score_all(conn)
+
+    serie = load_score_history(conn, CVE_ID)
+
+    assert len(serie) == 2
+    assert serie[0]["reality"] < serie[-1]["reality"]
+    assert serie[0]["date"][:4].isdigit()  # fecha+hora, no sólo el día
 
 
 def test_scoring_ignora_cves_sin_enrichment(conn):

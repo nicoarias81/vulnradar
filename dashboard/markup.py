@@ -990,6 +990,7 @@ def detail_html(
     now: str,
     mention_count: int = 0,
     brand_name: str = "",
+    timeline: str = "",
 ) -> str:
     cat = category or "Quiet"
     based = (
@@ -1049,6 +1050,15 @@ def detail_html(
         {pocs_html}
       </div>
     </div>
+  </div>
+  <div class="card" style="margin-top:16px">
+    <p class="h3">Evolución del score {INFO_SVG}</p>
+    <p class="muted" style="margin-top:0">
+      <span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#FF6B00"></span> Hype
+      &nbsp;&nbsp;
+      <span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#22C55E"></span> Reality
+    </p>
+    {timeline or '<p class="muted">Sin cambios registrados todavía: la serie arranca con el próximo recálculo.</p>'}
   </div>
   <div class="footer">
     <span>Fuente: CVE List V5 · CISA KEV · FIRST EPSS · GitHub · RSS</span>

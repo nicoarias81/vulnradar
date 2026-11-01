@@ -300,6 +300,31 @@ def load_score(conn, cve_id: str):
     return rows[0] if rows else None
 
 
+def load_score_history(conn, cve_id: str, limit: int = 60) -> list:
+    """Evolución del score de un CVE, de viejo a nuevo.
+
+    `scores` guarda sólo el vigente (UNIQUE(cve_id)), así que la serie sale de
+    score_history: una fila por cambio real de hype o reality.
+    """
+    sql = (
+        "SELECT captured_at, hype, reality, category FROM score_history "
+        "WHERE cve_id = ? ORDER BY captured_at DESC LIMIT ?"
+    )
+    rows = conn.execute(sql, (cve_id, limit)).fetchall()
+    series = []
+    for row in reversed(rows):
+        hype = row["hype"]
+        reality = row["reality"]
+        series.append({
+            # Fecha y hora: varias capturas caen el mismo día y se pisarían.
+            "date": str(row["captured_at"])[:16].replace("T", " "),
+            "hype": round(float(hype), 2) if hype is not None else None,
+            "reality": round(float(reality), 2) if reality is not None else None,
+            "category": row["category"],
+        })
+    return series
+
+
 def load_latest_score(conn):
     rows = load_scores(conn, limit=1, order="calculated_at")
     return rows[0] if rows else None

@@ -21,6 +21,7 @@ from dashboard.data import (
     load_pocs,
     load_recent_events,
     load_score,
+    load_score_history,
     load_scores,
     count_scores,
 )
@@ -254,6 +255,7 @@ def detail(qp: dict | None = None) -> str:
         cve_id = row["cve_id"]
         mentions = load_mentions(conn, cve_id)
         poc_repos = load_pocs(conn, cve_id)
+        series = load_score_history(conn, cve_id)
     finally:
         conn.close()
 
@@ -394,7 +396,22 @@ def detail(qp: dict | None = None) -> str:
         now=now,
         mention_count=len(mentions),
         brand_name=str(row.get("brand_name") or "").strip(),
+        timeline=_timeline_html(series),
     )
+
+
+def _timeline_html(series: list) -> str:
+    """Serie hype/reality del CVE. Con un solo punto no hay evolución que ver."""
+    if not series:
+        return ""
+    if len(series) == 1:
+        punto = series[0]
+        return (
+            f'<p class="muted">Primer registro: hype {punto["hype"]:.1f} · '
+            f'reality {punto["reality"]:.1f} ({escape(str(punto["date"]))}). '
+            "La curva aparece cuando el score cambie.</p>"
+        )
+    return timeline_svg(series, width=1100, height=200)
 
 
 def _spark_values(events, agent: str, n: int = 16) -> list[float]:
