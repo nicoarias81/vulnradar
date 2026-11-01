@@ -719,6 +719,13 @@ def timeline_svg(series, highlights=None, width: int = 1200, height: int = 220,
         h_val = float(item.get("hype") or 0)
         r_val = float(item.get("reality") or 0)
         n_val = int(item.get("n") or 0)
+        # En la portada cada punto es el promedio de N CVEs; en la ficha de un
+        # CVE la serie son capturas de su score. Ahí "0 CVEs" no dice nada:
+        # se muestra la categoría del momento.
+        if "n" in item:
+            cabecera = f"{fecha} · {n_val} CVEs"
+        else:
+            cabecera = f"{fecha} · {CATEGORY_ES.get(str(item.get('category') or ''), 'score')}"
         tx = min(max(x - 95, l), l + pw - 190)
         linea_top = ""
         if top.get("cve_id"):
@@ -731,7 +738,7 @@ def timeline_svg(series, highlights=None, width: int = 1200, height: int = 220,
             f'<g class="tip" pointer-events="none">'
             f'<rect x="{tx:.1f}" y="{t + 4}" width="190" height="56" rx="5" '
             f'fill="#0F172A" stroke="#334155" stroke-width="1"/>'
-            f'<text x="{tx + 9:.1f}" y="{t + 21}" fill="#E2E8F0" font-size="11">{escape(fecha)} · {n_val} CVEs</text>'
+            f'<text x="{tx + 9:.1f}" y="{t + 21}" fill="#E2E8F0" font-size="11">{escape(cabecera)}</text>'
             f'<text x="{tx + 9:.1f}" y="{t + 37}" fill="#FF6B00" font-size="11" font-weight="700">Hype {h_val:.1f}</text>'
             f'<text x="{tx + 95:.1f}" y="{t + 37}" fill="#22D3EE" font-size="11" font-weight="700">Reality {r_val:.1f}</text>'
             f'<text x="{tx + 9:.1f}" y="{t + 52}" fill="#94A3B8" font-size="10">{escape(linea_top[:38])}</text>'
