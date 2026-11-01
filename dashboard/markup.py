@@ -11,7 +11,7 @@ from dashboard.theme import (
     CATEGORY_BLURB,
     CATEGORY_COLORS,
     CATEGORY_DETAIL,
-    CATEGORY_ES,
+    CATEGORY_LABEL,
     SEVERITY_COLORS,
 )
 
@@ -275,7 +275,7 @@ a.link:hover { text-decoration: underline; }
   box-shadow: 0 0 0 3px rgba(34,211,238,.18);
 }
 .agent-head { display: flex; align-items: center; gap: 10px; }
-/* Menciones y PoCs: listado expandible sin JS */
+/* Mentions and PoCs: expandable list without JS */
 .mention { margin: 8px 0; }
 .mention a { text-decoration: none; }
 .mention a:hover { text-decoration: underline; }
@@ -619,7 +619,7 @@ def _fecha_larga(day: str) -> str:
 def timeline_svg(series, highlights=None, width: int = 1200, height: int = 220,
                  compact: bool = False) -> str:
     if not series:
-        return '<p class="muted">Sin fechas de publicación para armar la serie.</p>'
+        return '<p class="muted">No publication dates to build the series.</p>'
     highlights = highlights or []
     l, t, r, b = 44, 26, 16, 40
     pw, ph = width - l - r, height - t - b
@@ -725,7 +725,7 @@ def timeline_svg(series, highlights=None, width: int = 1200, height: int = 220,
         if "n" in item:
             cabecera = f"{fecha} · {n_val} CVEs"
         else:
-            cabecera = f"{fecha} · {CATEGORY_ES.get(str(item.get('category') or ''), 'score')}"
+            cabecera = f"{fecha} · {CATEGORY_LABEL.get(str(item.get('category') or ''), 'score')}"
         tx = min(max(x - 95, l), l + pw - 190)
         linea_top = ""
         if top.get("cve_id"):
@@ -807,8 +807,8 @@ def timeline_svg(series, highlights=None, width: int = 1200, height: int = 220,
             '<div class="tl-chips">'
             + "".join(chips)
             + "</div>"
-            '<p class="tl-note">Score propio de cada CVE (escala absoluta), '
-            "no el promedio diario que dibuja el gráfico.</p>"
+            '<p class="tl-note">Per-CVE score (absolute scale), '
+            "not the daily average the chart plots.</p>"
         )
 
     return (
@@ -899,7 +899,7 @@ def overview_html(
       {hidden_all}
       <div class="filter filter-search"><label>Search</label>
         <input type="search" name="q" value="{escape(query)}"
-               placeholder="CVE-2021-44228 o Log4Shell" autocomplete="off">
+               placeholder="CVE-2021-44228 or Log4Shell" autocomplete="off">
       </div>
       <div class="filter"><label>Date Range</label>
         <div class="range">
@@ -952,7 +952,7 @@ def overview_html(
           <p class="h3">Pay attention to {INFO_SVG}</p>
           <span class="acc-count">{actionable_total} of {total:,}</span>
         </div>
-        <p class="acc-crit">Entra con KEV, EPSS ≥ 0.70 o PoC público — ordenado por evidencia</p>
+        <p class="acc-crit">Enters with KEV, EPSS ≥ 0.70 or a public PoC — ordered by evidence</p>
         <div class="table-scroll">
           <table class="table acc-table"><thead><tr>
             <th>CVE ID</th><th>Severity</th><th>Signals</th><th>Reality</th>
@@ -964,14 +964,14 @@ def overview_html(
         <div class="table-scroll">
         <table class="table"><thead><tr>
           <th>CVE ID</th><th>Severity</th><th>Score</th><th>Category</th><th>Published</th>
-        </tr></thead><tbody>{table_rows or '<tr><td colspan="5" class="muted">Sin CVEs.</td></tr>'}</tbody></table>
+        </tr></thead><tbody>{table_rows or '<tr><td colspan="5" class="muted">No CVEs.</td></tr>'}</tbody></table>
         </div>
         <div class="pager"><span>{view}</span><span>{start}–{end} of {total}</span>{pager_btns}</div>
       </div>
     </div>
   </div>
   <div class="footer">
-    <span>Fuente: CVE List V5 · CISA KEV · FIRST EPSS · GitHub · RSS</span>
+    <span>Source: CVE List V5 · CISA KEV · FIRST EPSS · GitHub · RSS</span>
     <span>VulnRadar</span>
   </div>
 </div>
@@ -1002,14 +1002,14 @@ def detail_html(
 ) -> str:
     cat = category or "Quiet"
     based = (
-        f'<div class="foot-note">{INFO_SVG} Basado en {mention_count} menciones y datos públicos hasta la fecha.</div>'
+        f'<div class="foot-note">{INFO_SVG} Based on {mention_count} media mentions and public data to date.</div>'
         if mention_count else
-        f'<div class="foot-note">{INFO_SVG} Basado en datos públicos hasta la fecha.</div>'
+        f'<div class="foot-note">{INFO_SVG} Based on public data to date.</div>'
     )
     body = f"""
 <div class="page">
   <div class="top">
-    {logo("Datos contra el ruido.")}
+    {logo("Data against noise.")}
     <div class="live">Actualizado: {escape(now)}</div>
   </div>
   <a class="back" href="/" id="back-dash">← Dashboard</a>
@@ -1017,7 +1017,7 @@ def detail_html(
     <div>
       <h1>{escape(cve_id)}</h1>
       {f'<p class="brand-hero">{escape(brand_name)}</p>' if brand_name else ""}
-      <p class="muted">{escape(description or "Sin descripción.")}</p>
+      <p class="muted">{escape(description or "No description.")}</p>
     </div>
     <div class="badges">{badges}</div>
   </div>
@@ -1029,7 +1029,7 @@ def detail_html(
         <b>{int(round(hype * 10))}/100</b></div>
     </div>
     <div class="card">
-      <p class="h3 accent">{_icon("flame")} Análisis de hype</p>
+      <p class="h3 accent">{_icon("flame")} Hype analysis</p>
       <div class="score-row">
         <div class="score-col">
           <div class="muted">{_icon("flame")} HYPE SCORE</div>
@@ -1040,37 +1040,37 @@ def detail_html(
           <div class="score reality">{reality:.1f}<small>/10</small></div>
         </div>
       </div>
-      <div class="banner"><strong>{_icon("flame")} {escape(CATEGORY_ES.get(cat, cat))}</strong>
+      <div class="banner"><strong>{_icon("flame")} {escape(CATEGORY_LABEL.get(cat, cat))}</strong>
         <p class="muted" style="margin:6px 0 0">{escape(CATEGORY_DETAIL.get(cat, ""))}</p></div>
       {f'<p class="muted" style="margin-top:10px">{escape(caveat)}</p>' if caveat else ""}
       {based}
     </div>
     <div>
       <div class="card" style="margin-bottom:16px">
-        <p class="h3">Línea de tiempo del evento</p>
+        <p class="h3">Event timeline</p>
         <div class="tl">{events}</div>
       </div>
       <div class="card" style="margin-bottom:16px">
-        <p class="h3">Menciones en medios</p>
+        <p class="h3">Media mentions</p>
         {mentions}
       </div>
       <div class="card">
-        <p class="h3">PoCs en GitHub</p>
+        <p class="h3">PoCs on GitHub</p>
         {pocs_html}
       </div>
     </div>
   </div>
   <div class="card" style="margin-top:16px">
-    <p class="h3">Evolución del score {INFO_SVG}</p>
+    <p class="h3">Score evolution {INFO_SVG}</p>
     <p class="muted" style="margin-top:0">
       <span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#FF6B00"></span> Hype
       &nbsp;&nbsp;
       <span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#22C55E"></span> Reality
     </p>
-    {timeline or '<p class="muted">Sin cambios registrados todavía: la serie arranca con el próximo recálculo.</p>'}
+    {timeline or '<p class="muted">No changes recorded yet: the series starts with the next recalculation.</p>'}
   </div>
   <div class="footer">
-    <span>Fuente: CVE List V5 · CISA KEV · FIRST EPSS · GitHub · RSS</span>
+    <span>Source: CVE List V5 · CISA KEV · FIRST EPSS · GitHub · RSS</span>
     <span>VulnRadar</span>
   </div>
 </div>
@@ -1099,7 +1099,7 @@ def agents_html(
       <p class="muted">Real-time agent activity and event stream</p>
       <table class="table"><thead><tr>
         <th>Time</th><th>Agent</th><th>Event</th><th>Details</th><th>Status</th>
-      </tr></thead><tbody>{feed_rows or '<tr><td colspan="5" class="muted">El worker todavía no escribió eventos.</td></tr>'}</tbody></table>
+      </tr></thead><tbody>{feed_rows or '<tr><td colspan="5" class="muted">The worker has not written any events yet.</td></tr>'}</tbody></table>
       <p class="feed-foot">Showing latest events · Auto-refreshing…</p>
     </div>
     <div class="card scatter-card" style="min-height:320px">

@@ -103,8 +103,8 @@ def _actionable_rows_html(rows) -> str:
             "</tr>"
         )
     if not out:
-        return ('<tr><td colspan="4" class="muted">Ningún CVE del rango tiene '
-                "evidencia de explotación.</td></tr>")
+        return ('<tr><td colspan="4" class="muted">No CVE in range has '
+                "exploitation evidence.</td></tr>")
     return "".join(out)
 
 
@@ -152,9 +152,9 @@ def overview(qp: dict | None = None) -> str:
         products = load_products(conn, since=since, until=until)
         if not total:
             empty = (
-                f'<p class="empty">Sin resultados para «{escape(query)}».</p>'
+                f'<p class="empty">No results for «{escape(query)}».</p>'
                 if query else
-                '<p class="empty">Todavía no hay scores. El worker autónomo los calcula solo.</p>'
+                '<p class="empty">No scores yet. The autonomous worker computes them on its own.</p>'
             )
             return overview_html(
                 logo_html=logo(),
@@ -222,7 +222,7 @@ def overview(qp: dict | None = None) -> str:
     # 760x520 sobre el ancho real de la card: el scatter llena el alto de la
     # columna en vez de dejar un hueco antes de la timeline.
     scatter_div = (scatter_svg(scatter_rows, width=760, height=640) if scatter_rows
-                   else '<p class="empty">Ningún CVE pasa los filtros actuales.</p>')
+                   else '<p class="empty">No CVE matches the current filters.</p>')
     # Al pie del scatter: 760 de ancho para que las fechas queden legibles al
     # escalar el SVG a la columna.
     timeline_div = timeline_svg(series, width=760, height=78, compact=True)
@@ -250,7 +250,7 @@ def detail(qp: dict | None = None) -> str:
         row = load_score(conn, requested) if requested else load_latest_score(conn)
         if not row:
             return document(
-                f'<div class="page">{logo()}<p class="empty">Todavía no hay scores. El worker los calcula solo en el próximo ciclo.</p></div>'
+                f'<div class="page">{logo()}<p class="empty">No scores yet. The worker computes them on its next cycle.</p></div>'
             )
         cve_id = row["cve_id"]
         mentions = load_mentions(conn, cve_id)
@@ -265,14 +265,14 @@ def detail(qp: dict | None = None) -> str:
     cvss_label = f"CVSS {cvss if cvss is not None else '—'} ({sev})"
     badges = badge(cvss_label, SEVERITY_COLORS.get(sev, "#6B7280"))
     if kev:
-        badges += " " + badge("KEV: CATÁLOGO CONOCIDO", "#22D3EE")
+        badges += " " + badge("KEV: KNOWN CATALOG", "#22D3EE")
 
     labels = {
-        "tone": "Titular sensacionalista",
-        "media": "Cobertura en medios",
+        "tone": "Sensational headline",
+        "media": "Media coverage",
         "cvss": "CVSS",
         "branding": "Branding",
-        "pocs": "PoCs en GitHub",
+        "pocs": "PoCs on GitHub",
     }
     icons = {"tone": "shield", "media": "clock", "cvss": "bolt", "branding": "tag", "pocs": "git"}
     order = ["tone", "media", "cvss", "branding", "pocs"]
@@ -312,26 +312,26 @@ def detail(qp: dict | None = None) -> str:
     caveat = ""
     if dias_publicado is not None and dias_publicado <= 30 and not kev:
         caveat = (
-            f"Publicado hace {dias_publicado} días. La evidencia de explotación "
-            "suele tardar semanas en aparecer: un reality bajo puede significar "
-            "que todavía no hay datos, no que el fallo sea leve."
+            f"Published {dias_publicado} days ago. Exploitation evidence usually "
+            "takes weeks to show up: a low reality score can mean there is no "
+            "data yet, not that the flaw is mild."
         )
 
     # Hitos con fecha real, en orden cronológico; los datos sin fecha van al final.
     hitos = [
-        (_dt(row.get("published")), "Publicado"),
-        (_dt(row.get("kev_date")), "Añadido al catálogo KEV (CISA)"),
-        (min(fechas) if fechas else None, "Primera mención en prensa"),
-        (max(fechas) if fechas else None, "Última mención en prensa"),
-        (_dt(row.get("calculated_at")), "Score calculado"),
+        (_dt(row.get("published")), "Published"),
+        (_dt(row.get("kev_date")), "Added to the CISA KEV catalog"),
+        (min(fechas) if fechas else None, "First press mention"),
+        (max(fechas) if fechas else None, "Latest press mention"),
+        (_dt(row.get("calculated_at")), "Score calculated"),
     ]
     con_fecha = sorted((h for h in hitos if h[0]), key=lambda h: h[0])
     poc_count = int(row.get("poc_count") or 0)
     sin_fecha = []
     if row.get("brand_name"):
-        sin_fecha.append(("Nombre", str(row["brand_name"])))
+        sin_fecha.append(("Name", str(row["brand_name"])))
     if poc_count:
-        sin_fecha.append(("PoCs en GitHub", f"{poc_count} repositorios"))
+        sin_fecha.append(("PoCs on GitHub", f"{poc_count} repositories"))
 
     ev_html = "".join(
         f'<div class="tl-item"><b>{escape(titulo)}</b>'
@@ -359,11 +359,11 @@ def detail(qp: dict | None = None) -> str:
         visibles = "".join(_mencion_html(m) for m in mentions[:5])
         resto = "".join(_mencion_html(m) for m in mentions[5:])
         men_html = visibles + (
-            f'<details class="expand"><summary>Ver las {len(mentions)} menciones</summary>'
+            f'<details class="expand"><summary>See all {len(mentions)} mentions</summary>'
             f'{resto}</details>' if resto else ""
         )
     else:
-        men_html = '<p class="muted">Sin menciones todavía.</p>'
+        men_html = '<p class="muted">No mentions yet.</p>'
 
     if poc_repos:
         filas = "".join(
@@ -379,18 +379,18 @@ def detail(qp: dict | None = None) -> str:
         )
         pocs_html = (
             f'<div class="score hype" style="font-size:40px">{poc_count}</div>'
-            '<p class="muted" style="margin-top:0">Repositorios con PoC</p>'
-            f'<details class="expand"><summary>Ver {len(poc_repos)} repos con métricas</summary>'
-            '<table class="mini"><thead><tr><th>Repositorio</th><th>Stars</th><th>Forks</th>'
-            f'<th>Lenguaje</th><th>Actualizado</th></tr></thead><tbody>{filas}</tbody></table>'
+            '<p class="muted" style="margin-top:0">PoC repositories</p>'
+            f'<details class="expand"><summary>See {len(poc_repos)} repos with metrics</summary>'
+            '<table class="mini"><thead><tr><th>Repository</th><th>Stars</th><th>Forks</th>'
+            f'<th>Language</th><th>Updated</th></tr></thead><tbody>{filas}</tbody></table>'
             "</details>"
         )
     else:
-        nota = ("<p class=\"muted\">El detalle de repos se trae en la próxima pasada.</p>"
+        nota = ("<p class=\"muted\">Repo details arrive on the next pass.</p>"
                 if poc_count else "")
         pocs_html = (
             f'<div class="score hype" style="font-size:40px">{poc_count}</div>'
-            f'<p class="muted">Repositorios con PoC</p>{nota}'
+            f'<p class="muted">PoC repositories</p>{nota}'
         )
 
     return detail_html(
@@ -420,9 +420,9 @@ def _timeline_html(series: list) -> str:
     if len(series) == 1:
         punto = series[0]
         return (
-            f'<p class="muted">Primer registro: hype {punto["hype"]:.1f} · '
+            f'<p class="muted">First record: hype {punto["hype"]:.1f} · '
             f'reality {punto["reality"]:.1f} ({escape(str(punto["date"]))}). '
-            "La curva aparece cuando el score cambie.</p>"
+            "The curve appears once the score changes.</p>"
         )
     return timeline_svg(series, width=1100, height=200)
 
@@ -491,7 +491,7 @@ def agents(_qp: dict | None = None) -> str:
     logs = events[:6] or []
     log_html = "".join(
         _log_row(item) for item in logs
-    ) or f'<p class="muted">INFO &nbsp; {stats["scores"]} scores · {overhyped} sin evidencia de uso</p>'
+    ) or f'<p class="muted">INFO &nbsp; {stats["scores"]} scores · {overhyped} with no evidence of use</p>'
     return agents_html(
         now=now, cards=cards, feed_rows="".join(feed),
         scatter_div=scatter_div, logs=log_html,

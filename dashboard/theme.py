@@ -14,11 +14,11 @@ CATEGORY_BLURB = {
     "Quiet": "Low hype, no evidence of exploitation",
 }
 
-CATEGORY_ES = {
-    "Overhyped": "SIN EVIDENCIA DE USO",
-    "Earned the hype": "GANÓ EL HYPE",
+CATEGORY_LABEL = {
+    "Overhyped": "NO EVIDENCE OF USE",
+    "Earned the hype": "EARNED THE HYPE",
     "Sleeper": "SLEEPER",
-    "Quiet": "SIN SEÑALES",
+    "Quiet": "NO SIGNALS",
 }
 
 # Reality mide evidencia de explotación, no gravedad. Decir "sobrevalorado"
@@ -26,13 +26,13 @@ CATEGORY_ES = {
 # un reality bajo: significa que todavía nadie lo está usando, no que sea
 # inofensivo si lo usan.
 CATEGORY_DETAIL = {
-    "Overhyped": "Mucho ruido y poca evidencia de explotación hasta ahora. "
-                 "Reality mide uso real, no gravedad: un score bajo no significa "
-                 "que el fallo sea inofensivo si alguien lo explota.",
-    "Earned the hype": "El impacto observado respalda el ruido mediático.",
-    "Sleeper": "La evidencia de explotación crece más rápido que la atención pública.",
-    "Quiet": "Poco ruido y sin evidencia de explotación registrada hasta ahora. "
-             "Tampoco hay señal de que esté siendo usado.",
+    "Overhyped": "Lots of noise and little evidence of exploitation so far. "
+                 "Reality measures real-world use, not severity: a low score does not "
+                 "mean the flaw is harmless if someone exploits it.",
+    "Earned the hype": "Observed impact backs the media noise.",
+    "Sleeper": "Evidence of exploitation is growing faster than public attention.",
+    "Quiet": "Little noise and no evidence of exploitation so far. "
+             "No sign it is being used either.",
 }
 
 SEVERITY_COLORS = {

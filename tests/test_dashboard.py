@@ -215,10 +215,10 @@ def test_la_categoria_no_juzga_gravedad():
         pocs_html="",
         poc_count=0,
         now="2026-11-01",
-        caveat="Publicado hace 3 días. La evidencia de explotación tarda semanas.",
+        caveat="Published 3 days ago. Exploitation evidence takes weeks.",
     )
 
-    assert "SIN EVIDENCIA DE USO" in html
-    assert "sobrevalorado" not in html.lower()
-    assert "no significa" in html
-    assert "Publicado hace 3 días" in html
+    assert "NO EVIDENCE OF USE" in html
+    assert "overrated" not in html.lower()
+    assert "does not mean" in html
+    assert "Published 3 days ago" in html
