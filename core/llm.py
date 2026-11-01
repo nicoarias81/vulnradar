@@ -173,16 +173,21 @@ def complete_messages(
     if cfg.api_key:
         headers["Authorization"] = f"Bearer {cfg.api_key}"
 
+    # Bounded output: an unbounded generation is what makes the gateway hit the
+    # read timeout on long rerank/tone prompts.
+    max_tokens = int(os.environ.get("LLM_MAX_TOKENS") or 800)
+
     if cfg.style == "responses":
         url = f"{cfg.base_url}/responses"
         payload: dict[str, Any] = {
             "model": cfg.model,
             "input": messages,
             "store": False,
+            "max_output_tokens": max_tokens,
         }
     elif cfg.style == "chat":
         url = f"{cfg.base_url}/chat/completions"
-        payload = {"model": cfg.model, "messages": messages}
+        payload = {"model": cfg.model, "messages": messages, "max_tokens": max_tokens}
     else:
         raise LlmConfigError(f"LLM_API_STYLE no soportado: {cfg.style!r} (responses|chat)")
 

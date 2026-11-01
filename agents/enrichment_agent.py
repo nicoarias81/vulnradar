@@ -451,6 +451,8 @@ Items:
 """
 
 RERANK_BATCH = 6
+# Consecutive failed batches before the cycle stops calling the LLM.
+RERANK_MAX_FAILURES = 2
 RERANK_TITLE_CHARS = 160
 RERANK_SUMMARY_CHARS = 180
 # Cap per feed and per run: rerank is the expensive step (LLM), and the feeds
@@ -495,13 +497,21 @@ def rerank_entries(entries, *, config=None, completer=None, batch_size=RERANK_BA
     call = completer or (lambda prompt: llm_client.complete(
         prompt, system=RERANK_SYSTEM, config=config))
     out: list = [{} for _ in entries]
+    failures = 0
     for start in range(0, len(entries), batch_size):
         chunk = entries[start:start + batch_size]
         try:
             reply = call(build_rerank_prompt(chunk))
         except Exception as exc:  # a dead LLM must not take the enrich down
             print(f"rerank: {type(exc).__name__}: {str(exc)[:120]}")
+            # Two dead batches in a row mean the LLM is not going to answer this
+            # cycle: burning 60 s per remaining batch only delays scoring.
+            failures += 1
+            if failures >= RERANK_MAX_FAILURES:
+                print(f"rerank: giving up after {failures} failed batches")
+                break
             continue
+        failures = 0
         for item in parse_rerank_reply(reply):
             index = item.get("i")
             if not isinstance(index, int) or not 1 <= index <= len(chunk):
@@ -581,7 +591,9 @@ def mentions_from_rerank(entries, reranked) -> list:
             "url": url or f"urn:cve:{cve_id}",
             "title": entry.get("title"),
             "source": entry.get("source"),
-            "published": entry.get("published"),
+            # feedparser hands back RFC 822 ("Wed, 30 Sep 2026 07:00:00 GMT"):
+            # storing it raw breaks every text comparison against an ISO date.
+            "published": _iso_date(entry),
             "brand_name": verdict.get("brand_name") if linked_id == cve_id else None,
         })
     return mentions
