@@ -79,7 +79,14 @@ def run_cycle() -> dict:
     def do_enrich():
         from agents.enrichment_agent import run as enrich
 
-        return enrich()
+        # Cada ciclo carga PoCs de un lote acotado (la API de GitHub permite
+        # 30 búsquedas/min con token). Con la cola filtrando los ya cargados,
+        # 100 por ciclo cubre los CVEs con prensa en menos de un día.
+        try:
+            limit = int(os.getenv("POC_BATCH", "100"))
+        except ValueError:
+            limit = 100
+        return enrich(github_limit=limit)
 
     def do_score():
         from agents.scoring_agent import run as score

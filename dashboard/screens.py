@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 from html import escape
 
 from core.db import get_db
@@ -50,6 +51,25 @@ ACTIONABLE_LIMIT = 6
 # Rango por defecto de la portada y del scatter de agentes. Debe ser el mismo
 # en ambos para que compartan la entrada de caché.
 DEFAULT_RANGE_DAYS = 30
+
+
+def parse_dt(valor):
+    """Fecha tolerante: ISO (NVD, Postgres) o RFC 822 (lo que publica el RSS)."""
+    texto = str(valor or "").strip()
+    if not texto or texto in ("—", "None"):
+        return None
+    try:
+        momento = datetime.fromisoformat(texto.replace("Z", "+00:00"))
+    except ValueError:
+        # Las menciones guardan la fecha tal como la publica el feed
+        # ("Fri, 16 Oct 2026 07:00:00 GMT"), no en ISO: sin este fallback
+        # toda la lista salía sin fecha.
+        try:
+            momento = parsedate_to_datetime(texto)
+        except (TypeError, ValueError):
+            return None
+    # Mezcla de naive (ISO sin zona) y aware (Postgres): sin esto no se pueden ordenar.
+    return momento if momento.tzinfo else momento.replace(tzinfo=timezone.utc)
 
 
 def _fmt_pub(value) -> str:
@@ -290,15 +310,7 @@ def detail(qp: dict | None = None) -> str:
     )
 
     def _dt(valor):
-        texto = str(valor or "").strip()
-        if not texto or texto in ("—", "None"):
-            return None
-        try:
-            momento = datetime.fromisoformat(texto.replace("Z", "+00:00"))
-        except ValueError:
-            return None
-        # Mezcla de naive (ISO sin zona) y aware (Postgres): sin esto no se pueden ordenar.
-        return momento if momento.tzinfo else momento.replace(tzinfo=timezone.utc)
+        return parse_dt(valor)
 
     def _sello(momento):
         return momento.strftime("%d %b %Y, %H:%M") if momento else ""
@@ -346,7 +358,7 @@ def detail(qp: dict | None = None) -> str:
     def _mencion_html(m, con_titulo=True):
         fuente = m.get("source") or "media"
         url = (m.get("url") or "").strip()
-        fecha = _sello(_dt(m.get("published"))) or "sin fecha"
+        fecha = _sello(_dt(m.get("published"))) or "no date"
         cabeza = (
             f'<a class="link" href="{escape(url)}" target="_blank" rel="noopener">{escape(fuente)}</a>'
             if url else f"<b>{escape(fuente)}</b>"

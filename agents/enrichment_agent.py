@@ -707,11 +707,17 @@ def upsert_poc_count(conn, cve_id, count) -> None:
 
 
 def select_poc_targets(conn, limit=25) -> list:
-    """Lote acotado: primero los CVEs con prensa, después los más recientes."""
+    """Lote acotado: los de más prensa que todavía no tienen repos cargados.
+
+    Sin el NOT EXISTS el orden es determinista, así que cada ciclo vuelve a
+    pedir los mismos CVEs y la cola no avanza nunca: el lote se quedaba en el
+    top por menciones y el resto no llegaba a tener PoCs.
+    """
     rows = conn.execute("""
         SELECT e.cve_id AS cve_id
         FROM enrichments e
         LEFT JOIN cves c ON c.cve_id = e.cve_id
+        WHERE NOT EXISTS (SELECT 1 FROM pocs p WHERE p.cve_id = e.cve_id)
         ORDER BY (e.media_count > 0) DESC, e.media_count DESC, c.published DESC
         LIMIT ?
     """, (max(0, int(limit)),)).fetchall()

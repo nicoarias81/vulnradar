@@ -222,3 +222,18 @@ def test_la_categoria_no_juzga_gravedad():
     assert "overrated" not in html.lower()
     assert "does not mean" in html
     assert "Published 3 days ago" in html
+
+
+def test_parse_dt_acepta_rfc822_de_los_feeds():
+    """Las menciones guardan la fecha del RSS tal cual llega, no en ISO."""
+    from dashboard import screens
+
+    momento = screens.parse_dt("Fri, 16 Oct 2026 07:00:00 GMT")
+
+    assert momento is not None
+    assert momento.year == 2026 and momento.month == 10 and momento.day == 16
+    assert momento.tzinfo is not None
+    # ISO sigue funcionando (NVD y Postgres) y lo inválido no rompe.
+    assert screens.parse_dt("2026-10-16T07:00:00Z").day == 16
+    assert screens.parse_dt("") is None
+    assert screens.parse_dt("no es una fecha") is None

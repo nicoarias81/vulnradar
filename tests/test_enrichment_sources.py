@@ -465,6 +465,18 @@ def test_load_sources_config_lee_fuentes_del_repo():
     assert sources["github_search"]["enabled"] is True
 
 
+def test_select_poc_targets_saca_de_la_cola_los_ya_cargados(conn, rss_session):
+    """Sin este filtro el lote repite el mismo top y los PoCs no llegan nunca."""
+    conn.execute("INSERT INTO cves (cve_id, published) VALUES (?, ?)", ("CVE-2026-7000", "2026-06-01T00:00:00Z"))
+    upsert_kev(conn, [{"cveID": "CVE-2026-7000", "dateAdded": "2026-06-02"}])
+    load_rss(conn, ["https://feeds.example.com/rss"], session=rss_session)
+
+    assert agent.select_poc_targets(conn, limit=1) == [CVE_2]
+    agent.upsert_pocs(conn, CVE_2, [{"repo": "x/y", "url": "https://github.com/x/y"}])
+    # Ya cargado: el siguiente de la cola pasa a ser el primero del lote.
+    assert agent.select_poc_targets(conn, limit=1) == [CVE_1]
+
+
 def test_select_poc_targets_prioriza_cves_con_prensa(conn, rss_session):
     conn.execute("INSERT INTO cves (cve_id, published) VALUES (?, ?)", ("CVE-2026-7000", "2026-06-01T00:00:00Z"))
     upsert_kev(conn, [{"cveID": "CVE-2026-7000", "dateAdded": "2026-06-02"}])
