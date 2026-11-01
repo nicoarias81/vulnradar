@@ -9,6 +9,7 @@ import re
 from typing import Any, Mapping, Optional
 
 from core.models import CveRecord, Enrichment, NormalizedCve
+from core.scoring import exploit_ease
 
 # Orden de preferencia de CVSS: v3.1, luego v3.0, luego v4.0.
 CVSS_KEYS = ("cvssV3_1", "cvssV3_0", "cvssV4_0")
@@ -116,6 +117,7 @@ def build_normalized_cve(cve_row, enrichment_row=None) -> NormalizedCve:
         cve_id=cve.cve_id,
         published=cve.published,
         cvss=cve.cvss_score or 0.0,
+        cvss_vector=_get(cve_row, "cvss_vector"),
         signals={
             "in_kev": enr.in_kev,
             "epss": enr.epss or 0.0,
@@ -142,6 +144,7 @@ def build_signals(cve_row, enrichment_row=None) -> dict:
         "ransomware_use": signals["ransomware_use"],
         "media_score": media_score(signals["media_count"]),
         "poc_score": poc_score(signals["poc_count"]),
+        "exploit_ease": exploit_ease(normalized.cvss_vector),
         "tone_score": signals["tone_score"],
         "branding": signals["branding"],
     }

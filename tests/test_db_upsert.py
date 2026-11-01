@@ -135,8 +135,8 @@ def test_scoring_repetido_deja_un_solo_score_vigente(conn):
     second = conn.execute("SELECT * FROM scores WHERE cve_id = ?", (CVE_ID,)).fetchone()
     assert _count(conn, "scores") == 1
     assert second["reality"] > first["reality"]
-    assert second["reality"] == pytest.approx(7.0)  # 0.45*10 (KEV) + 0.25*9 (EPSS) + 0.05*5
-    assert second["category"] == "Sleeper"  # hype bajo (1.96) y reality alto (7.0)
+    assert second["reality"] == pytest.approx(6.25)  # 0.40*10 (KEV) + 0.25*9 (EPSS)
+    assert second["category"] == "Sleeper"  # hype bajo (1.96) y reality 6.25
 
 
 def test_scoring_ignora_cves_sin_enrichment(conn):

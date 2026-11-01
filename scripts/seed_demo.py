@@ -136,7 +136,7 @@ DEMOS = [
         "cvss_severity": "HIGH",
         "in_kev": 1,
         "epss": 0.55,
-        "wild_confirmation": 0,
+        "wild_confirmation": 1,
         "ransomware_use": 0,
         "media_count": 2,
         "poc_count": 1,

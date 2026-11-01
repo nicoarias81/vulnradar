@@ -14,7 +14,7 @@ from core.scoring import score_cve
 # Columnas explícitas: cves y enrichments comparten nombres (cve_id, timestamps)
 # y un SELECT c.*, e.* devuelve duplicados.
 SELECT_ENRICHED = """
-    SELECT c.cve_id, c.cvss_score,
+    SELECT c.cve_id, c.cvss_score, c.cvss_vector,
            e.in_kev, e.epss, e.wild_confirmation, e.ransomware_use,
            e.media_count, e.poc_count, e.tone_score, e.branding
     FROM cves c

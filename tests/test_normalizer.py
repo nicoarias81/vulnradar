@@ -120,7 +120,12 @@ def test_escalas_media_y_poc(media_count, poc_count, expected_media, expected_po
 
 
 def test_build_signals_mapea_filas_de_db_a_formulas():
-    cve_row = {"cve_id": "CVE-2026-0006", "published": "2026-01-06", "cvss_score": 9.8}
+    cve_row = {
+        "cve_id": "CVE-2026-0006",
+        "published": "2026-01-06",
+        "cvss_score": 9.8,
+        "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+    }
     enrichment_row = {
         "in_kev": 1,
         "epss": 0.87,
@@ -142,6 +147,7 @@ def test_build_signals_mapea_filas_de_db_a_formulas():
         "ransomware_use": False,
         "media_score": 6.0,   # min(12/2, 10)
         "poc_score": 10.0,    # min(5*2, 10)
+        "exploit_ease": 10.0,  # AV:N/AC:L/PR:N/UI:N
         "tone_score": 8.0,
         "branding": True,
     }

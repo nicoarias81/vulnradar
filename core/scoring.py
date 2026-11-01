@@ -2,23 +2,52 @@
 Fórmulas de scoring v2 — VulnRadar
 """
 
+def exploit_ease(vector: str | None) -> float:
+    """Facilidad técnica de explotación desde el vector CVSS 3.1 (10 = trivial).
+
+    AC manda: una condición de carrera (AC:H) no se repite igual en cada
+    corrida y baja fuerte. Después se recorta si hace falta acceso local o
+    adyacente, privilegios altos o interacción de la víctima.
+    """
+    if not vector:
+        return 0.0
+    v = vector.upper()
+    ease = 4.0 if "AC:H" in v else 10.0
+    if "AV:L" in v or "AV:A" in v or "AV:P" in v:
+        ease = min(ease, 5.0)
+    if "PR:H" in v:
+        ease = min(ease, 6.0)
+    if "UI:R" in v:
+        ease = min(ease, 7.0)
+    return ease
+
+
 def calculate_reality(signals: dict) -> float:
     """
-    Reality v2
-    45% KEV + 25% EPSS + 20% Wild + 5% Ransomware + 5% Complexity
+    Reality v3
+    40% KEV + 25% EPSS + 15% PoC público + 10% Wild + 5% Ransomware + 5% Facilidad
+
+    Los PoC pesan acá además de en hype: son la señal de explotabilidad más
+    temprana (aparecen semanas antes de KEV y de un EPSS con señal), así que
+    dejarlos sólo del lado del hype penalizaba doble a un CVE con exploit
+    público. La facilidad sale del vector CVSS, no de un default fijo: el
+    ``complexity_score`` que se leía antes nunca se escribía en la base y le
+    regalaba 0.25 a todos los CVEs por igual.
     """
     kev = 10.0 if signals.get("in_kev") else 0.0
     epss = min(signals.get("epss", 0) * 10, 10.0)
+    poc = min(signals.get("poc_score", 0), 10.0)
     wild = 10.0 if signals.get("wild_confirmation") else 0.0
     ransomware = 10.0 if signals.get("ransomware_use") else 0.0
-    complexity = signals.get("complexity_score", 5.0)  # 0-10, default medio
+    ease = signals.get("exploit_ease", 0.0)
 
     return round(
-        0.45 * kev +
+        0.40 * kev +
         0.25 * epss +
-        0.20 * wild +
+        0.15 * poc +
+        0.10 * wild +
         0.05 * ransomware +
-        0.05 * complexity,
+        0.05 * ease,
         2
     )
 

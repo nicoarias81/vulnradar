@@ -57,4 +57,5 @@ class NormalizedCve:
     cve_id: str
     published: Optional[str] = None
     cvss: float = 0.0
+    cvss_vector: Optional[str] = None
     signals: dict[str, Any] = field(default_factory=dict)
