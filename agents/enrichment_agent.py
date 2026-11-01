@@ -20,6 +20,7 @@ import json
 import os
 import re
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote_plus
@@ -602,9 +603,18 @@ def build_poc_query(template, cve_id) -> str:
     return rendered if "poc" in rendered.lower() else f"{rendered} poc"
 
 
+def _http_status(exc) -> int:
+    """Código HTTP de una excepción de requests, 0 si no hubo respuesta."""
+    response = getattr(exc, "response", None)
+    return int(getattr(response, "status_code", 0) or 0)
+
+
 def fetch_poc_repos(cve_id, *, session=None, token=None, template=DEFAULT_POC_QUERY,
                     timeout=20, per_page=30) -> tuple:
-    """(total en GitHub, repos con métricas). Una llamada sirve para contar y listar."""
+    """(total en GitHub, repos con métricas, status HTTP).
+
+    El status importa: un 403/429 es rate limit, no "este CVE no tiene PoCs".
+    """
     http = session or requests
     resolved_token = os.getenv("GITHUB_TOKEN") if token is None else token
     headers = {"Accept": "application/vnd.github+json", "User-Agent": USER_AGENT}
@@ -623,7 +633,7 @@ def fetch_poc_repos(cve_id, *, session=None, token=None, template=DEFAULT_POC_QU
         data = response.json() or {}
     except Exception as exc:
         print(f"GitHub {cve_id}: {exc}")
-        return 0, []
+        return 0, [], _http_status(exc)
 
     total = data.get("total_count")
     if total is None:
@@ -647,7 +657,7 @@ def fetch_poc_repos(cve_id, *, session=None, token=None, template=DEFAULT_POC_QU
             "pushed_at": item.get("pushed_at"),
             "created_at": item.get("created_at"),
         })
-    return total, repos
+    return total, repos, 200
 
 
 def upsert_pocs(conn, cve_id, repos) -> int:
@@ -685,7 +695,7 @@ def fetch_poc_count(cve_id, *, session=None, token=None, template=DEFAULT_POC_QU
     Cuenta repos que probablemente son PoC. Sin GITHUB_TOKEN la API puede
     devolver 403 por rate limit: se loguea y se sigue con 0.
     """
-    total, _ = fetch_poc_repos(
+    total, _, _ = fetch_poc_repos(
         cve_id, session=session, token=token, template=template, timeout=timeout,
         per_page=1,
     )
@@ -724,13 +734,33 @@ def select_poc_targets(conn, limit=25) -> list:
     return [row["cve_id"] for row in rows]
 
 
+# La búsqueda de GitHub permite 30 pedidos por minuto con token (10 sin él) y
+# responde 403 si se pasa. Sin pausa, un lote grande quema la cuota, falla en
+# silencio y encima guarda poc_count=0 encima del conteo bueno.
+GITHUB_MIN_INTERVAL = 2.1
+GITHUB_RATE_LIMIT_WAIT = 60
+RATE_LIMIT_STATUS = (403, 429)
+
+
 def load_pocs(conn, cve_ids, *, session=None, token=None,
-              template=DEFAULT_POC_QUERY) -> int:
+              template=DEFAULT_POC_QUERY, pause=None, sleep=None) -> int:
+    espera = GITHUB_MIN_INTERVAL if pause is None else pause
+    dormir = sleep or time.sleep
     count = 0
-    for cve_id in cve_ids or []:
-        total, repos = fetch_poc_repos(
+    for i, cve_id in enumerate(cve_ids or []):
+        if i and espera:
+            dormir(espera)
+        total, repos, status = fetch_poc_repos(
             cve_id, session=session, token=token, template=template,
         )
+        if status in RATE_LIMIT_STATUS:
+            # Un 403 acá no dice nada del CVE: se espera la ventana y se reintenta.
+            dormir(GITHUB_RATE_LIMIT_WAIT)
+            total, repos, status = fetch_poc_repos(
+                cve_id, session=session, token=token, template=template,
+            )
+        if status in RATE_LIMIT_STATUS:
+            continue  # sigue limitado: no se pisa el conteo que ya estaba
         upsert_poc_count(conn, cve_id, total)
         upsert_pocs(conn, cve_id, repos)
         count += 1
