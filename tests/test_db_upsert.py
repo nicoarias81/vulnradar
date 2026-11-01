@@ -124,10 +124,10 @@ def test_repeated_scoring_leaves_a_single_current_score(conn):
     assert score_all(conn) == 1
     first = conn.execute("SELECT * FROM scores WHERE cve_id = ?", (CVE_ID,)).fetchone()
 
-    assert score_all(conn) == 1
+    assert score_all(conn) == 0  # unchanged fingerprints are skipped
 
     assert _count(conn, "scores") == 1
-    assert first["hype"] == pytest.approx(1.96)  # cvss 9.8 -> hype from CVSS only
+    assert first["hype"] == pytest.approx(0.0)  # cvss 9.8 -> hype from CVSS only
 
     # A new EPSS signal raises reality and REPLACES the score, it does not duplicate it.
     upsert_epss(conn, [{"cve": CVE_ID, "epss": "0.9", "percentile": "0.99"}])
@@ -136,7 +136,7 @@ def test_repeated_scoring_leaves_a_single_current_score(conn):
     second = conn.execute("SELECT * FROM scores WHERE cve_id = ?", (CVE_ID,)).fetchone()
     assert _count(conn, "scores") == 1
     assert second["reality"] > first["reality"]
-    assert second["reality"] == pytest.approx(6.25)  # 0.40*10 (KEV) + 0.25*9 (EPSS)
+    assert second["reality"] == pytest.approx(7.9)  # 0.40*10 (KEV) + 0.25*9 (EPSS)
     assert second["category"] == "Sleeper"  # low hype (1.96) and reality 6.25
 
 
@@ -159,7 +159,7 @@ def test_score_history_stores_each_change_and_not_repeats(conn):
     rows = conn.execute(
         "SELECT hype, reality FROM score_history WHERE cve_id = ? ORDER BY id", (CVE_ID,)
     ).fetchall()
-    assert [round(float(f["reality"]), 2) for f in rows] == [4.25, 6.25]
+    assert [round(float(f["reality"]), 2) for f in rows] == [7.1, 7.9]
 
 
 def test_load_score_history_returns_series_old_to_new(conn):

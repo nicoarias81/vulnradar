@@ -1,0 +1,139 @@
+{
+  "scope": "Synthetic counterexamples and actual source write/orchestration paths; not predictive calibration.",
+  "scoring_version": "v4.1-evidence-tiers-attention-30d",
+  "source_sha256": {
+    "core/scoring.py": "ee12332c9d37f793cf967545febb4af6454b12264ec3d55c19f6bfe5bafad5b1",
+    "core/normalizer.py": "ecd922bb0f31adaf8df110fa2109b87a8fa713ac1f98fbaba4c62cb749e9b369",
+    "agents/enrichment_agent.py": "ca7c63712457abec1cbed0a955f55d089aa98f9d3d5e1af0222b5ca6f1765193",
+    "agents/intel_agent.py": "a2f7f9603b01f0e646a4906a3932720dc6f00cfd3c966bb8f4b906106e4e7a3b",
+    "config/sources.yaml": "3d7a05268f232e88857a1d66c4071bec3668cd81a7e0ed2fa527cdf0962b388e"
+  },
+  "checks": [
+    {
+      "name": "normalized_grid_is_finite_and_bounded",
+      "kind": "arithmetic",
+      "passed": true,
+      "evidence": {
+        "combinations": 25920,
+        "violations": 0
+      }
+    },
+    {
+      "name": "individual_signals_are_numerically_monotone",
+      "kind": "arithmetic",
+      "passed": true,
+      "evidence": {
+        "signals": 10,
+        "scope": "Each signal varied independently; category semantics evaluated separately."
+      }
+    },
+    {
+      "name": "known_exploitation_not_overhyped",
+      "kind": "model_safety",
+      "passed": true,
+      "evidence": {
+        "hype": 9.75,
+        "reality": 7.01,
+        "category": "Earned the hype"
+      }
+    },
+    {
+      "name": "confirmed_non_kev_can_reach_high_reality",
+      "kind": "model_safety",
+      "passed": true,
+      "evidence": {
+        "maximum_without_ransomware": 8.0
+      }
+    },
+    {
+      "name": "finite_bounded_scores",
+      "kind": "input_integrity",
+      "passed": true,
+      "evidence": {
+        "negative_inputs": {
+          "hype": 0.0,
+          "reality": 0.0,
+          "category": "Unknown"
+        },
+        "infinite_ease_result": "0.0"
+      }
+    },
+    {
+      "name": "invalid_vector_not_maximum_ease",
+      "kind": "input_integrity",
+      "passed": true,
+      "evidence": {
+        "ease_for_garbage": 0.0
+      }
+    },
+    {
+      "name": "cvss4_constraints_affect_ease",
+      "kind": "input_integrity",
+      "passed": true,
+      "evidence": {
+        "AT_N_UI_N": 10.0,
+        "AT_P_UI_A": 4.0
+      }
+    },
+    {
+      "name": "rejected_record_not_treated_as_normal_cve",
+      "kind": "input_integrity",
+      "passed": true,
+      "evidence": {
+        "normalizer_accepts_rejected": false
+      }
+    },
+    {
+      "name": "missing_evidence_distinguished_from_zero",
+      "kind": "model_safety",
+      "passed": true,
+      "evidence": {
+        "same_signals": false
+      }
+    },
+    {
+      "name": "product_name_not_vulnerability_brand",
+      "kind": "input_integrity",
+      "passed": true,
+      "evidence": {
+        "branding": [
+          false,
+          null
+        ]
+      }
+    },
+    {
+      "name": "llm_identifier_grounded_in_input",
+      "kind": "input_integrity",
+      "passed": true,
+      "evidence": {
+        "verdict": [
+          {
+            "cve_id": null,
+            "brand_name": null,
+            "relevant": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "github_zero_preserves_exploitdb_evidence",
+      "kind": "source_integrity",
+      "passed": true,
+      "evidence": {
+        "exploitdb_count": 2,
+        "after_github_zero": 2
+      }
+    },
+    {
+      "name": "configured_advisory_feeds_are_requested",
+      "kind": "source_integrity",
+      "passed": true,
+      "evidence": {
+        "requested_feeds": 35,
+        "unrequested_advisory_feeds": []
+      }
+    }
+  ],
+  "violations": 0
+}

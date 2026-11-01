@@ -53,6 +53,8 @@ SLACK_ENV = "SLACK_WEBHOOK_URL"
 WEBHOOK_ENV = "ALERT_WEBHOOK_URL"
 
 RULE_LABELS = {
+    'watch': 'Public PoC / high exploitation prediction',
+    "confirmed_exploitation": "Confirmed exploitation",
     "overhyped": "Overhyped",
     "earned_the_hype": "Earned the hype",
     "humo": "Unearned hype",
@@ -65,7 +67,7 @@ SELECT_SCORED = """
     SELECT s.cve_id, s.hype, s.reality, s.category, s.calculated_at,
            c.description, c.cvss_score, c.cvss_severity,
            e.tone_score, e.media_count, e.in_kev, e.epss, e.poc_count,
-           e.branding, e.brand_name
+           e.branding, e.brand_name, e.wild_confirmation, s.exploitation_state
     FROM scores s
     JOIN cves c ON c.cve_id = s.cve_id
     LEFT JOIN enrichments e ON e.cve_id = s.cve_id
@@ -119,7 +121,10 @@ def fired_rules(row, *, humo_tone=HUMO_TONE_THRESHOLD,
     """Rules a row fires, in stable order. No signals, no rule."""
     category = (row["category"] or "").strip()
     rules = []
-    if category == "Overhyped":
+    confirmed = bool(row.get('in_kev') or row.get('wild_confirmation'))
+    if confirmed:
+        rules.append('confirmed_exploitation')
+    if category == "Overhyped" and not confirmed:
         rules.append("overhyped")
     if category == "Earned the hype":
         rules.append("earned_the_hype")
@@ -127,12 +132,14 @@ def fired_rules(row, *, humo_tone=HUMO_TONE_THRESHOLD,
     tone = row["tone_score"]
     reality = row["reality"]
     # "humo": panic headlines with little real fear. Independent of the category.
-    if tone is not None and reality is not None \
+    if not confirmed and category not in ('Unknown','Watch') and tone is not None and reality is not None \
             and tone >= humo_tone and reality < humo_reality:
         rules.append("humo")
 
     if category == "Sleeper":
         rules.append("sleeper")
+    if category == 'Watch':
+        rules.append('watch')
     return rules
 
 

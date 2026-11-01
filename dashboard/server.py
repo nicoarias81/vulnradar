@@ -85,6 +85,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._products(qp)
             return
         if path == "/soc/logout":
+            auth.revoke(self.headers.get("Cookie"))
             self._redirect("/soc", extra_headers=[("Set-Cookie", auth.clear_cookie_header())])
             return
 
@@ -104,7 +105,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 return
         except Exception as exc:
             sys.stderr.write(f"dashboard error: {exc}\n")
-            self._send(500, f"<pre>{exc}</pre>".encode(), "text/html; charset=utf-8")
+            self._send(500, b"Internal server error", "text/plain; charset=utf-8")
             return
 
         self._send(200, html.encode("utf-8"), "text/html; charset=utf-8")
@@ -115,7 +116,16 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if path not in SOC_PATHS:
             self._send(405, b"Method not allowed", "text/plain; charset=utf-8")
             return
-        length = int(self.headers.get("Content-Length") or 0)
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            self.close_connection = True
+            self._send(400, b"Invalid Content-Length", "text/plain; charset=utf-8")
+            return
+        if length < 0 or length > 8192 or self.headers.get("Transfer-Encoding"):
+            self.close_connection = True
+            self._send(413, b"Request body too large or unsupported", "text/plain; charset=utf-8")
+            return
         raw = self.rfile.read(length) if length else b""
         fields = parse_qs(raw.decode("utf-8", "replace"))
         user = (fields.get("user") or [""])[-1]

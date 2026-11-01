@@ -1,127 +1,125 @@
-# VulnRadar deploy (public) — personal-1
+# VulnRadar deployment
 
-`https://vulnradar.munalabs.eu` — **public** site, served by Cloudflare Tunnel, no open ports.
+Production uses `deploy/docker-compose.server.yml`: Cloudflare Tunnel forwards
+to Caddy on `127.0.0.1:8501`, which routes to the active dashboard slot.
+Dashboard A and B are available for inspection on loopback ports 8511 and 8512.
+The worker runs sync -> enrich -> intel -> score -> alert independently of slots.
+This runbook describes repository configuration, not a live health report.
 
-```
-Internet → Cloudflare edge → tunnel "personal-1" → http://localhost:8501 → container vulnradar-dashboard-1
-                                                                        ↘ container vulnradar-worker-1 (sync→enrich→score→alert)
-```
+## Configuration
 
-| | |
-|---|---|
-| Server | Hetzner CAX21 ARM64, `ssh.munalabs.eu` (tunnel only) |
-| Code | `/opt/vulnradar` (not a git repo: it is synced with `git archive HEAD`) |
-| Data | `/opt/vulnradar/data` (bind mount): `cvelistV5` mirror. DB = external PostgreSQL (`DATABASE_URL`) |
-| Secrets | `/opt/vulnradar/deploy/.env.prod` (chmod 600, generated on the server, never in the repo) |
-| Port | `127.0.0.1:8501` — nothing listens on 0.0.0.0 |
-| Networks | `default` (egress: git/CISA/EPSS/RSS/GitHub) + `internal` (shared LiteLLM from `/opt/stack`) |
-| LLM | `LLM_BASE_URL=http://litellm:4000/v1`, model `qwen3.8-flash`, key = LiteLLM virtual key |
-| SOC panel | `/soc` with `SOC_USER`/`SOC_PASSWORD` (HMAC cookie). Without a password the panel stays closed |
-| Access | **no** Cloudflare Access: the site is public on purpose |
+- Code directory: `/opt/vulnradar`; persistent mirror: `/opt/vulnradar/data`.
+- Secrets: `/opt/vulnradar/deploy/.env.prod`, permissions `600`.
+- External PostgreSQL: `DATABASE_URL`; external Docker networks: `db` and
+  `internal` (LiteLLM), plus the Compose default network for outbound traffic.
+- LiteLLM endpoint: `http://litellm:4000/v1`; select model/key through the env file.
+- `SEED_DEMO=0` in both production slots.
+- `/soc`, `/agentes` and `/agents` require `SOC_USER`/`SOC_PASSWORD`. Without a
+  password, access stays closed. `/` and `/cve` remain public.
+- Production sets `SOC_COOKIE_SECURE=1`: access SOC over HTTPS through the
+  tunnel. A Secure cookie is not sent over a direct HTTP inspection URL.
 
-## Deploy (when the code is ready)
-
-```bash
-bash deploy/deploy.sh            # requires a clean tree; aborts otherwise
-```
-
-It does, in order: preflight (clean git + SSH + disk) → `git archive HEAD` to the server → CRLF normalization →
-bootstrap (`/opt/vulnradar/data`, `.env.prod` if missing) → env checks without printing values →
-`docker compose up -d --build` → ingress + DNS in Cloudflare → verification (local and public).
-
-Flags: `--from-worktree` (deploys the uncommitted working tree), `--allow-dirty` (deploys HEAD even with
-uncommitted changes), `--no-build` (recreate only, for an env change), `--skip-cloudflare`.
-
-> Note: `git archive HEAD` does **not** include untracked files. If `deploy/` is not committed, the script
-> aborts and asks you to commit or use `--from-worktree`.
-
-## State when this runbook was prepared (verified)
-
-- `/opt/vulnradar` exists with the code + `deploy/`; `/opt/vulnradar/data` empty (4 KB).
-- `deploy/.env.prod` created, `chmod 600`, `SOC_PASSWORD` of 32 random hex chars, `LITELLM_API_KEY` copied
-  server-side from `/opt/panopticon/deploy/.env.prod` (hash matches; that key already answers 200 with
-  `qwen3.8-flash` on `litellm:4000`).
-- `docker compose -f deploy/docker-compose.server.yml --env-file deploy/.env.prod config --quiet` → valid.
-- Ingress + DNS **created** (`vulnradar.munalabs.eu` → `http://localhost:8501`, CNAME proxied to the tunnel,
-  catch-all untouched, no Access app). Previous ingress backup: `/root/cf-backups/tunnel-ingress-*.json`.
-- **Deployed and in production** (dashboard healthy, worker completing cycles, public site 200).
-
-### Verification notes from this machine
-
-- The Windows resolver can keep a cached NXDOMAIN for the freshly created domain: a normal `curl` returns
-  000 even though `nslookup` against 1.1.1.1 resolves. Use `--resolve vulnradar.munalabs.eu:443:<edge IP>`
-  (`deploy.sh` already does) or flush DNS in an elevated console.
-- From the server, `curl https://*.munalabs.eu` returns 403 (Cloudflare filter on datacenter IPs:
-  the same happens with `hermes.munalabs.eu`). It is useless as an availability check; verify from another network.
-
-## Steps one by one
+## Deploy
 
 ```bash
-# 1. code (without touching data/ or .env.prod)
-git archive --format=tar HEAD | ssh ... 'tar -x -C /opt/vulnradar'
-
-# 2. dirs + env.prod (idempotent)
-ssh ... 'bash /opt/vulnradar/deploy/bootstrap-server.sh'
-
-# 3. build + up
-ssh ... 'cd /opt/vulnradar && docker compose -f deploy/docker-compose.server.yml --env-file deploy/.env.prod up -d --build'
-
-# 4. ingress + DNS (public: no Access app)
-ssh ... 'set -a; source /opt/cloudflare/credentials.env; set +a; python3 -' < deploy/cloudflare-vulnradar.py
+bash deploy/deploy.sh
 ```
 
-## Verification
+The script performs preflight checks, transfers the source, bootstraps server
+configuration, builds the inactive slot, checks health and switches Caddy traffic.
+The worker is recreated against the new image before the dashboard promotion.
+Use `--from-worktree` for uncommitted changes, `--allow-dirty` to deploy committed
+HEAD from a dirty checkout, `--no-build` to skip the explicit production image
+build, and `--skip-cloudflare` to omit tunnel/DNS reconciliation. The A/B helper
+still builds its candidate during promotion. The mirror and env file are
+persistent server data and must not be overwritten by source transfer.
+
+Local A/B commands use `scripts/ab.sh`; `deploy/deploy.sh` supplies production
+paths and configuration. Local proxy is port 8500; production proxy is 8501.
+
+## Upgrade behavior
+
+`init_db()` applies additive schema changes at startup. This release adds
+`scores.input_hash`, `poc_checks` and `soc_sessions` and ensures vendor/product
+columns exist. `pg_trgm` is installed in `public` for shared index visibility.
+The database role must be allowed to apply these changes; inspect startup logs
+and verify schema readiness before promoting a slot.
+
+- Existing scores are recalculated once to populate versioned fingerprints.
+  Subsequent passes only recalculate changed inputs in batches of 2,000.
+- Category correction: Reality >= 6 and Hype < 6 is `Sleeper`, including the
+  previous gap at Hype 5-6. Category-only changes enter `score_history`.
+- Old HMAC SOC cookies require a new login. New sessions expire after 24 hours
+  on the server, are shared across slots and are revoked at logout. Password or
+  username changes invalidate existing sessions.
+- Old PoC records are eligible for a fresh check. Successful checks (including
+  empty results) refresh after 24 hours. Failures preserve evidence and retry
+  after 15 minutes.
+- New and modified CVEs populate vendor/product during ingestion. Populate
+  missing products in historical records once with:
+
+  ```bash
+  python scripts/backfill_products.py
+  ```
+
+- Missing sync watermark triggers a full import, including after an interrupted
+  initial load. If an older version already adopted a watermark over an
+  incomplete catalog, explicitly repair it once:
+
+  ```bash
+  python agents/sync_agent.py --full
+  ```
+
+  Run these commands inside the worker container or a configured environment
+  against the intended production database. They update data. Stop the regular
+  worker during a full repair to avoid simultaneous mirror updates.
+
+## First boot and health
+
+The first cycle clones CVE List V5 and imports the full catalog before enriching
+and scoring. It can take longer than `SYNC_INTERVAL_MINUTES`; that setting is
+the sleep after each cycle, not a hard scheduling deadline.
 
 ```bash
-ssh ... "curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8501/health"        # 200
-ssh ... "curl -s http://127.0.0.1:8501/soc | grep -c 'SOC MONITORING'"                  # 0 (login)
-curl -s -A "Mozilla/5.0" -o /dev/null -w '%{http_code}\n' https://vulnradar.munalabs.eu/  # 200
-ssh ... 'docker logs --tail 30 vulnradar-worker-1'
+docker compose -f deploy/docker-compose.server.yml --env-file deploy/.env.prod ps
+docker compose -f deploy/docker-compose.server.yml --env-file deploy/.env.prod logs --tail 50 worker
+curl -f http://localhost:8501/health
+curl -f https://vulnradar.munalabs.eu/
 ```
 
-Expected on `/soc` without a cookie: the login page (200). With a cookie: the `SOC MONITORING` panel.
+`/health` checks that the HTTP server is responding. It does not verify database
+connectivity, schema completeness, freshness or worker progress. Inspect
+`agent_events` or the authenticated SOC panel for pipeline health.
 
-## First boot (important)
+## Operations and tests
 
-`SEED_DEMO=0`: the DB starts empty and **the worker fills it by itself**. The first cycle is expensive:
+Use `deploy/backup-db.sh` for PostgreSQL backups and check its configured backup
+directory and retention before scheduling it. Use a dedicated PostgreSQL test
+database. Test schemas have a per-invocation namespace and cleanup only targets
+explicitly registered schemas.
 
-1. `git clone --depth 1` of the cvelistV5 mirror (~1–2 GB on disk).
-2. Full walk of ~395k JSON files → PostgreSQL.
-3. Enrichment per cycle: full KEV + EPSS, RSS, PoCs for 25 CVEs, tone for 50 CVEs (batches of 10).
-4. Scoring over the enriched CVEs.
+The image excludes `.env*` and `deploy/` through `.dockerignore`; production
+secrets are injected through the env file. Public dashboard errors return a
+generic response, while exception details remain in server logs. Containers
+currently run as root inside the image. Deployment readiness should include
+schema logs and worker progress as well as HTTP health.
 
-In other words: the public site starts showing little and fills up over time. A cycle can last longer than
-`SYNC_INTERVAL_MINUTES=15`; the loop simply sleeps when it finishes. Tracking:
+## Scoring v4.1 upgrade
 
-```bash
-ssh ... 'docker logs -f --tail 50 vulnradar-worker-1'
-ssh ... "docker exec vulnradar-dashboard-1 python -c \"from core.db import get_db;c=get_db();print([(t,c.execute('select count(*) from '+t).fetchone()[0]) for t in ('cves','scores','enrichments')]);c.close()\""
-```
+Apply `schema.sql` through `init_db()` before running new workers: this adds
+source observations, source health, separate PoC counters, EPSS metadata,
+attention refresh deadlines and `score_evaluations`. Schema errors now prevent
+startup. Numeric constraints apply to new/changed rows; legacy constraints are
+installed `NOT VALID` so old bad data must be audited/recomputed before validation.
 
-## Operations
+The scoring version bump invalidates old fingerprints. Refresh real sources and
+recalculate scores before judging changed categories; old aggregate counters and
+untyped mentions do not establish source provenance. Missing/stale EPSS becomes
+Unknown, curated public PoC/high EPSS becomes Watch, and confirmed exploitation
+has a Reality floor of 7. Add `CIRCL_TRUSTED_AUTHORS` only after reviewing reporter
+identities. An empty allowlist preserves reports without asserting confirmation.
 
-```bash
-# logs
-ssh ... 'docker logs -f --tail 100 vulnradar-dashboard-1'
-# PostgreSQL backup (pg_dump) + rotation (suggested cron 04:00)
-ssh ... 'bash /opt/vulnradar/deploy/backup-db.sh'
-# SOC panel credentials
-ssh ... 'grep -E "^SOC_(USER|PASSWORD)=" /opt/vulnradar/deploy/.env.prod'
-# code rollback to a previous commit
-git archive --format=tar <sha> | ssh ... 'tar -x -C /opt/vulnradar'   # + up -d --build
-# shut down
-ssh ... 'cd /opt/vulnradar && docker compose -f deploy/docker-compose.server.yml down'
-```
-
-## Security notes
-
-- `.dockerignore` excludes `.env*` and `deploy/`: the image does **not** carry `.env.prod` (verified with a marker).
-- The code escapes everything coming from the DB with `html.escape()` (RSS titles, CVE descriptions).
-- The only writable endpoint is `POST /soc` (login); the rest is read-only.
-- Containers run as root inside the image (default); no ports published beyond 127.0.0.1.
-
-## Open items/decisions at the time of this runbook
-
-- Confirm the public scope: today anyone can read `/`, `/cve`, `/agentes`; `/soc` asks for a password.
-- LLM smoke test in prod (that the virtual key enables `qwen3.8-flash`); otherwise tone falls back to the heuristic.
-- The overview needs **scored** CVEs; until the worker completes cycles, the home page looks empty.
+Reality is an ordinal index; the new tier thresholds and attention weights are
+explicit safety/product rules, not fitted probabilities. The real-data lab and
+three-cohort KEV proxy backtest are documented under `docs/SCORING_LAB.md`.
+Production has not been deployed by the lab scripts.

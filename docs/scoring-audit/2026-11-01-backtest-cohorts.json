@@ -1,0 +1,314 @@
+{
+  "cohorts": [
+    {
+      "algorithm_version": "v4.1-evidence-tiers-attention-30d",
+      "cutoff": "2026-07-01",
+      "horizon_days": 30,
+      "end": "2026-07-31",
+      "eligible_cves": 343221,
+      "known_kev_excluded": 1631,
+      "new_kev_all": 25,
+      "new_kev_in_cohort": 12,
+      "epss_metadata": "#model_version:v2026.06.15,score_date:2026-07-01T12:04:57Z",
+      "snapshots": {
+        "kev_t": {
+          "url": "https://raw.githubusercontent.com/cisagov/kev-data/d506da19ebb1f0282d803c4f218aa551ac758365/known_exploited_vulnerabilities.json",
+          "downloaded_at": "2026-11-01T13:14:18.596532+00:00",
+          "last_modified": null,
+          "sha256": "f1bc020ba9b0aa3e49bd66af4e777e344a32066cfb516cd77a2247f1eb5582d8",
+          "bytes": 1525887,
+          "cache_object": "objects/f1bc020ba9b0aa3e49bd66af4e777e344a32066cfb516cd77a2247f1eb5582d8",
+          "commit": "d506da19ebb1f0282d803c4f218aa551ac758365"
+        },
+        "kev_end": {
+          "url": "https://raw.githubusercontent.com/cisagov/kev-data/564b8c59f9039926e2d9548ba5b334db45cb6b50/known_exploited_vulnerabilities.json",
+          "downloaded_at": "2026-11-01T13:14:19.889617+00:00",
+          "last_modified": null,
+          "sha256": "15b44d7c9c57f3d27128999e09f0fc991659a0b64713b5e1af599565447a2409",
+          "bytes": 1567768,
+          "cache_object": "objects/15b44d7c9c57f3d27128999e09f0fc991659a0b64713b5e1af599565447a2409",
+          "commit": "564b8c59f9039926e2d9548ba5b334db45cb6b50"
+        },
+        "epss_t": {
+          "url": "https://epss.empiricalsecurity.com/epss_scores-2026-07-01.csv.gz",
+          "downloaded_at": "2026-11-01T13:14:20.754802+00:00",
+          "last_modified": "Wed, 01 Jul 2026 13:31:26 GMT",
+          "sha256": "3aee5c0acb2c456a14b45618d239c69d644afc73c08f61e9e8de5641153d5b36",
+          "bytes": 2442935,
+          "cache_object": "objects/3aee5c0acb2c456a14b45618d239c69d644afc73c08f61e9e8de5641153d5b36"
+        }
+      },
+      "baseline_epss": {
+        "100": {
+          "hits": 0,
+          "top_k_hit_fraction": 0.0,
+          "recall_of_future_kev_additions": 0.0
+        },
+        "500": {
+          "hits": 0,
+          "top_k_hit_fraction": 0.0,
+          "recall_of_future_kev_additions": 0.0
+        },
+        "1000": {
+          "hits": 0,
+          "top_k_hit_fraction": 0.0,
+          "recall_of_future_kev_additions": 0.0
+        },
+        "5000": {
+          "hits": 1,
+          "top_k_hit_fraction": 0.0002,
+          "recall_of_future_kev_additions": 0.08333333333333333
+        }
+      },
+      "v4_predictive_index": {
+        "100": {
+          "hits": 0,
+          "recall_of_future_kev_additions": 0.0
+        },
+        "500": {
+          "hits": 0,
+          "recall_of_future_kev_additions": 0.0
+        },
+        "1000": {
+          "hits": 0,
+          "recall_of_future_kev_additions": 0.0
+        },
+        "5000": {
+          "hits": 1,
+          "recall_of_future_kev_additions": 0.08333333333333333
+        }
+      },
+      "labels": [
+        "CVE-2008-4128",
+        "CVE-2023-4346",
+        "CVE-2025-68686",
+        "CVE-2026-0770",
+        "CVE-2026-25089",
+        "CVE-2026-39808",
+        "CVE-2026-46817",
+        "CVE-2026-48282",
+        "CVE-2026-48908",
+        "CVE-2026-48939",
+        "CVE-2026-55255",
+        "CVE-2026-56290"
+      ],
+      "limitations": [
+        "Target is KEV inclusion, not first exploitation or all exploitation.",
+        "Non-KEV CVEs are unlabeled, not confirmed non-exploited negatives.",
+        "Historical PoC, media and tone are unavailable and deliberately excluded.",
+        "V4 rounds the ordinal index; ties may alter top-K rankings relative to raw EPSS.",
+        "A single temporal cohort does not establish calibrated probability or generalization."
+      ]
+    },
+    {
+      "algorithm_version": "v4.1-evidence-tiers-attention-30d",
+      "cutoff": "2026-08-01",
+      "horizon_days": 30,
+      "end": "2026-08-31",
+      "eligible_cves": 352936,
+      "known_kev_excluded": 1656,
+      "new_kev_all": 31,
+      "new_kev_in_cohort": 17,
+      "epss_metadata": "#model_version:v2026.06.15,score_date:2026-08-01T12:00:31Z",
+      "snapshots": {
+        "kev_t": {
+          "url": "https://raw.githubusercontent.com/cisagov/kev-data/564b8c59f9039926e2d9548ba5b334db45cb6b50/known_exploited_vulnerabilities.json",
+          "downloaded_at": "2026-11-01T13:16:47.064616+00:00",
+          "last_modified": null,
+          "sha256": "15b44d7c9c57f3d27128999e09f0fc991659a0b64713b5e1af599565447a2409",
+          "bytes": 1567768,
+          "cache_object": "objects/15b44d7c9c57f3d27128999e09f0fc991659a0b64713b5e1af599565447a2409",
+          "commit": "564b8c59f9039926e2d9548ba5b334db45cb6b50"
+        },
+        "kev_end": {
+          "url": "https://raw.githubusercontent.com/cisagov/kev-data/9d5557b3a39b61ad340a89a4218dce5295bdde15/known_exploited_vulnerabilities.json",
+          "downloaded_at": "2026-11-01T13:16:48.565500+00:00",
+          "last_modified": null,
+          "sha256": "2043ec4073019154e781f687359bfd9759e4d1ca9a18befc99fbe0c4c93bbde8",
+          "bytes": 1621705,
+          "cache_object": "objects/2043ec4073019154e781f687359bfd9759e4d1ca9a18befc99fbe0c4c93bbde8",
+          "commit": "9d5557b3a39b61ad340a89a4218dce5295bdde15"
+        },
+        "epss_t": {
+          "url": "https://epss.empiricalsecurity.com/epss_scores-2026-08-01.csv.gz",
+          "downloaded_at": "2026-11-01T13:16:49.394239+00:00",
+          "last_modified": "Sat, 01 Aug 2026 13:31:33 GMT",
+          "sha256": "eda73271023428e8bec132906050ed0dc53f8e052affe7121cc20372b20081b6",
+          "bytes": 2507180,
+          "cache_object": "objects/eda73271023428e8bec132906050ed0dc53f8e052affe7121cc20372b20081b6"
+        }
+      },
+      "baseline_epss": {
+        "100": {
+          "hits": 0,
+          "top_k_hit_fraction": 0.0,
+          "recall_of_future_kev_additions": 0.0
+        },
+        "500": {
+          "hits": 1,
+          "top_k_hit_fraction": 0.002,
+          "recall_of_future_kev_additions": 0.058823529411764705
+        },
+        "1000": {
+          "hits": 2,
+          "top_k_hit_fraction": 0.002,
+          "recall_of_future_kev_additions": 0.11764705882352941
+        },
+        "5000": {
+          "hits": 5,
+          "top_k_hit_fraction": 0.001,
+          "recall_of_future_kev_additions": 0.29411764705882354
+        }
+      },
+      "v4_predictive_index": {
+        "100": {
+          "hits": 0,
+          "recall_of_future_kev_additions": 0.0
+        },
+        "500": {
+          "hits": 1,
+          "recall_of_future_kev_additions": 0.058823529411764705
+        },
+        "1000": {
+          "hits": 2,
+          "recall_of_future_kev_additions": 0.11764705882352941
+        },
+        "5000": {
+          "hits": 5,
+          "recall_of_future_kev_additions": 0.29411764705882354
+        }
+      },
+      "labels": [
+        "CVE-2015-3246",
+        "CVE-2015-5287",
+        "CVE-2019-1068",
+        "CVE-2021-23758",
+        "CVE-2022-0995",
+        "CVE-2023-49105",
+        "CVE-2025-62593",
+        "CVE-2026-21962",
+        "CVE-2026-33824",
+        "CVE-2026-34486",
+        "CVE-2026-53362",
+        "CVE-2026-55040",
+        "CVE-2026-59310",
+        "CVE-2026-63077",
+        "CVE-2026-8037",
+        "CVE-2026-8452",
+        "CVE-2026-9198"
+      ],
+      "limitations": [
+        "Target is KEV inclusion, not first exploitation or all exploitation.",
+        "Non-KEV CVEs are unlabeled, not confirmed non-exploited negatives.",
+        "Historical PoC, media and tone are unavailable and deliberately excluded.",
+        "V4 rounds the ordinal index; ties may alter top-K rankings relative to raw EPSS.",
+        "A single temporal cohort does not establish calibrated probability or generalization."
+      ]
+    },
+    {
+      "algorithm_version": "v4.1-evidence-tiers-attention-30d",
+      "cutoff": "2026-09-01",
+      "horizon_days": 30,
+      "end": "2026-10-01",
+      "eligible_cves": 365161,
+      "known_kev_excluded": 1687,
+      "new_kev_all": 44,
+      "new_kev_in_cohort": 17,
+      "epss_metadata": "#model_version:v2026.06.15,score_date:2026-09-01T12:03:04Z",
+      "snapshots": {
+        "kev_t": {
+          "url": "https://raw.githubusercontent.com/cisagov/kev-data/2d5aab3aef546281b9a7a82310c5c3dce31ce507/known_exploited_vulnerabilities.json",
+          "downloaded_at": "2026-11-01T13:16:51.897003+00:00",
+          "last_modified": null,
+          "sha256": "c4560f429889b75a2010996b95d592498c4bdb8d88f4e3307cc4316ef4db675e",
+          "bytes": 1682475,
+          "cache_object": "objects/c4560f429889b75a2010996b95d592498c4bdb8d88f4e3307cc4316ef4db675e",
+          "commit": "2d5aab3aef546281b9a7a82310c5c3dce31ce507"
+        },
+        "kev_end": {
+          "url": "https://raw.githubusercontent.com/cisagov/kev-data/a25b61fbc5e3125030a15e09adba33f427cc0e25/known_exploited_vulnerabilities.json",
+          "downloaded_at": "2026-11-01T13:16:53.229375+00:00",
+          "last_modified": null,
+          "sha256": "4e47d6936857ccf0994d2abe1d77d7421bf14e45ff908cc0d8973fe7adc35140",
+          "bytes": 1762387,
+          "cache_object": "objects/4e47d6936857ccf0994d2abe1d77d7421bf14e45ff908cc0d8973fe7adc35140",
+          "commit": "a25b61fbc5e3125030a15e09adba33f427cc0e25"
+        },
+        "epss_t": {
+          "url": "https://epss.empiricalsecurity.com/epss_scores-2026-09-01.csv.gz",
+          "downloaded_at": "2026-11-01T13:16:54.921937+00:00",
+          "last_modified": "Tue, 01 Sep 2026 13:30:21 GMT",
+          "sha256": "83638fae7e1f13c1167c83ee7e878a301689fbfce8a7a0621e2d5ea60ee2c366",
+          "bytes": 2588389,
+          "cache_object": "objects/83638fae7e1f13c1167c83ee7e878a301689fbfce8a7a0621e2d5ea60ee2c366"
+        }
+      },
+      "baseline_epss": {
+        "100": {
+          "hits": 0,
+          "top_k_hit_fraction": 0.0,
+          "recall_of_future_kev_additions": 0.0
+        },
+        "500": {
+          "hits": 0,
+          "top_k_hit_fraction": 0.0,
+          "recall_of_future_kev_additions": 0.0
+        },
+        "1000": {
+          "hits": 0,
+          "top_k_hit_fraction": 0.0,
+          "recall_of_future_kev_additions": 0.0
+        },
+        "5000": {
+          "hits": 0,
+          "top_k_hit_fraction": 0.0,
+          "recall_of_future_kev_additions": 0.0
+        }
+      },
+      "v4_predictive_index": {
+        "100": {
+          "hits": 0,
+          "recall_of_future_kev_additions": 0.0
+        },
+        "500": {
+          "hits": 0,
+          "recall_of_future_kev_additions": 0.0
+        },
+        "1000": {
+          "hits": 0,
+          "recall_of_future_kev_additions": 0.0
+        },
+        "5000": {
+          "hits": 0,
+          "recall_of_future_kev_additions": 0.0
+        }
+      },
+      "labels": [
+        "CVE-2025-25249",
+        "CVE-2025-39682",
+        "CVE-2025-39964",
+        "CVE-2026-19490",
+        "CVE-2026-20079",
+        "CVE-2026-42016",
+        "CVE-2026-42018",
+        "CVE-2026-48710",
+        "CVE-2026-49869",
+        "CVE-2026-53266",
+        "CVE-2026-5430",
+        "CVE-2026-59822",
+        "CVE-2026-65660",
+        "CVE-2026-71362",
+        "CVE-2026-7273",
+        "CVE-2026-82329",
+        "CVE-2026-9586"
+      ],
+      "limitations": [
+        "Target is KEV inclusion, not first exploitation or all exploitation.",
+        "Non-KEV CVEs are unlabeled, not confirmed non-exploited negatives.",
+        "Historical PoC, media and tone are unavailable and deliberately excluded.",
+        "V4 rounds the ordinal index; ties may alter top-K rankings relative to raw EPSS.",
+        "A single temporal cohort does not establish calibrated probability or generalization."
+      ]
+    }
+  ]
+}

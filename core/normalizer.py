@@ -1,11 +1,12 @@
 """
 Normalization — CVE List V5 to the cves table schema and internal signals.
 
-`build_signals` is the ONLY source of truth for the DB -> v2 formula mapping:
+`build_signals` is the source of truth for the DB -> scoring signal mapping:
 both the scoring agent (joined row) and the tests use it.
 """
 import json
 import re
+import math
 from typing import Any, Mapping, Optional
 
 from core.models import CveRecord, Enrichment, NormalizedCve
@@ -75,21 +76,25 @@ def normalize_cve_list_v5(raw: Mapping[str, Any]) -> Optional[dict]:
     """
     meta = raw.get("cveMetadata") or {}
     cve_id = (meta.get("cveId") or "").strip()
-    if not cve_id:
+    if not cve_id or meta.get("state") == "REJECTED":
         return None
 
     containers = raw.get("containers") or {}
     cna = containers.get("cna") or {}
     metric = _extract_cvss(cna, containers.get("adp") or [])
+    vendor, product = extract_vendor_product(raw)
 
     return {
         "cve_id": cve_id,
         "published": meta.get("datePublished"),
         "last_modified": meta.get("dateUpdated") or meta.get("dateModified"),
         "description": _extract_description(cna),
-        "cvss_score": _as_float(metric.get("baseScore")),
+        "cvss_score": _bounded_float(metric.get("baseScore"), 10),
         "cvss_vector": metric.get("vectorString"),
         "cvss_severity": metric.get("baseSeverity"),
+        "cvss_source": metric.get("_source"),
+        "vendor": vendor,
+        "product": product,
         "raw_json": json.dumps(raw, ensure_ascii=False),
     }
 
@@ -120,7 +125,9 @@ def build_normalized_cve(cve_row, enrichment_row=None) -> NormalizedCve:
         cvss_vector=_get(cve_row, "cvss_vector"),
         signals={
             "in_kev": enr.in_kev,
-            "epss": enr.epss or 0.0,
+            "epss": _bounded_float(_get(enrichment_row, "epss"), 1),
+            "public_poc": bool(_get(enrichment_row, "exploitdb_poc_count") or _get(enrichment_row, "validated_poc_count")),
+            "missing_fields": [key for key in ("epss", "tone_score", "in_kev") if _get(enrichment_row, key) is None],
             "media_count": enr.media_count,
             "poc_count": enr.poc_count,
             "tone_score": enr.tone_score or 0.0,
@@ -140,6 +147,8 @@ def build_signals(cve_row, enrichment_row=None) -> dict:
         "cvss": normalized.cvss,
         "in_kev": signals["in_kev"],
         "epss": signals["epss"],
+        "public_poc": signals["public_poc"],
+        "missing_fields": signals["missing_fields"],
         "wild_confirmation": signals["wild_confirmation"],
         "ransomware_use": signals["ransomware_use"],
         "media_score": media_score(signals["media_count"]),
@@ -160,16 +169,17 @@ def poc_score(poc_count: int) -> float:
 
 def _extract_cvss(cna: Mapping[str, Any], adp: list) -> dict:
     """First CVSS block per CVSS_KEYS, looking in cna and then in adp."""
-    blocks = [m for m in (cna.get("metrics") or []) if isinstance(m, Mapping)]
+    blocks = [(m, 'cna') for m in (cna.get("metrics") or []) if isinstance(m, Mapping)]
     for container in adp:
         if isinstance(container, Mapping):
-            blocks.extend(m for m in (container.get("metrics") or []) if isinstance(m, Mapping))
+            provider = (container.get('providerMetadata') or {}).get('shortName') or 'adp'
+            blocks.extend((m, provider) for m in (container.get("metrics") or []) if isinstance(m, Mapping))
 
     for key in CVSS_KEYS:
-        for block in blocks:
+        for block, provider in blocks:
             candidate = block.get(key)
             if isinstance(candidate, Mapping):
-                return candidate
+                return dict(candidate, _source=provider)
     return {}
 
 
@@ -197,9 +207,15 @@ def _as_float(value) -> Optional[float]:
     if value is None or value == "":
         return None
     try:
-        return float(value)
+        number = float(value)
+        return number if math.isfinite(number) else None
     except (TypeError, ValueError):
         return None
+
+
+def _bounded_float(value, high):
+    number = _as_float(value)
+    return number if number is not None and 0 <= number <= high else None
 
 
 def _as_int(value) -> int:

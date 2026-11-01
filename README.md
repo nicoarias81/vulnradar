@@ -11,16 +11,18 @@
 
 **Demo:** https://vulnradar.munalabs.eu · **Repo:** https://github.com/nicoarias81/vulnradar
 
-Base open source version. The context layer (asset inventory + criticality) is optional and plugs in without modifying the core.
+Base open source version. An asset context layer (inventory + criticality) is
+planned; its tables and integration proposal are included, but the runtime
+extension is not implemented yet.
 
 ## Features
 
 - **Internal mirror** of CVE List V5 (GitHub) + incremental sync
-- Transparent and reproducible dual scoring (v2 formulas)
+- Transparent and reproducible dual scoring (scoring v4.1)
 - Layered architecture: Ingestion → Normalization → Scoring → Context → Output
-- Decoupled agents (Sync, Enrichment, Scoring, Alert)
+- Decoupled agents (Sync, Enrichment, Intel, Scoring, Alert)
 - 100% open sources (CVE List V5, CISA KEV, FIRST EPSS, RSS, GitHub)
-- Extensible: the Context layer is a plugin
+- Extensible architecture, with an asset context integration proposal
 
 ## Architecture
 
@@ -31,7 +33,7 @@ Base open source version. The context layer (asset inventory + criticality) is o
               ↓
          External PostgreSQL
               ↓
-         Scoring Agent (v2 formulas)
+         Scoring Agent (scoring v4.1)
               ↓
          [Optional Context layer]  ← the asset inventory plugs in here
               ↓
@@ -40,7 +42,7 @@ Base open source version. The context layer (asset inventory + criticality) is o
 
 ## Quick Start
 
-The system is autonomous: a worker in a loop does sync → enrich → score → alert.
+The system is autonomous: a worker in a loop does sync → enrich → intel → score → alert.
 There is no need to run agents by hand.
 
 ```bash
@@ -56,8 +58,9 @@ on its own, in a loop (`SYNC_INTERVAL_MINUTES`, default 15):
 1. `git fetch --depth 1` + ff-only merge of the CVE List V5 mirror (clone `--depth 1` if missing; if origin rewrote history, `reset --hard` to the remote tip)
 2. incremental sync to PostgreSQL
 3. enrichment (KEV, EPSS, RSS, GitHub, LLM)
-4. scoring
-5. alerts (if a webhook is configured)
+4. structured intelligence (Exploit-DB, CIRCL, GitHub Advisories; daily schedule)
+5. scoring
+6. alerts (if a webhook is configured)
 
 The UI is served at http://localhost:8501 (seed of 8 CVEs so it does not start
 empty; the worker keeps adding real CVEs).
@@ -73,7 +76,8 @@ pip install -r requirements.txt
 python -m core.db
 python scripts/run_worker.py          # autonomous loop
 # or a single cycle: python scripts/run_worker.py --once
-streamlit run dashboard/app.py
+python scripts/run_dashboard.py
+# Alternative legacy UI: streamlit run dashboard/app.py
 ```
 
 The `make sync` / `make enrich` / `make score` targets still exist for debugging.
@@ -100,10 +104,16 @@ per day (date, CVEs, Hype, Reality and top CVE) and up to 3 **highlights** with 
 vertical guide and chip; those scores are the CVE's, not the axis daily average.
 The home page reloads every 60 s without counting as a visit.
 
-The **SOC monitoring** panel (status of the 4 agents, feed and logs) lives at
+The **SOC monitoring** panel (four main agent cards, event feed including Intel,
+and logs) lives at
 http://localhost:8501/soc and **is not public**. It asks for `SOC_USER` /
 `SOC_PASSWORD` from `.env`. Without `SOC_PASSWORD` the login stays closed. The
-`Logout` link deletes the cookie. The public screen does not link to the SOC.
+`Logout` link revokes the session on the server and deletes the cookie. Sessions
+use random tokens stored only as SHA-256 hashes in PostgreSQL and expire on the
+server after 24 hours. Credential changes invalidate existing sessions. Sessions
+work across dashboard slots. Set `SOC_COOKIE_SECURE=1` for HTTPS (enabled by the
+production Compose file); use `0` for local HTTP. Previous HMAC cookies require
+a new login. The public screen does not link to the SOC.
 
 With an empty database the page does not break: the autonomous worker fills
 scores in the next cycle; with `SEED_DEMO=1` there are 8 sample CVEs. Loading and
@@ -132,10 +142,11 @@ can change because of a metadata fix. On every incremental run:
 1. `git fetch --depth 1` + `merge --ff-only` on the mirror (the diff is
    computed **before** the merge: in a shallow clone the old commit may
    disappear afterwards). If origin rewrote `main`, `reset --hard FETCH_HEAD`.
-2. If there is no watermark and the pull brought a delta: only those files.
-3. If there is no watermark and the DB already has CVEs: the current HEAD is
-   adopted, without rescanning the tree (worker restart).
-4. If there is no watermark and the DB is empty (first run): full walk.
+2. If there is no watermark: full walk, even if the DB already contains demo
+   rows, enrichment stubs or a partially committed first import.
+3. If the watermark matches the pre-fetch local HEAD, use the delta computed
+   before the merge. Otherwise compare the stored watermark with the new HEAD.
+4. A failed initial import leaves no watermark and is safely retried in full.
 5. If HEAD did not change: 0 files, same watermark, exit 0.
 6. If it changed: `git diff --name-only OLD NEW` and only the
    `cves/**/*.json` added or modified are processed. Deletions are ignored
@@ -147,6 +158,13 @@ can change because of a metadata fix. On every incremental run:
 For tests the mirror and the database can be injected:
 `sync(full=False, cve_list_path="...", db_path="...")` or `--cve-list-path`/
 `--db-path` through the CLI (`db_path` isolates a test schema; production uses `DATABASE_URL`).
+
+Vendor and product are extracted and normalized during every CVE UPSERT, so
+new and modified CVEs participate in product filters without a manual backfill.
+For records imported by older releases, run `python scripts/backfill_products.py`
+once to populate missing products. If an older release adopted a watermark over
+an incomplete catalog, run `python agents/sync_agent.py --full` once: the stored
+watermark alone cannot reveal that historical gap.
 
 ## Enrichment
 
@@ -167,10 +185,19 @@ already carry the CVE in the headline, so they go through regex, without a
 model: 10 feeds of that kind contribute ~600 CVEs in 11 seconds.
 
 RSS dedupes by URL in `media_mentions` (a new URL adds 1 to `media_count`);
-PoCs **replace** `poc_count`; and tone/branding comes from a batch of 10
+PoC counts are stored per source; the compatibility `poc_count` is the maximum, not a deduplicated union; and tone/branding comes from a batch of 10
 headlines per call to the configurable LLM (LiteLLM in `config/llm.yaml` +
 `core/llm.py`), with a heuristic fallback if the model does not respond or
 returns broken JSON.
+
+GitHub checks are recorded in `poc_checks`, including successful empty results.
+Positive and empty results become eligible again after 24 hours; failed checks
+retry after 15 minutes and preserve the previous count and repositories. HTTP
+403/429 also receive one rate-limit retry within the pass. Only a successful
+empty GitHub result clears its GitHub repository details; Exploit-DB evidence is preserved. The bounded queue prioritizes
+overdue checks, then press coverage, and excludes bare stubs without press.
+Repository metrics refresh when checked. Repository details are accumulated
+from the first page of search results, except when an empty result clears them.
 
 Flags: `--skip-kev --skip-epss --skip-rss --skip-github --skip-llm`, plus
 `--rss-only` (local test) and `--llm-smoke` (one real call to the provider).
@@ -203,6 +230,18 @@ The tests do not use the network: scoring, normalization, UPSERTs and the
 incremental sync are tested against isolated PostgreSQL schemas (`DATABASE_URL` +
 `tmp_path` key) and a mini git repo built in the tmp directory itself.
 
+Use a dedicated test database, for example:
+
+```bash
+DATABASE_URL=postgresql://user:pass@localhost:5432/vulnradar_test pytest -q
+```
+
+Each pytest invocation adds a unique namespace to schema keys, inherited by
+multiprocessing children. Cleanup drops only explicitly registered isolation
+schemas used by the current process; it never scans a `t_%` wildcard. Regression
+tests cover interrupted imports, protected schemas, GitHub failures and refresh
+deadlines, bounded incremental scoring, and session expiry/revocation.
+
 ## Project structure
 
 ```
@@ -216,13 +255,14 @@ vulnradar/
 ├── agents/
 │   ├── sync_agent.py
 │   ├── enrichment_agent.py
+│   ├── intel_agent.py
 │   ├── scoring_agent.py
 │   └── alert_agent.py
 ├── scripts/
 │   ├── run_dashboard.py
-│   └── run_worker.py          # autonomous loop sync→enrich→score→alert
+│   └── run_worker.py          # autonomous loop sync→enrich→intel→score→alert
 ├── core/
-│   ├── scoring.py          # v2 formulas
+│   ├── scoring.py          # scoring v4.1
 │   ├── models.py
 │   ├── normalizer.py
 │   └── db.py
@@ -243,19 +283,62 @@ vulnradar/
     └── app.py              # Streamlit view (alternative)
 ```
 
-## Scoring v2 (summary)
+## Scoring v4.1
 
-**Reality**  
-`0.45*KEV + 0.25*(EPSS*10) + 0.20*Wild + 0.05*Ransomware + 0.05*Complexity`
+The indices are ordinal, not calibrated probabilities or organizational risk.
+EPSS remains a separate 0-1 probability with its original date/model version.
+See [the current specification and validation](docs/SCORING_V4.md).
 
-**Hype**  
-`0.20*CVSS + 0.30*Media + 0.15*Branding + 0.20*Tone + 0.15*PoCs`
+- Confirmed exploitation (KEV or a trusted CIRCL reporter):
+  `Reality = 7 + ransomware_flag + EPSS` (7-9).
+- Otherwise: `Reality = min(5.9, 5*EPSS + public_poc_flag)`.
+  GitHub search matches alone do not count as verified public PoC.
+- `Hype = 0.60*Media + 0.25*Tone + 0.15*Branding`.
+  Media uses distinct recent press stories over 30 days. Advisories/catalogues,
+  CVSS and repository counts do not manufacture media attention.
+- Missing/stale EPSS without confirmed exploitation is `Unknown`.
+- Public PoC or fresh EPSS >= 0.70 without confirmation is `Watch`.
+- Confirmed cases are always `Sleeper` or `Earned the hype`, never `Overhyped`.
 
-Categories: Overhyped, Earned the hype, Sleeper, Quiet.
+Versioned input fingerprints, keyset pagination and bulk writes bound scoring
+batches to 2,000 rows. `score_all()` and `score_cves()` return recalculated counts.
+`score_evaluations` stores exact inputs for every changed fingerprint;
+`score_history` stores score/category changes. Bump `SCORING_VERSION` for changes
+to formulas, signal mapping or category rules.
+
+The [original audit](docs/SCORING_REVIEW.md) is retained as historical evidence.
+`python scripts/audit_scoring.py` now checks its safety requirements independently
+of the normal test suite. No empirical claim of predictive improvement is made.
+
+## Real-data local laboratory
+
+```powershell
+powershell -File scripts/lab.ps1
+# Revalidate persisted data without reloading current sources:
+powershell -File scripts/lab.ps1 -ValidateOnly
+```
+
+This creates a separate PostgreSQL database and volume (`vulnradar-lab`), runs
+regression tests, imports the real mirror, loads public KEV/EPSS/Exploit-DB and
+RSS snapshots, computes scores, runs three historical proxy backtests, and
+starts the [lab dashboard](http://localhost:18501). No demo rows, alerts or LLM
+calls are used. Local SOC credentials: `lab` / `radar-lab-local`.
+
+The lab PostgreSQL port is `localhost:55440`, database/user `radar_lab`, password
+`radar_lab_local`. Its dashboard and database ports bind to loopback. Source
+bytes, hashes and reports are retained under `data/scoring-lab/`; database data
+is in the dedicated Docker volume. Existing local/production databases are not
+used by the loader. It refuses database names other than `radar_lab` and requires
+`VULNRADAR_LAB=1`.
+
+Cross-platform commands and the measured volume/performance results are in
+[the lab runbook](docs/SCORING_LAB.md). Source collection can be partial: the
+report records errors and truncated optional sources explicitly. Historical KEV
+additions are an imperfect target, not labels for all exploitation.
 
 ## Context extension
 
-The **Context** layer is injected after Scoring:
+The proposed **Context** layer would run after Scoring (not implemented yet):
 
 - Load the asset inventory (CSV, API, CMDB)
 - Assign criticality (1-10) per asset
@@ -278,19 +361,20 @@ See `docs/EXTENSION_CONTEXT.md`.
 
 ## Local environment with A/B
 
-`docker-compose.local.yml` brings up its own PostgreSQL (port 5433) and two
-dashboard slots against the same database: `a` on 8501 and `b` on 8502. Switching
-slots does not migrate data, so the candidate can be tested end to end before
-moving traffic.
+`docker-compose.local.yml` brings up PostgreSQL (port 5433), Caddy on
+`localhost:8500`, and two dashboard slots against the same database: `a` on
+`localhost:8511` and `b` on `localhost:8512`. The slots bind to loopback.
+Caddy routes traffic to the active slot. This local Compose file does not start
+a worker; run one separately against the local database for live data.
 
-    ./scripts/local_ab.sh up       # postgres + slot a, active on 8501
-    ./scripts/local_ab.sh deploy   # builds the inactive slot, waits for /health and promotes it
-    ./scripts/local_ab.sh switch   # switches back to the other slot (rollback)
-    ./scripts/local_ab.sh status   # which slot is active and whether the three ports respond
+    ./scripts/ab.sh up         # postgres + slot a + proxy on 8500
+    ./scripts/ab.sh deploy     # build inactive slot, check health and promote
+    ./scripts/ab.sh rollback   # switch traffic back to the other slot
+    ./scripts/ab.sh status     # active slot and health
 
 The active slot is recorded in `.ab-active`, which is not versioned. On Windows
-with Docker Desktop you must query `localhost` and not `127.0.0.1`: the port is
-published on IPv6 and the loopback IP returns "empty reply".
+with Docker Desktop, prefer `localhost`: some configurations return an empty
+reply for IPv4 loopback.
 
 ## License
 

@@ -156,7 +156,7 @@ def test_guess_vuln_type_and_daily_averages(conn):
     stats = load_agent_stats(conn)
     assert stats["scores"] == 2
     comps = hype_components(rows[0])
-    assert {item["key"] for item in comps} == {"cvss", "media", "tone", "branding", "pocs"}
+    assert {item["key"] for item in comps} == {"media", "tone", "branding"}
 
 
 def test_count_and_limit_do_not_materialize_everything(conn):
@@ -218,7 +218,7 @@ def test_category_does_not_judge_severity():
         caveat="Published 3 days ago. Exploitation evidence takes weeks.",
     )
 
-    assert "NO EVIDENCE OF USE" in html
+    assert "ATTENTION EXCEEDS THREAT INDEX" in html
     assert "overrated" not in html.lower()
     assert "does not mean" in html
     assert "Published 3 days ago" in html

@@ -282,7 +282,7 @@ def _fake_llm(payload, calls=None):
     return _complete
 
 
-def test_llm_persists_tone_and_branding(conn, rss_session, monkeypatch):
+def test_llm_persists_tone_and_rejects_ungrounded_branding(conn, rss_session, monkeypatch):
     load_rss(conn, ["https://feeds.example.com/rss"], session=rss_session)
     payload = json.dumps([
         {"cve_id": CVE_1, "tone_score": 9, "branding": True, "brand_name": "ExampleShell"},
@@ -295,8 +295,8 @@ def test_llm_persists_tone_and_branding(conn, rss_session, monkeypatch):
 
     row_1, row_2 = _enrichment_row(conn, CVE_1), _enrichment_row(conn, CVE_2)
     assert row_1["tone_score"] == pytest.approx(9.0)
-    assert row_1["branding"] == 1
-    assert row_1["brand_name"] == "ExampleShell"
+    assert row_1["branding"] == 0
+    assert row_1["brand_name"] is None  # absent from the actual headline
     assert row_2["tone_score"] == pytest.approx(2.0)
     assert row_2["branding"] == 0
     assert row_2["brand_name"] is None
@@ -375,7 +375,7 @@ def test_llm_does_not_overwrite_kev_or_epss(conn, rss_session, monkeypatch):
     assert row["epss_percentile"] == pytest.approx(0.97)
     assert row["media_count"] == 1
     assert row["tone_score"] == pytest.approx(8.0)
-    assert row["brand_name"] == "Z"
+    assert row["brand_name"] is None  # ungrounded model output is rejected
 
 
 def test_tone_out_of_range_is_clamped(conn):
@@ -504,6 +504,7 @@ def test_select_poc_targets_drops_already_loaded_from_queue(conn, rss_session):
 
     assert agent.select_poc_targets(conn, limit=1) == [CVE_2]
     agent.upsert_pocs(conn, CVE_2, [{"repo": "x/y", "url": "https://github.com/x/y"}])
+    agent.record_poc_check(conn, CVE_2, successful=True)
     # Already loaded: the next in the queue becomes the head of the batch.
     assert agent.select_poc_targets(conn, limit=1) == [CVE_1]
 
@@ -553,7 +554,7 @@ def test_parse_rerank_reply_without_json_returns_empty():
 
 def test_rerank_entries_maps_by_index_and_drops_invalid_cve():
     entries = [
-        {"title": "Uno", "summary": ""},
+        {"title": "CVE-2026-2222 Heartbleed", "summary": ""},
         {"title": "Dos", "summary": ""},
         {"title": "Tres", "summary": ""},
     ]

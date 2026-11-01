@@ -58,12 +58,19 @@ def _step(agent: str, event_type: str, fn):
     log_event(agent, event_type, "start", "RUNNING")
     try:
         result = fn()
-        log_event(agent, event_type, str(result)[:1500], "SUCCESS")
+        log_event(agent, event_type, str(result)[:1500], "PARTIAL" if _has_errors(result) else "SUCCESS")
         return result
     except Exception as exc:
         log_event(agent, event_type, f"{exc}\n{traceback.format_exc()[-800:]}", "ERROR")
         print(traceback.format_exc(), flush=True)
         return None
+
+
+def _has_errors(result):
+    if not isinstance(result, dict):
+        return False
+    return bool(result.get('error') or result.get('errors') or result.get('paginas_fallidas') or result.get('truncated')
+                or any(_has_errors(value) for value in result.values() if isinstance(value, dict)))
 
 
 def run_cycle() -> dict:
@@ -115,7 +122,7 @@ def run_cycle() -> dict:
     summary["intel"] = _step("intel", "INTEL", do_intel)
     summary["score"] = _step("score", "SCORE", do_score)
     summary["alert"] = _step("alert", "ALERT", do_alert)
-    failed = [name for name, value in summary.items() if value is None]
+    failed = [name for name, value in summary.items() if value is None or _has_errors(value)]
     if failed:
         log_event("worker", "CYCLE", "failed: " + ",".join(failed), "ERROR")
     else:

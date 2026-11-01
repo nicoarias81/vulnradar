@@ -299,8 +299,8 @@ def test_unknown_watermark_falls_back_to_full_without_exploding(mirror, db_path,
     assert stats["processed"] == 1
 
 
-def test_without_watermark_and_populated_db_does_not_walk_everything(mirror, db_path, no_pull, processed):
-    """Worker restart: the DB already has CVEs, no need to re-ingest 300k JSON files."""
+def test_without_watermark_and_populated_db_recovers_full_catalog(mirror, db_path, no_pull, processed):
+    """Existing demo/stub/partial rows are not evidence of a completed import."""
     _write_cve(mirror, "CVE-2026-0001")
     _commit_all(mirror, "un cve")
     _run(mirror, db_path)
@@ -315,10 +315,10 @@ def test_without_watermark_and_populated_db_does_not_walk_everything(mirror, db_
 
     stats = _run(mirror, db_path)
 
-    assert stats["mode"] == "incremental"
-    assert stats["reason"] == "no watermark, DB already populated"
-    assert stats["files"] == 0
-    assert processed == []
+    assert stats["mode"] == "full"
+    assert stats["reason"] == "no watermark"
+    assert stats["files"] == 1
+    assert processed == ["CVE-2026-0001.json"]
     conn = get_db(db_path)
     try:
         assert sync_agent.get_state(conn, sync_agent.HEAD_KEY) == sync_agent.git_head(mirror)
@@ -326,7 +326,7 @@ def test_without_watermark_and_populated_db_does_not_walk_everything(mirror, db_
         conn.close()
 
 
-def test_without_watermark_uses_delta_from_the_pull(mirror, db_path, monkeypatch, processed):
+def test_without_watermark_ignores_partial_pull_delta(mirror, db_path, monkeypatch, processed):
     _write_cve(mirror, "CVE-2026-0001")
     _commit_all(mirror, "uno")
     extra = _write_cve(mirror, "CVE-2026-0002")
@@ -345,11 +345,32 @@ def test_without_watermark_uses_delta_from_the_pull(mirror, db_path, monkeypatch
 
     stats = _run(mirror, db_path)
 
-    assert stats["mode"] == "incremental"
-    assert stats["reason"] == "no watermark, delta from pull"
-    assert stats["processed"] == 1
-    assert processed == ["CVE-2026-0002.json"]
-    assert _cve_ids(db_path) == {"CVE-2026-0002"}
+    assert stats["mode"] == "full"
+    assert stats["reason"] == "no watermark"
+    assert stats["processed"] == 2
+    assert set(processed) == {"CVE-2026-0001.json", "CVE-2026-0002.json"}
+    assert _cve_ids(db_path) == {"CVE-2026-0001", "CVE-2026-0002"}
+
+
+def test_interrupted_initial_import_is_recovered(mirror, db_path, no_pull, monkeypatch):
+    _write_cve(mirror, "CVE-2026-0001")
+    _write_cve(mirror, "CVE-2026-0002")
+    _commit_all(mirror, "two records")
+    original = sync_agent.process_cve_file
+
+    def interrupted(path, conn):
+        if Path(path).name == "CVE-2026-0002.json":
+            raise RuntimeError("interrupted initial import")
+        return original(path, conn)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(sync_agent, "COMMIT_EVERY", 1)
+        patch.setattr(sync_agent, "process_cve_file", interrupted)
+        with pytest.raises(RuntimeError, match="interrupted"):
+            _run(mirror, db_path)
+    assert _cve_ids(db_path) == {"CVE-2026-0001"}
+    assert _run(mirror, db_path)["processed"] == 2
+    assert _cve_ids(db_path) == {"CVE-2026-0001", "CVE-2026-0002"}
 
 
 def test_clone_or_pull_resets_if_origin_rewrites_history(tmp_path):

@@ -143,6 +143,8 @@ def test_build_signals_maps_db_rows_to_formulas():
         "cvss": 9.8,
         "in_kev": True,
         "epss": 0.87,
+        "public_poc": False,
+        "missing_fields": [],
         "wild_confirmation": True,
         "ransomware_use": False,
         "media_score": 6.0,   # min(12/2, 10)
@@ -153,11 +155,12 @@ def test_build_signals_maps_db_rows_to_formulas():
     }
 
 
-def test_build_signals_without_enrichment_uses_zeros():
+def test_build_signals_without_enrichment_preserves_missing_evidence():
     signals = build_signals({"cve_id": "CVE-2026-0007", "cvss_score": None}, None)
 
     assert signals["cvss"] == 0.0
     assert signals["in_kev"] is False
-    assert signals["epss"] == 0.0
+    assert signals["epss"] is None
+    assert "epss" in signals["missing_fields"]
     assert signals["media_score"] == 0.0
     assert signals["poc_score"] == 0.0

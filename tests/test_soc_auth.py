@@ -9,8 +9,16 @@ from urllib.parse import urlencode
 import pytest
 
 from core.db import init_db
+from core.db import get_db
 from dashboard import auth
 from dashboard.server import DashboardHandler
+
+
+@pytest.fixture
+def auth_db(monkeypatch, tmp_path):
+    path = tmp_path / "auth.db"
+    init_db(path)
+    monkeypatch.setattr("core.db.DB_PATH", path)
 
 
 def test_without_password_nobody_gets_in(monkeypatch):
@@ -22,7 +30,7 @@ def test_without_password_nobody_gets_in(monkeypatch):
     assert auth.token() is None
 
 
-def test_correct_password_issues_valid_cookie(monkeypatch):
+def test_correct_password_issues_valid_cookie(monkeypatch, auth_db):
     monkeypatch.setenv("SOC_USER", "op")
     monkeypatch.setenv("SOC_PASSWORD", "secret")
     assert auth.check("op", "secret") is True
@@ -31,6 +39,36 @@ def test_correct_password_issues_valid_cookie(monkeypatch):
     header = f"{auth.COOKIE}={auth.token()}"
     assert auth.authorized(header) is True
     assert auth.authorized(f"{auth.COOKIE}=deadbeef") is False
+
+
+def test_sessions_expire_on_server_and_store_only_hashes(monkeypatch, auth_db):
+    monkeypatch.setenv("SOC_PASSWORD", "secret")
+    value = auth.token()
+    cookie = f"{auth.COOKIE}={value}"
+    assert auth.authorized(cookie)
+    assert auth.token() != value
+    conn = get_db()
+    try:
+        assert conn.execute("SELECT count(*) FROM soc_sessions WHERE token_hash = ?", (value,)).fetchone()[0] == 0
+        conn.execute("UPDATE soc_sessions SET expires_at = CURRENT_TIMESTAMP - INTERVAL '1 second'")
+        conn.commit()
+    finally:
+        conn.close()
+    assert not auth.authorized(cookie)
+
+
+def test_credential_rotation_invalidates_sessions(monkeypatch, auth_db):
+    monkeypatch.setenv("SOC_PASSWORD", "first")
+    cookie = f"{auth.COOKIE}={auth.token()}"
+    monkeypatch.setenv("SOC_PASSWORD", "second")
+    assert not auth.authorized(cookie)
+
+
+def test_secure_cookie_is_configurable(monkeypatch, auth_db):
+    monkeypatch.setenv("SOC_PASSWORD", "secret")
+    monkeypatch.setenv("SOC_COOKIE_SECURE", "1")
+    assert "; Secure" in auth.cookie_header()
+    assert "; Secure" in auth.clear_cookie_header()
 
 
 def test_overview_does_not_link_soc():
@@ -118,6 +156,22 @@ def test_wrong_login_stays_on_form(soc_http):
     assert "REAL-TIME AGENTS" not in body
 
 
+def test_login_rejects_large_body(soc_http):
+    status, _, _ = _http(soc_http, "POST", "/soc", body="x" * 8193)
+    assert status == 413
+
+
+def test_dashboard_errors_do_not_expose_exception_html(soc_http, monkeypatch):
+    def broken(qp):
+        raise ValueError("<script>secret</script>")
+
+    monkeypatch.setattr("dashboard.server.overview", broken)
+    status, body, headers = _http(soc_http, "GET", "/?uncached=error-regression")
+    assert status == 500
+    assert body == "Internal server error"
+    assert "text/plain" in headers["content-type"]
+
+
 def test_correct_login_opens_panel_and_logout_closes(soc_http):
     status, _, hdrs = _http(
         soc_http, "POST", "/soc",
@@ -132,10 +186,12 @@ def test_correct_login_opens_panel_and_logout_closes(soc_http):
     assert "SOC MONITORING" in body
     assert "REAL-TIME AGENTS" in body
     assert "Sync Agent" in body
-    status, _, hdrs = _http(soc_http, "GET", "/soc/logout")
+    status, _, hdrs = _http(soc_http, "GET", "/soc/logout", headers={"Cookie": cookie.split(";", 1)[0]})
     assert status == 303
     cleared = hdrs.get("set-cookie", "")
     assert "Max-Age=0" in cleared
+    status, body, _ = _http(soc_http, "GET", "/soc", headers={"Cookie": cookie.split(";", 1)[0]})
+    assert "Sign in" in body  # replaying the old cookie cannot reopen the session
     status, body, _ = _http(soc_http, "GET", "/soc")
     assert "Sign in" in body
     assert "REAL-TIME AGENTS" not in body

@@ -1,0 +1,55 @@
+name: vulnradar-lab
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: radar_lab
+      POSTGRES_PASSWORD: radar_lab_local
+      POSTGRES_DB: radar_lab
+    ports:
+      - "127.0.0.1:55440:5432"
+      - "[::1]:55440:5432"
+    volumes:
+      - lab-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U radar_lab -d radar_lab"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+  runner:
+    build: .
+    image: vulnradar-lab:local
+    environment: &environment
+      DATABASE_URL: postgresql://radar_lab:radar_lab_local@postgres:5432/radar_lab
+      SEED_DEMO: "0"
+      SOC_USER: lab
+      SOC_PASSWORD: radar-lab-local
+      SOC_COOKIE_SECURE: "0"
+      LLM_PROVIDER: none
+      PYTHONDONTWRITEBYTECODE: "1"
+      VULNRADAR_LAB: "1"
+    volumes:
+      - .:/app:ro
+      - ./data/cvelistV5:/mirror:ro
+      - ./data/scoring-lab:/lab
+    command: ["python", "scripts/build_scoring_lab.py", "--mirror", "/mirror", "--cache", "/lab/cache", "--report", "/lab/validation.json"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+  dashboard:
+    image: vulnradar-lab:local
+    environment: *environment
+    volumes:
+      - .:/app:ro
+    ports:
+      - "127.0.0.1:18501:8501"
+    command: ["python", "scripts/run_dashboard.py"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+volumes:
+  lab-db:

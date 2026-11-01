@@ -1,6 +1,8 @@
 """Look & feel: UI tokens and components."""
 
 CATEGORY_COLORS = {
+    'Watch': '#F59E0B',
+    "Unknown": "#94A3B8",
     "Overhyped": "#EF4444",
     "Sleeper": "#EAB308",
     "Earned the hype": "#22C55E",
@@ -8,17 +10,21 @@ CATEGORY_COLORS = {
 }
 
 CATEGORY_BLURB = {
-    "Overhyped": "High hype, no evidence of exploitation",
+    'Watch': 'Public PoC or high predicted exploitation; prioritize review',
+    "Unknown": "Insufficient fresh evidence to classify",
+    "Overhyped": "High attention, lower observed threat index",
     "Sleeper": "Moderate hype, emerging evidence",
     "Earned the hype": "High hype, confirmed exploitation",
-    "Quiet": "Low hype, no evidence of exploitation",
+    "Quiet": "Below category thresholds; review exploitation signals",
 }
 
 CATEGORY_LABEL = {
-    "Overhyped": "NO EVIDENCE OF USE",
+    'Watch': 'PUBLIC POC / HIGH PREDICTION',
+    "Unknown": "INSUFFICIENT DATA",
+    "Overhyped": "ATTENTION EXCEEDS THREAT INDEX",
     "Earned the hype": "EARNED THE HYPE",
     "Sleeper": "SLEEPER",
-    "Quiet": "NO SIGNALS",
+    "Quiet": "BELOW THRESHOLDS",
 }
 
 # Reality measures exploitation evidence, not severity. Calling it "overhyped"
@@ -26,13 +32,15 @@ CATEGORY_LABEL = {
 # reality says: it means nobody is using it yet, not that it is
 # harmless once they do.
 CATEGORY_DETAIL = {
+    'Watch': 'Fresh EPSS is at least 70% or a curated public PoC exists. Exploitation is not yet confirmed by the configured trusted sources.',
+    "Unknown": "Evidence is missing or stale. This is not a low-risk assessment.",
     "Overhyped": "Lots of noise and little evidence of exploitation so far. "
                  "Reality measures real-world use, not severity: a low score does not "
                  "mean the flaw is harmless if someone exploits it.",
     "Earned the hype": "Observed impact backs the media noise.",
     "Sleeper": "Evidence of exploitation is growing faster than public attention.",
-    "Quiet": "Little noise and no evidence of exploitation so far. "
-             "No sign it is being used either.",
+    "Quiet": "Scores remain below the category thresholds. Review KEV, EPSS and PoC evidence; "
+             "this category does not imply that the vulnerability is safe.",
 }
 
 SEVERITY_COLORS = {

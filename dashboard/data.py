@@ -6,10 +6,11 @@ pytest without booting the Streamlit runtime. The home queries cap in
 SQL (COUNT, LIMIT/OFFSET, GROUP BY): tens of thousands of rows are never materialized.
 """
 import re
+import json
 
 from core.db import has_table
 
-CATEGORIES = ("Overhyped", "Earned the hype", "Sleeper", "Quiet")
+CATEGORIES = ("Overhyped", "Earned the hype", "Sleeper", "Quiet", "Unknown", "Watch")
 
 SCORE_COLUMNS = (
     "cve_id", "hype", "reality", "category", "calculated_at",
@@ -31,10 +32,12 @@ SELECT_SCORES_BASE = """
     SELECT s.cve_id, s.hype, s.reality, s.category, s.calculated_at,
            c.description, c.cvss_score, c.cvss_severity, c.published,
            e.tone_score, e.media_count, e.in_kev, e.epss, e.poc_count,
-           e.branding, e.brand_name, e.kev_date
+           e.branding, e.brand_name, e.kev_date, e.wild_confirmation, e.exploitdb_poc_count, e.github_poc_count,
+           s.exploitation_state, s.completeness, s.algorithm_version, ev.input_snapshot
     FROM scores s
     JOIN cves c ON c.cve_id = s.cve_id
     LEFT JOIN enrichments e ON e.cve_id = s.cve_id
+    LEFT JOIN score_evaluations ev ON ev.cve_id=s.cve_id AND ev.input_hash=s.input_hash
 """
 
 
@@ -184,16 +187,18 @@ def count_scores(conn, since=None, until=None, category=None, severity=None, que
 
 
 # "Actionable" criterion: exploitation evidence, not severity. A CVE gets in
-# if CISA saw it exploited, if EPSS puts it in the day's top 30% most likely, or if
+# if a trusted source observed exploitation, if fresh EPSS probability is >=70%, or if
 # a public PoC already exists. CVSS does not take part: 9.8 without exploitation is not actionable.
 ACTIONABLE_WHERE = (
-    "(COALESCE(e.in_kev, 0) <> 0 OR COALESCE(e.epss, 0) >= 0.70 "
-    "OR COALESCE(e.poc_count, 0) > 0)"
+    "(COALESCE(e.in_kev, 0) <> 0 OR COALESCE(e.wild_confirmation,0) <> 0 "
+    "OR (e.epss >= 0.70 AND left(e.epss_date,10) >= to_char(CURRENT_TIMESTAMP-INTERVAL '7 days','YYYY-MM-DD') AND left(e.epss_date,10)<=to_char(CURRENT_TIMESTAMP,'YYYY-MM-DD')) "
+    "OR COALESCE(e.exploitdb_poc_count,0)>0 OR COALESCE(e.validated_poc_count,0)>0)"
 )
 # Order by evidence, not by date: KEV first, then exploit
 # probability and PoC. `reality` breaks ties within each tier.
 ACTIONABLE_ORDER = (
     "    ORDER BY (COALESCE(e.in_kev, 0) <> 0) DESC,\n"
+    "             (COALESCE(e.wild_confirmation,0) <> 0) DESC,\n"
     "             COALESCE(e.epss, 0) DESC,\n"
     "             COALESCE(e.poc_count, 0) DESC,\n"
     "             s.reality DESC, s.cve_id\n"
@@ -203,7 +208,8 @@ ACTIONABLE_ORDER = (
 def load_actionables(conn, since=None, until=None, category=None, severity=None,
                      query=None, product=None, limit: int = 6) -> list:
     """CVEs in the range that have exploitation evidence (see ACTIONABLE_WHERE)."""
-    clauses, params = _filters(since, until, category, severity, query, product)
+    # Exploitation queue is driven by evidence; publication age never hides it.
+    clauses, params = _filters(None, None, category, severity, query, product)
     clauses.append(ACTIONABLE_WHERE)
     sql = SELECT_SCORES_BASE + _where(clauses) + ACTIONABLE_ORDER + "    LIMIT ?\n"
     cursor = conn.execute(sql, list(params) + [int(limit)])
@@ -213,7 +219,7 @@ def load_actionables(conn, since=None, until=None, category=None, severity=None,
 def count_actionables(conn, since=None, until=None, category=None, severity=None,
                       query=None, product=None) -> int:
     """How many CVEs in the range meet the actionable criterion."""
-    clauses, params = _filters(since, until, category, severity, query, product)
+    clauses, params = _filters(None, None, category, severity, query, product)
     clauses.append(ACTIONABLE_WHERE)
     sql = (
         "SELECT COUNT(*) FROM scores s "
@@ -600,16 +606,13 @@ def load_last_agent_status(conn) -> dict:
 
 def hype_components(row) -> list:
     """0-10 bars aligned with the hype formula (it does not invent social/Google data)."""
-    from core.normalizer import media_score, poc_score
-
-    media = media_score(int(row.get("media_count") or 0))
-    pocs = poc_score(int(row.get("poc_count") or 0))
+    from core.normalizer import media_score
+    snapshot = json.loads(row.get('input_snapshot') or '{}').get('signals', {})
+    media = snapshot.get('media_score', media_score(int(row.get("media_count") or 0)))
     return [
-        {"key": "cvss", "label": "CVSS", "value": float(row.get("cvss_score") or 0)},
-        {"key": "media", "label": "Media coverage", "value": media},
-        {"key": "tone", "label": "Tone / headline", "value": float(row.get("tone_score") or 0)},
-        {"key": "branding", "label": "Branding", "value": 10.0 if row.get("branding") else 0.0},
-        {"key": "pocs", "label": "PoCs en GitHub", "value": pocs},
+        {"key": "media", "label": "Media, 30 days (60%)", "value": media},
+        {"key": "tone", "label": "Headline sample (25%)", "value": float(snapshot.get('tone_score',row.get("tone_score")) or 0)},
+        {"key": "branding", "label": "Grounded branding (15%)", "value": 10.0 if snapshot.get('branding',row.get("branding")) else 0.0},
     ]
 
 

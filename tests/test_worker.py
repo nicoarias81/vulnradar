@@ -36,6 +36,7 @@ def test_run_cycle_continues_when_a_step_fails(db, monkeypatch):
 
     monkeypatch.setattr("agents.sync_agent.sync", boom)
     monkeypatch.setattr("agents.enrichment_agent.run", lambda **kw: {"kev": 1})
+    monkeypatch.setattr("agents.intel_agent.run_daily", lambda *a, **kw: {"skipped": True})
     monkeypatch.setattr("agents.scoring_agent.run", lambda **kw: None)
     monkeypatch.setattr("agents.alert_agent.run", lambda **kw: {"sent": 0})
 

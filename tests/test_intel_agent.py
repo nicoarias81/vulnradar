@@ -58,7 +58,8 @@ def test_sync_exploitdb_does_not_lower_a_higher_poc_count(tmp_path):
         ).fetchone()[0] == 2
 
         # The GitHub search had already seen 5: the catalog must not go backwards.
-        conn.execute("UPDATE enrichments SET poc_count = 5 WHERE cve_id = 'CVE-2021-44228'")
+        from agents.enrichment_agent import upsert_poc_count
+        upsert_poc_count(conn, "CVE-2021-44228", 5)
         sync_exploitdb(conn, csv_text=CSV)
         assert conn.execute(
             "SELECT poc_count FROM enrichments WHERE cve_id = 'CVE-2021-44228'"
@@ -67,10 +68,11 @@ def test_sync_exploitdb_does_not_lower_a_higher_poc_count(tmp_path):
         conn.close()
 
 
-def test_sync_sightings_only_marks_exploited(tmp_path):
+def test_sync_sightings_only_marks_trusted_exploited(tmp_path, monkeypatch):
+    monkeypatch.setenv("CIRCL_TRUSTED_AUTHORS", "trusted-reporter")
     conn = _db(tmp_path)
     datos = {"metadata": {"count": 3}, "data": [
-        {"type": "exploited", "vulnerability": "CVE-2024-3400"},
+        {"type": "exploited", "vulnerability": "CVE-2024-3400", "author":{"uuid":"trusted-reporter"}},
         {"type": "seen", "vulnerability": "CVE-2024-1111"},
         {"type": "seen", "vulnerability": "CVE-2024-2222"},
     ]}

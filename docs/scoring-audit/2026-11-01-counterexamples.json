@@ -1,0 +1,150 @@
+{
+  "scope": "Synthetic counterexamples and actual source write/orchestration paths; not predictive calibration.",
+  "scoring_version": "reality-v3-hype-v2-categories-v2",
+  "source_sha256": {
+    "core/scoring.py": "6711f2c3650f8173bce666ba90393df7976616a592d4e1f5f99563e6c9391a53",
+    "core/normalizer.py": "2954aba6e8a2a76ec865eb9e2694c7ddadc6c0392143770715af0e28751fa1e2",
+    "agents/enrichment_agent.py": "4fc4ccf0430026771bc663e88cdec8f216a1230dfbf592fa624dd5884eb86a22",
+    "agents/intel_agent.py": "87d3e219f02dc6968168776374ab2a481f2397be523affa5fdba905cb941c461",
+    "config/sources.yaml": "3d7a05268f232e88857a1d66c4071bec3668cd81a7e0ed2fa527cdf0962b388e"
+  },
+  "checks": [
+    {
+      "name": "normalized_grid_is_finite_and_bounded",
+      "kind": "arithmetic",
+      "passed": true,
+      "evidence": {
+        "combinations": 25920,
+        "violations": 0
+      }
+    },
+    {
+      "name": "individual_signals_are_numerically_monotone",
+      "kind": "arithmetic",
+      "passed": true,
+      "evidence": {
+        "signals": 10,
+        "scope": "Each signal varied independently; category semantics evaluated separately."
+      }
+    },
+    {
+      "name": "known_exploitation_not_overhyped",
+      "kind": "model_safety",
+      "passed": false,
+      "evidence": {
+        "hype": 8.26,
+        "reality": 4.53,
+        "category": "Overhyped"
+      }
+    },
+    {
+      "name": "confirmed_non_kev_can_reach_high_reality",
+      "kind": "model_safety",
+      "passed": false,
+      "evidence": {
+        "maximum_without_ransomware": 5.5
+      }
+    },
+    {
+      "name": "finite_bounded_scores",
+      "kind": "input_integrity",
+      "passed": false,
+      "evidence": {
+        "negative_inputs": {
+          "hype": -5.25,
+          "reality": -3.75,
+          "category": "Quiet"
+        },
+        "infinite_ease_result": "inf"
+      }
+    },
+    {
+      "name": "invalid_vector_not_maximum_ease",
+      "kind": "input_integrity",
+      "passed": false,
+      "evidence": {
+        "ease_for_garbage": 10.0
+      }
+    },
+    {
+      "name": "cvss4_constraints_affect_ease",
+      "kind": "input_integrity",
+      "passed": false,
+      "evidence": {
+        "AT_N_UI_N": 10.0,
+        "AT_P_UI_A": 10.0
+      }
+    },
+    {
+      "name": "rejected_record_not_treated_as_normal_cve",
+      "kind": "input_integrity",
+      "passed": false,
+      "evidence": {
+        "normalizer_accepts_rejected": true
+      }
+    },
+    {
+      "name": "missing_evidence_distinguished_from_zero",
+      "kind": "model_safety",
+      "passed": false,
+      "evidence": {
+        "same_signals": true
+      }
+    },
+    {
+      "name": "product_name_not_vulnerability_brand",
+      "kind": "input_integrity",
+      "passed": false,
+      "evidence": {
+        "branding": [
+          true,
+          "OpenSSL"
+        ]
+      }
+    },
+    {
+      "name": "llm_identifier_grounded_in_input",
+      "kind": "input_integrity",
+      "passed": false,
+      "evidence": {
+        "verdict": [
+          {
+            "cve_id": "CVE-2026-99999",
+            "brand_name": "InventedShell",
+            "relevant": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "github_zero_preserves_exploitdb_evidence",
+      "kind": "source_integrity",
+      "passed": false,
+      "evidence": {
+        "exploitdb_count": 2,
+        "after_github_zero": 0
+      }
+    },
+    {
+      "name": "configured_advisory_feeds_are_requested",
+      "kind": "source_integrity",
+      "passed": false,
+      "evidence": {
+        "requested_feeds": 25,
+        "unrequested_advisory_feeds": [
+          "https://api.msrc.microsoft.com/update-guide/rss",
+          "https://cert.europa.eu/publications/security-advisories-rss",
+          "https://sec.cloudapps.cisco.com/security/center/psirtrss20/CiscoSecurityAdvisory.xml",
+          "https://security.paloaltonetworks.com/rss.xml",
+          "https://www.cert.ssi.gouv.fr/alerte/feed/",
+          "https://www.exploit-db.com/rss.xml",
+          "https://www.fortiguard.com/rss/ir.xml",
+          "https://www.incibe.es/incibe-cert/alerta-temprana/avisos/feed",
+          "https://www.ivanti.com/blog/topics/security-advisory/rss",
+          "https://www.zerodayinitiative.com/rss/published/"
+        ]
+      }
+    }
+  ],
+  "violations": 11
+}

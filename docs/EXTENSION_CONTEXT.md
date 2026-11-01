@@ -1,6 +1,8 @@
 # Context Extension
 
-This layer is optional: it is enabled when there is an asset inventory of your own.
+This document is a design proposal. The runtime does not yet implement
+`core.context`, asset matching or asset-aware alerts. The `assets` and
+`cve_assets` tables are available for a future integration.
 
 ## Goal
 
@@ -17,10 +19,10 @@ Adjust a CVE's Reality according to the criticality of the affected assets.
    ```
 5. Generate alerts when `Adjusted_Reality > threshold` and the asset is critical
 
-## Usage example
+## Proposed integration (pseudocode)
 
 ```python
-# With an inventory loaded
+# Illustrative API to implement; these functions do not exist yet.
 from core.context import apply_asset_context
 
 base_scores = scoring_agent.run()

@@ -1,0 +1,10 @@
+{
+  "algorithm_version": "v4.1-evidence-tiers-attention-30d",
+  "real_cves_scored": 398734,
+  "full_seconds": 82.024,
+  "rows_per_second": 4861.2,
+  "unchanged_recalculated": 0,
+  "unchanged_seconds": 5.942,
+  "peak_rss_mib": 48.9,
+  "scope": "Session-local temporary output tables; persistent scores and observations remain untouched."
+}

@@ -35,6 +35,7 @@ def resolve_path(value: str, default: str) -> Path:
 # Tests: monkeypatch DB_PATH to a unique Path to isolate the schema.
 # Production: None → public schema.
 DB_PATH = None
+_TEST_SCHEMAS: set[str] = set()
 
 _NAMED = re.compile(r"(?<!:):([a-zA-Z_][a-zA-Z0-9_]*)")
 _INSERT_OR_IGNORE = re.compile(r"INSERT\s+OR\s+IGNORE\s+INTO", re.IGNORECASE)
@@ -54,7 +55,8 @@ def schema_name(path) -> str:
     """Isolation schema. None → public. Any other key → t_<sha1>."""
     if path is None:
         return "public"
-    digest = hashlib.sha1(str(path).encode("utf-8")).hexdigest()[:16]
+    key = os.getenv("VULNRADAR_TEST_RUN_ID", "") + ":" + str(path)
+    digest = hashlib.sha1(key.encode("utf-8")).hexdigest()[:16]
     return f"t_{digest}"
 
 
@@ -222,6 +224,7 @@ def get_db(path: Path | str | None = None) -> PgConnection:
         # without it the gin_trgm_ops indexes of an isolated schema do not resolve.
         raw.execute(sql.SQL("SET search_path TO {}, public").format(ident))
         raw.commit()
+        _TEST_SCHEMAS.add(schema)
     return PgConnection(raw)
 
 
@@ -237,15 +240,13 @@ def init_db(path: Path | str | None = None):
     conn = get_db(isolation)
     try:
         # DDL needs ACCESS EXCLUSIVE: if the worker is in the middle of a large
-        # batch (enrich), waiting here hung the dashboard startup, which never got
-        # to open the port. Better to fail fast and go on with the existing schema
-        # (schema.sql is idempotent).
+        # batch (enrich), waiting indefinitely would hang startup.
         conn.execute("SET lock_timeout = '10s'")
         # pg_trgm backs the schema's gin_trgm_ops indexes: without the extension the
         # whole script aborts and the DB stays empty (so the tests and the startup
         # warning failed). If the role cannot create it, it goes on and the real error shows.
         try:
-            conn.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
+            conn.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public")
             conn.commit()
         except Exception:
             conn.rollback()
@@ -253,15 +254,26 @@ def init_db(path: Path | str | None = None):
             conn.execute("SELECT pg_advisory_lock(hashtext(?))", (lock_key,))
             try:
                 fallidas = conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+                if fallidas:
+                    conn.rollback()
+                    raise RuntimeError('Schema incomplete: ' + '; '.join(fallidas))
+                for table, name, expression in (
+                    ('scores', 'scores_finite_range', 'hype BETWEEN 0 AND 10 AND reality BETWEEN 0 AND 10'),
+                    ('enrichments', 'enrichment_numeric_range',
+                     '(epss IS NULL OR epss BETWEEN 0 AND 1) AND (tone_score IS NULL OR tone_score BETWEEN 0 AND 10) AND poc_count >= 0 AND media_count >= 0'),
+                    ('cves', 'cvss_numeric_range', 'cvss_score IS NULL OR cvss_score BETWEEN 0 AND 10'),
+                ):
+                    exists = conn.execute('SELECT 1 FROM pg_constraint WHERE conname=? AND connamespace=current_schema()::regnamespace', (name,)).fetchone()
+                    if not exists:
+                        conn.execute(f'ALTER TABLE {table} ADD CONSTRAINT {name} CHECK ({expression}) NOT VALID')
                 conn.commit()
-                for falla in fallidas:
-                    print(f"Warning: schema statement skipped ({falla})")
             finally:
+                conn.rollback()
                 conn.execute("SELECT pg_advisory_unlock(hashtext(?))", (lock_key,))
                 conn.commit()
         except Exception as exc:
             conn.rollback()
-            print(f"Warning: could not apply the schema ({type(exc).__name__}: {exc}). Continuing with the current one.")
+            raise RuntimeError(f"Could not apply database schema: {exc}") from exc
     finally:
         conn.close()
     return isolation
@@ -322,20 +334,19 @@ def table_indexes(conn, name: str) -> set[str]:
 
 
 def drop_test_schemas() -> None:
-    """Drops t_* schemas created by pytest. Does not touch public."""
+    """Drops only isolation schemas used by this process, never a catalog wildcard."""
     try:
         url = database_url()
     except RuntimeError:
         return
     with psycopg.connect(url, autocommit=True) as conn:
-        rows = conn.execute(
-            "SELECT nspname FROM pg_namespace WHERE nspname LIKE 't_%'"
-        ).fetchall()
-        for row in rows:
-            name = row[0]
+        for name in tuple(_TEST_SCHEMAS):
+            if not re.fullmatch(r"t_[0-9a-f]{16}", name):
+                continue
             conn.execute(
                 sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(sql.Identifier(name))
             )
+            _TEST_SCHEMAS.discard(name)
 
 
 if __name__ == "__main__":

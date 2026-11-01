@@ -509,7 +509,7 @@ def scatter_svg(rows, width: int = 520, height: int = 340, *, mode: str = "categ
             grid.append(f'<line x1="{x:.1f}" y1="{t}" x2="{x:.1f}" y2="{t+ph}" stroke="#334155" stroke-width="1"/>')
             grid.append(f'<text x="{x:.1f}" y="{t+ph+18}" fill="#94A3B8" font-size="11" text-anchor="middle">{lab}</text>')
             grid.append(f'<text x="{l-8}" y="{y+4:.1f}" fill="#94A3B8" font-size="11" text-anchor="end">{lab}</text>')
-        xlab, ylab = "HYPE (VOLUME)", "REALITY (IMPACT)"
+        xlab, ylab = "HYPE (ATTENTION)", "REALITY (THREAT INDEX)"
     else:
         for i in range(0, 11, 2):
             x = _xy(i, 0, 10, l, pw)
@@ -930,6 +930,8 @@ def overview_html(
           {_opt("Earned the hype", "Earned the hype", category)}
           {_opt("Sleeper", "Sleeper", category)}
           {_opt("Quiet", "Quiet", category)}
+          {_opt("Unknown", "Unknown", category)}
+          {_opt("Watch", "Watch", category)}
         </select>
       </div>
     </form>

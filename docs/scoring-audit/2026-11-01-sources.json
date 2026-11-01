@@ -1,0 +1,372 @@
+{
+  "captured_at_utc": "2026-11-01T12:41:58.876802+00:00",
+  "scope": "One probe from this workstation; not production availability or source accuracy. Two MiB feed read cap.",
+  "feeds": [
+    {
+      "kind": "rss",
+      "url": "https://feeds.feedburner.com/TheHackersNews",
+      "status": 200,
+      "content_type": "text/xml; charset=utf-8",
+      "entries": 50,
+      "parse_warning": false,
+      "first_entry_date": "Sun, 01 Nov 2026 14:21:31 +0530"
+    },
+    {
+      "kind": "rss",
+      "url": "https://www.bleepingcomputer.com/feed/",
+      "status": 200,
+      "content_type": "text/xml; charset=utf-8",
+      "entries": 15,
+      "parse_warning": false,
+      "first_entry_date": "Sat, 31 Oct 2026 14:01:12 -0400"
+    },
+    {
+      "kind": "rss",
+      "url": "https://www.securityweek.com/feed/",
+      "status": 200,
+      "content_type": "application/rss+xml; charset=UTF-8",
+      "entries": 10,
+      "parse_warning": false,
+      "first_entry_date": "Sun, 01 Nov 2026 11:15:00 +0000"
+    },
+    {
+      "kind": "rss",
+      "url": "https://www.helpnetsecurity.com/feed/",
+      "status": 200,
+      "content_type": "application/rss+xml; charset=UTF-8",
+      "entries": 10,
+      "parse_warning": false,
+      "first_entry_date": "Sun, 01 Nov 2026 09:00:00 +0000"
+    },
+    {
+      "kind": "rss",
+      "url": "https://therecord.media/feed",
+      "status": 200,
+      "content_type": "text/xml",
+      "entries": 5,
+      "parse_warning": false,
+      "first_entry_date": "Fri, 30 Oct 2026 20:45:00 GMT"
+    },
+    {
+      "kind": "rss",
+      "url": "https://www.darkreading.com/rss.xml",
+      "status": 200,
+      "content_type": "text/xml; charset=utf-8",
+      "entries": 50,
+      "parse_warning": false,
+      "first_entry_date": "Fri, 30 Oct 2026 20:05:58 GMT"
+    },
+    {
+      "kind": "rss",
+      "url": "https://cvefeed.io/rssfeed/latest.xml",
+      "status": 200,
+      "content_type": "application/rss+xml; charset=utf-8",
+      "entries": 25,
+      "parse_warning": false,
+      "first_entry_date": "Sun, 01 Nov 2026 12:17:09 +0000"
+    },
+    {
+      "kind": "rss",
+      "url": "https://blog.talosintelligence.com/rss/",
+      "status": 200,
+      "content_type": "application/rss+xml; charset=utf-8",
+      "entries": 15,
+      "parse_warning": false,
+      "first_entry_date": "Sat, 31 Oct 2026 12:00:00 GMT"
+    },
+    {
+      "kind": "rss",
+      "url": "https://www.zerodayinitiative.com/blog?format=rss",
+      "status": 200,
+      "content_type": "application/rss+xml; charset=UTF-8",
+      "entries": 19,
+      "parse_warning": true,
+      "first_entry_date": "Tue, 27 Oct 2026 16:39:07 +0000"
+    },
+    {
+      "kind": "rss",
+      "url": "https://unit42.paloaltonetworks.com/feed/",
+      "status": 200,
+      "content_type": "application/rss+xml; charset=UTF-8",
+      "entries": 15,
+      "parse_warning": false,
+      "first_entry_date": "Thu, 29 Oct 2026 18:00:34 +0000"
+    },
+    {
+      "kind": "rss",
+      "url": "https://googleprojectzero.blogspot.com/feeds/posts/default",
+      "status": 200,
+      "content_type": "text/xml",
+      "entries": 10,
+      "parse_warning": false,
+      "first_entry_date": "2026-10-27T00:00:00-07:00"
+    },
+    {
+      "kind": "rss",
+      "url": "https://security.googleblog.com/feeds/posts/default",
+      "status": 200,
+      "content_type": "text/xml; charset=utf-8",
+      "entries": 25,
+      "parse_warning": false,
+      "first_entry_date": "2026-04-23T17:38:00.001-04:00"
+    },
+    {
+      "kind": "rss",
+      "url": "https://blog.cloudflare.com/rss/",
+      "status": 200,
+      "content_type": "application/rss+xml; charset=utf-8",
+      "entries": 20,
+      "parse_warning": false,
+      "first_entry_date": "Fri, 30 Oct 2026 17:38:50 GMT"
+    },
+    {
+      "kind": "rss",
+      "url": "https://www.tenable.com/blog/feed",
+      "status": 200,
+      "content_type": "application/rss+xml; charset=utf-8",
+      "entries": 10,
+      "parse_warning": false,
+      "first_entry_date": "Thu, 29 Oct 2026 21:42:06 -0400"
+    },
+    {
+      "kind": "rss",
+      "url": "https://krebsonsecurity.com/feed/",
+      "status": 200,
+      "content_type": "application/rss+xml; charset=UTF-8",
+      "entries": 10,
+      "parse_warning": false,
+      "first_entry_date": "Wed, 21 Oct 2026 15:26:07 +0000"
+    },
+    {
+      "kind": "rss",
+      "url": "https://cyberscoop.com/feed/",
+      "status": 200,
+      "content_type": "application/rss+xml; charset=UTF-8",
+      "entries": 10,
+      "parse_warning": false,
+      "first_entry_date": "Fri, 30 Oct 2026 21:30:00 +0000"
+    },
+    {
+      "kind": "rss",
+      "url": "https://labs.watchtowr.com/rss/",
+      "status": 200,
+      "content_type": "application/rss+xml; charset=utf-8",
+      "entries": 15,
+      "parse_warning": false,
+      "first_entry_date": "Fri, 09 Oct 2026 17:31:14 GMT"
+    },
+    {
+      "kind": "rss",
+      "url": "https://www.horizon3.ai/feed/",
+      "status": 200,
+      "content_type": "application/rss+xml; charset=UTF-8",
+      "entries": 10,
+      "parse_warning": false,
+      "first_entry_date": "Thu, 29 Oct 2026 14:25:00 +0000"
+    },
+    {
+      "kind": "rss",
+      "url": "https://research.checkpoint.com/feed/",
+      "status": 200,
+      "content_type": "application/rss+xml; charset=UTF-8",
+      "entries": 15,
+      "parse_warning": false,
+      "first_entry_date": "Thu, 29 Oct 2026 14:08:46 +0000"
+    },
+    {
+      "kind": "rss",
+      "url": "https://cloudblog.withgoogle.com/topics/threat-intelligence/rss/",
+      "status": 200,
+      "content_type": "application/xml; charset=utf-8",
+      "entries": 20,
+      "parse_warning": false,
+      "first_entry_date": "Thu, 15 Oct 2026 14:00:00 +0000"
+    },
+    {
+      "kind": "rss",
+      "url": "https://www.rapid7.com/blog/rss/",
+      "status": 200,
+      "content_type": "application/xml",
+      "entries": 20,
+      "parse_warning": true,
+      "first_entry_date": "Fri, 30 Oct 2026 16:01:53 GMT"
+    },
+    {
+      "kind": "rss",
+      "url": "https://portswigger.net/research/rss",
+      "status": 200,
+      "content_type": "text/xml; charset=utf-8",
+      "entries": 40,
+      "parse_warning": false,
+      "first_entry_date": "Tue, 27 Oct 2026 14:29:26 GMT"
+    },
+    {
+      "kind": "rss",
+      "url": "https://www.sonarsource.com/blog/rss.xml",
+      "status": 200,
+      "content_type": "application/xml",
+      "entries": 20,
+      "parse_warning": false,
+      "first_entry_date": "Thu, 29 Oct 2026 13:00:00 GMT"
+    },
+    {
+      "kind": "rss",
+      "url": "https://isc.sans.edu/rssfeed_full.xml",
+      "status": 200,
+      "content_type": "text/xml; charset=utf-8",
+      "entries": 10,
+      "parse_warning": false,
+      "first_entry_date": "Sun, 01 Nov 2026 09:12:23 GMT"
+    },
+    {
+      "kind": "rss",
+      "url": "https://www.sentinelone.com/labs/feed/",
+      "status": 200,
+      "content_type": "application/rss+xml; charset=utf-8",
+      "entries": 10,
+      "parse_warning": false,
+      "first_entry_date": "Wed, 28 Oct 2026 13:00:00 +0000"
+    },
+    {
+      "kind": "rss_regex_only",
+      "url": "https://api.msrc.microsoft.com/update-guide/rss",
+      "status": 200,
+      "content_type": "application/rss+xml",
+      "entries": 3687,
+      "parse_warning": true,
+      "first_entry_date": "Sat, 31 Oct 2026 01:13:53 -0700"
+    },
+    {
+      "kind": "rss_regex_only",
+      "url": "https://sec.cloudapps.cisco.com/security/center/psirtrss20/CiscoSecurityAdvisory.xml",
+      "status": 200,
+      "content_type": "application/xml;charset=utf-8",
+      "entries": 50,
+      "parse_warning": false,
+      "first_entry_date": "2026-10-30 21:52:08.0"
+    },
+    {
+      "kind": "rss_regex_only",
+      "url": "https://www.zerodayinitiative.com/rss/published/",
+      "status": 200,
+      "content_type": "application/xml",
+      "entries": 200,
+      "parse_warning": false,
+      "first_entry_date": "Thu, 29 Oct 2026 00:00:00 -0500"
+    },
+    {
+      "kind": "rss_regex_only",
+      "url": "https://security.paloaltonetworks.com/rss.xml",
+      "status": 200,
+      "content_type": "application/xml; charset=utf-8",
+      "entries": 25,
+      "parse_warning": false,
+      "first_entry_date": "2026-10-31T03:15:00.000Z"
+    },
+    {
+      "kind": "rss_regex_only",
+      "url": "https://www.ivanti.com/blog/topics/security-advisory/rss",
+      "status": 200,
+      "content_type": "text/xml; charset=utf-8",
+      "entries": 19,
+      "parse_warning": false,
+      "first_entry_date": "Tue, 13 Oct 2026 14:33:02 Z"
+    },
+    {
+      "kind": "rss_regex_only",
+      "url": "https://www.fortiguard.com/rss/ir.xml",
+      "status": 200,
+      "content_type": "text/xml",
+      "entries": 50,
+      "parse_warning": false,
+      "first_entry_date": "Mon, 26 Oct 2026 00:00:00 -0700"
+    },
+    {
+      "kind": "rss_regex_only",
+      "url": "https://www.cert.ssi.gouv.fr/alerte/feed/",
+      "status": 200,
+      "content_type": "application/xml",
+      "entries": 40,
+      "parse_warning": false,
+      "first_entry_date": "Fri, 24 Jul 2015 00:00:00 +0000"
+    },
+    {
+      "kind": "rss_regex_only",
+      "url": "https://www.incibe.es/incibe-cert/alerta-temprana/avisos/feed",
+      "status": 200,
+      "content_type": "application/rss+xml; charset=utf-8",
+      "entries": 10,
+      "parse_warning": false,
+      "first_entry_date": "Fri, 30 Oct 2026 08:24:41 +0000"
+    },
+    {
+      "kind": "rss_regex_only",
+      "url": "https://cert.europa.eu/publications/security-advisories-rss",
+      "status": 200,
+      "content_type": "text/xml; charset=utf-8",
+      "entries": 10,
+      "parse_warning": false,
+      "first_entry_date": "Fri, 23 Oct 2026 16:36:26 CEST"
+    },
+    {
+      "kind": "rss_regex_only",
+      "url": "https://www.exploit-db.com/rss.xml",
+      "error": "ReadTimeout"
+    }
+  ],
+  "extras": {
+    "ghsa": {
+      "status": 200,
+      "has_legacy_cvss": true,
+      "has_cvss_severities": true,
+      "cve_id": "CVE-2026-118761",
+      "keys": [
+        "comments",
+        "credits",
+        "cve_id",
+        "cvss",
+        "cvss_severities",
+        "cwes",
+        "description",
+        "epss",
+        "ghsa_id",
+        "github_reviewed_at",
+        "html_url",
+        "identifiers",
+        "nvd_published_at",
+        "published_at",
+        "references",
+        "repository_advisory_url",
+        "severity",
+        "source_code_location",
+        "summary",
+        "type",
+        "updated_at",
+        "url",
+        "vulnerabilities",
+        "withdrawn_at"
+      ]
+    },
+    "epss": {
+      "status": 200,
+      "metadata_header": "#model_version:v2026.06.15,score_date:2026-10-31T12:00:27Z"
+    },
+    "kev_mirror": {
+      "url": "https://raw.githubusercontent.com/cisagov/kev-data/main/known_exploited_vulnerabilities.json",
+      "params": null,
+      "status": 200,
+      "catalog_version": "2026.10.30",
+      "entries": 1766
+    },
+    "circl_sightings": {
+      "url": "https://vulnerability.circl.lu/api/sighting/",
+      "params": {
+        "date_from": "2026-10-30",
+        "per_page": 2,
+        "page": 1,
+        "type": "exploited"
+      },
+      "error": "ReadTimeout"
+    }
+  }
+}

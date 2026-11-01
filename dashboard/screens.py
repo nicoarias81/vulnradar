@@ -97,9 +97,12 @@ def _sig_badges(item) -> str:
         fecha = str(item.get("kev_date") or "")[:10]
         sufijo = f" {fecha[5:]}" if len(fecha) == 10 else ""
         sigs.append(f'<span class="s-kev">KEV{sufijo}</span>')
+    if item.get('wild_confirmation'):
+        sigs.append('<span class="s-kev">Observed exploitation</span>')
     pocs = int(item.get("poc_count") or 0)
     if pocs:
-        sigs.append(f'<span class="s-poc">{pocs} PoC</span>')
+        label = 'public PoC entries' if item.get('exploitdb_poc_count') else 'repo candidates'
+        sigs.append(f'<span class="s-poc">{pocs} {label}</span>')
     epss = item.get("epss")
     if epss is not None and float(epss) >= 0.70:
         sigs.append(f'<span class="s-epss">EPSS {float(epss) * 100:.0f}%</span>')
@@ -275,6 +278,7 @@ def detail(qp: dict | None = None) -> str:
         cve_id = row["cve_id"]
         mentions = load_mentions(conn, cve_id)
         poc_repos = load_pocs(conn, cve_id)
+        exploit_entries = conn.execute("SELECT source,external_id,url,event_date FROM evidence WHERE cve_id=? AND kind='public-poc' AND active=true ORDER BY source,external_id", (cve_id,)).fetchall()
         series = load_score_history(conn, cve_id)
     finally:
         conn.close()
@@ -288,10 +292,10 @@ def detail(qp: dict | None = None) -> str:
         badges += " " + badge("KEV: KNOWN CATALOG", "#22D3EE")
 
     labels = {
-        "tone": "Sensational headline",
-        "media": "Media coverage",
+        "tone": "Headline sample (25%)",
+        "media": "Press, 30 days (60%)",
         "cvss": "CVSS",
-        "branding": "Branding",
+        "branding": "Grounded branding (15%)",
         "pocs": "PoCs on GitHub",
     }
     icons = {"tone": "shield", "media": "clock", "cvss": "bolt", "branding": "tag", "pocs": "git"}
@@ -321,9 +325,9 @@ def detail(qp: dict | None = None) -> str:
     # risk. Without this warning, a 2/10 reads as "not that bad".
     publicado = _dt(row.get("published"))
     dias_publicado = (datetime.now(timezone.utc) - publicado).days if publicado else None
-    caveat = ""
+    caveat = "Reality is an ordinal threat index, not an exploitation probability or an asset risk score. Hype measures observed attention over 30 days."
     if dias_publicado is not None and dias_publicado <= 30 and not kev:
-        caveat = (
+        caveat += " " + (
             f"Published {dias_publicado} days ago. Exploitation evidence usually "
             "takes weeks to show up: a low reality score can mean there is no "
             "data yet, not that the flaw is mild."
@@ -391,19 +395,23 @@ def detail(qp: dict | None = None) -> str:
         )
         pocs_html = (
             f'<div class="score hype" style="font-size:40px">{poc_count}</div>'
-            '<p class="muted" style="margin-top:0">PoC repositories</p>'
+            '<p class="muted" style="margin-top:0">Public exploit entries / repo candidates</p>'
             f'<details class="expand"><summary>See {len(poc_repos)} repos with metrics</summary>'
             '<table class="mini"><thead><tr><th>Repository</th><th>Stars</th><th>Forks</th>'
             f'<th>Language</th><th>Updated</th></tr></thead><tbody>{rows_html}</tbody></table>'
             "</details>"
         )
     else:
-        nota = ("<p class=\"muted\">Repo details arrive on the next pass.</p>"
+        nota = ("<p class=\"muted\">Source entries and unverified repository candidates are counted separately.</p>"
                 if poc_count else "")
         pocs_html = (
             f'<div class="score hype" style="font-size:40px">{poc_count}</div>'
-            f'<p class="muted">PoC repositories</p>{nota}'
+            f'<p class="muted">Public exploit entries / repo candidates</p>{nota}'
         )
+    if exploit_entries:
+        pocs_html += '<details class="expand"><summary>Public exploit evidence</summary><ul>' + ''.join(
+            f'<li><a href="{escape(r["url"] or "")}" target="_blank" rel="noopener">{escape(r["source"])} #{escape(r["external_id"])}</a> {escape(r["event_date"] or "")}</li>'
+            for r in exploit_entries) + '</ul></details>'
 
     return detail_html(
         cve_id=cve_id,

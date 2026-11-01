@@ -20,6 +20,9 @@ Usage:
 import argparse
 import csv
 import io
+import json
+import os
+from urllib.parse import urlsplit
 import re
 import sys
 from datetime import datetime, timedelta, timezone
@@ -30,6 +33,7 @@ import requests
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from core.db import get_db, init_db  # noqa: E402
+from core.evidence import observe, run_source, source_poc_count
 
 EXPLOITDB_URL = "https://gitlab.com/exploit-database/exploitdb/-/raw/main/files_exploits.csv"
 CIRCL_SIGHTINGS_URL = "https://vulnerability.circl.lu/api/sighting/"
@@ -74,7 +78,10 @@ def parse_exploitdb(csv_text: str) -> dict:
         for codigo in (row.get("codes") or "").split(";"):
             codigo = codigo.strip().upper()
             if CVE_RE.match(codigo):
-                por_cve.setdefault(codigo, []).append(int(edb_id))
+
+                ids = por_cve.setdefault(codigo, [])
+                if int(edb_id) not in ids:
+                    ids.append(int(edb_id))
     return por_cve
 
 
@@ -102,14 +109,21 @@ def sync_exploitdb(conn, *, csv_text=None, session=None, url=EXPLOITDB_URL,
         "INSERT INTO cves (cve_id) VALUES (?) ON CONFLICT (cve_id) DO NOTHING",
         [(cve,) for cve, _ in pares],
     )
-    conn.executemany(POC_COUNT_SQL, pares)
+    records = {str(r['id']):r for r in csv.DictReader(io.StringIO(csv_text)) if r.get('id')}
+    for cve, count in pares:
+        source_poc_count(conn, cve, count, 'exploitdb')
+        for edb_id in por_cve[cve]:
+            record = records.get(str(edb_id), {})
+            observe(conn, cve, 'exploitdb', 'public-poc', edb_id,
+                    url=f'https://www.exploit-db.com/exploits/{edb_id}',
+                    event_date=record.get('date_published'), trusted=True, payload=record)
     return {"cves": len(por_cve), "con_exploit": len(with_ids)}
 
 
 def fetch_sightings_page(date_from, *, page=1, per_page=1000, session=None,
                          timeout=60) -> dict:
     http = session or requests
-    params = {"date_from": date_from, "page": page, "per_page": per_page}
+    params = {"date_from": date_from, "page": page, "per_page": per_page, "type":"exploited"}
     respuesta = http.get(CIRCL_SIGHTINGS_URL, params=params, timeout=timeout,
                          headers={"User-Agent": USER_AGENT})
     respuesta.raise_for_status()
@@ -133,6 +147,7 @@ def sync_sightings(conn, *, days=7, date_from=None, max_pages=400, session=None,
 
     vistos = 0
     explotados = set()
+    trusted_authors = {x.strip() for x in os.getenv("CIRCL_TRUSTED_AUTHORS", "").split(",") if x.strip()}
     paginas = 0
     fallidas = 0
     for page in range(1, max_pages + 1):
@@ -159,7 +174,15 @@ def sync_sightings(conn, *, days=7, date_from=None, max_pages=400, session=None,
             if (sighting.get("type") or "").lower() in EXPLOITED_TYPES:
                 cve = (sighting.get("vulnerability") or "").strip().upper()
                 if CVE_RE.match(cve):
-                    explotados.add(cve)
+                    author = sighting.get('author') or {}
+                    author_id = author.get('uuid') if isinstance(author, dict) else str(author)
+                    trusted = bool(author_id and author_id in trusted_authors)
+                    conn.execute("INSERT INTO cves(cve_id) VALUES (?) ON CONFLICT(cve_id) DO NOTHING", (cve,))
+                    observe(conn, cve, 'circl', 'exploited', sighting.get('uuid') or str(sighting),
+                            url=sighting.get('source'), event_date=sighting.get('creation_timestamp'),
+                            trusted=trusted, payload=sighting)
+                    if trusted:
+                        explotados.add(cve)
         total = (payload.get("metadata") or {}).get("count") or 0
         if vistos >= total:
             break
@@ -173,7 +196,7 @@ def sync_sightings(conn, *, days=7, date_from=None, max_pages=400, session=None,
         conn.executemany(WILD_SQL, [(cve,) for cve in ordenados])
 
     return {"date_from": date_from, "sightings": vistos, "paginas": paginas,
-            "paginas_fallidas": fallidas, "cves_explotados": len(explotados)}
+            "paginas_fallidas": fallidas, "truncated": bool(paginas == max_pages), "cves_explotados": len(explotados)}
 
 
 def fetch_ghsa_page(*, page=1, per_page=100, session=None, timeout=60) -> list:
@@ -186,28 +209,60 @@ def fetch_ghsa_page(*, page=1, per_page=100, session=None, timeout=60) -> list:
     return respuesta.json()
 
 
-def sync_ghsa(conn, *, pages=5, session=None, timeout=60) -> dict:
+def sync_ghsa(conn, *, pages=5, session=None, timeout=60, advance_cursor=False) -> dict:
     """Fills ``cvss_score`` only where the CNA did not declare one."""
     revisados = 0
     rellenados = 0
     for page in range(1, pages + 1):
-        for advisory in fetch_ghsa_page(page=page, session=session, timeout=timeout):
+        batch = fetch_ghsa_page(page=page, session=session, timeout=timeout)
+        if not batch:
+            break
+        for advisory in batch:
             revisados += 1
             cve = (advisory.get("cve_id") or "").strip().upper()
-            cvss = (advisory.get("cvss") or {}).get("score")
+            if advisory.get('withdrawn_at'):
+                continue
+            severities = advisory.get('cvss_severities') or {}
+            metric = severities.get('cvss_v3') or severities.get('cvss_v4') or advisory.get('cvss') or {}
+            cvss = metric.get('score')
             severidad = advisory.get("severity") or ""
-            if not CVE_RE.match(cve) or cvss is None:
+            if not CVE_RE.match(cve) or cvss is None or not 0 <= float(cvss) <= 10:
                 continue
             # RETURNING instead of rowcount: psycopg does not always report it
             # and the count ended at 0 with the rows updated anyway.
             cur = conn.execute(
-                """UPDATE cves SET cvss_score = ?, cvss_severity = ?
+                """UPDATE cves SET cvss_score = ?, cvss_severity = ?, cvss_vector = ?, cvss_source = 'ghsa'
                    WHERE cve_id = ? AND cvss_score IS NULL
                    RETURNING cve_id""",
-                (float(cvss), severidad.lower() or None, cve),
+                (float(cvss), severidad.lower() or None, metric.get("vector_string"), cve),
             )
             rellenados += len(cur.fetchall() or [])
-    return {"advisories": revisados, "cvss_rellenados": rellenados}
+    result = {"advisories": revisados, "cvss_rellenados": rellenados}
+    if advance_cursor:
+        from agents.sync_agent import get_state, set_state
+        start = int(get_state(conn,'ghsa_backfill_page',str(pages+1)))
+        for backfill_page in range(start,start+pages):
+            batch=fetch_ghsa_page(page=backfill_page,session=session,timeout=timeout)
+            if not batch:
+                start=pages+1
+                break
+            for advisory in batch:
+                if advisory.get('withdrawn_at'):
+                    continue
+                severities=advisory.get('cvss_severities') or {}
+                metric=severities.get('cvss_v3') or severities.get('cvss_v4') or advisory.get('cvss') or {}
+                value=metric.get('score')
+                cve=(advisory.get('cve_id') or '').upper()
+                if not CVE_RE.fullmatch(cve) or value is None or not 0 <= float(value) <= 10:
+                    continue
+                cur=conn.execute("UPDATE cves SET cvss_score=?,cvss_vector=?,cvss_severity=?,cvss_source='ghsa' WHERE cve_id=? AND cvss_score IS NULL RETURNING cve_id",
+                    (float(value),metric.get('vector_string'),advisory.get('severity'),cve))
+                result['cvss_rellenados']+=len(cur.fetchall())
+            result['advisories']+=len(batch)
+            start=backfill_page+1
+        set_state(conn,'ghsa_backfill_page',str(start))
+        result['next_backfill_page']=start
+    return result
 
 
 def run_daily(conn, *, hours=24, force=False, days=None, ghsa_pages=5) -> dict:
@@ -228,12 +283,24 @@ def run_daily(conn, *, hours=24, force=False, days=None, ghsa_pages=5) -> dict:
         except ValueError:
             pass  # a corrupt value must not block the run
 
-    summary = {
-        "exploitdb": sync_exploitdb(conn),
-        "sightings": sync_sightings(conn, days=days or max(1, int(hours) // 24 + 1)),
-        "ghsa": sync_ghsa(conn, pages=ghsa_pages),
-    }
-    set_state(conn, INTEL_STATE_KEY, ahora.isoformat(timespec="seconds"))
+    summary = {}
+    for name, fn in (
+        ('exploitdb', lambda: sync_exploitdb(conn)),
+        ('sightings', lambda: sync_sightings(conn, days=days or max(1, int(hours)//24+1))),
+        ('ghsa', lambda: sync_ghsa(conn, pages=ghsa_pages,advance_cursor=True)),
+    ):
+        key = 'intel_' + name + '_last_success'
+        last = get_state(conn, key)
+        if last and not force and ahora - datetime.fromisoformat(last) < timedelta(hours=hours):
+            summary[name] = {'skipped':True}
+            continue
+        result = run_source(conn, 'intel:' + name, fn)
+        summary[name] = result
+        if not (isinstance(result,dict) and (result.get('error') or result.get('paginas_fallidas') or result.get('truncated'))):
+            set_state(conn, key, ahora.isoformat())
+            conn.commit()
+    if all(not (isinstance(r,dict) and (r.get('error') or r.get('paginas_fallidas') or r.get('truncated'))) for r in summary.values()):
+        set_state(conn, INTEL_STATE_KEY, ahora.isoformat(timespec='seconds'))
     return summary
 
 

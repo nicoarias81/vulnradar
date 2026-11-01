@@ -34,3 +34,10 @@ def test_concurrent_init_db_does_not_collide(_round):
     for p in procs:
         p.join(timeout=120)
     assert results == ["ok"] * 4, results
+    from core.db import get_db, list_tables
+
+    conn = get_db(path)  # register the child-created schema for parent cleanup
+    try:
+        assert {"cves", "enrichments", "scores", "soc_sessions", "poc_checks"} <= list_tables(conn)
+    finally:
+        conn.close()

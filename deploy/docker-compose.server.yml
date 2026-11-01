@@ -25,6 +25,7 @@ services:
       LLM_BASE_URL: http://litellm:4000/v1
       TZ: Europe/Madrid
       SLOT: a
+      SOC_COOKIE_SECURE: "1"
     ports:
       - "127.0.0.1:8511:8501"
     volumes:
@@ -47,6 +48,7 @@ services:
       LLM_BASE_URL: http://litellm:4000/v1
       TZ: Europe/Madrid
       SLOT: b
+      SOC_COOKIE_SECURE: "1"
     ports:
       - "127.0.0.1:8512:8501"
 

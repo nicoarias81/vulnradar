@@ -1,0 +1,631 @@
+{
+  "captured_at": "2026-11-01T13:37:37.396827+00:00",
+  "algorithm_version": "v4.1-evidence-tiers-attention-30d",
+  "scope": "Real-data integration/volume and safety validation; not a predictive backtest.",
+  "snapshots": {
+    "kev.json": {
+      "url": "https://raw.githubusercontent.com/cisagov/kev-data/main/known_exploited_vulnerabilities.json",
+      "downloaded_at": "2026-11-01T13:07:04.586942+00:00",
+      "last_modified": null,
+      "sha256": "3aa9cf3c01f116362a29d111702979175453c425e3733bde80fc4f6f8e2294e5",
+      "bytes": 1826755,
+      "cache_object": "objects/3aa9cf3c01f116362a29d111702979175453c425e3733bde80fc4f6f8e2294e5"
+    },
+    "epss.csv.gz": {
+      "url": "https://epss.empiricalsecurity.com/epss_scores-current.csv.gz",
+      "downloaded_at": "2026-11-01T13:07:06.513179+00:00",
+      "last_modified": "Sat, 31 Oct 2026 13:30:36 GMT",
+      "sha256": "7bb880e89b8fef5e486f13688d92854bd7b3cc77a2d4815c46001c64318455e6",
+      "bytes": 2795240,
+      "model_version": "v2026.06.15",
+      "score_date": "2026-10-31T12:00:27Z",
+      "cache_object": "objects/7bb880e89b8fef5e486f13688d92854bd7b3cc77a2d4815c46001c64318455e6"
+    },
+    "exploitdb.csv": {
+      "url": "https://gitlab.com/exploit-database/exploitdb/-/raw/main/files_exploits.csv",
+      "downloaded_at": "2026-11-01T13:07:50.529121+00:00",
+      "last_modified": null,
+      "sha256": "10f31864b85c342c8a777a0248227dcd1e11ae50b246fcfa8bb8051bdc151062",
+      "bytes": 10184639,
+      "cache_object": "objects/10f31864b85c342c8a777a0248227dcd1e11ae50b246fcfa8bb8051bdc151062"
+    }
+  },
+  "mirror": {
+    "head": "5fbb02b0e112c25881cbb406ff6484302babb39e",
+    "cves": 398734,
+    "rejected_excluded": 18859
+  },
+  "initial_load_seconds": 361.25,
+  "recalculated": 0,
+  "scoring_seconds": 5.936,
+  "unchanged_recalculated": 0,
+  "unchanged_scan_seconds": 5.951,
+  "validation": {
+    "coverage": {
+      "rows": [
+        {
+          "cves": 398931,
+          "scored": 398734,
+          "real_records": 398734,
+          "with_epss": 398713,
+          "kev": 1766,
+          "exploitdb": 25093,
+          "trusted_wild": 0
+        }
+      ],
+      "seconds": 0.777
+    },
+    "categories": {
+      "rows": [
+        {
+          "category": "Quiet",
+          "n": 371610
+        },
+        {
+          "category": "Sleeper",
+          "n": 1765
+        },
+        {
+          "category": "Unknown",
+          "n": 21
+        },
+        {
+          "category": "Watch",
+          "n": 25338
+        }
+      ],
+      "seconds": 0.029
+    },
+    "source_runs": {
+      "rows": [
+        {
+          "source": "lab:tone-heuristic",
+          "status": "SUCCESS",
+          "checked_at": "2026-11-01 13:37:37.399022+00:00",
+          "version": null
+        },
+        {
+          "source": "lab:tone-heuristic",
+          "status": "SUCCESS",
+          "checked_at": "2026-11-01 13:31:24.939173+00:00",
+          "version": null
+        },
+        {
+          "source": "lab:tone-heuristic",
+          "status": "SUCCESS",
+          "checked_at": "2026-11-01 13:26:28.369243+00:00",
+          "version": null
+        },
+        {
+          "source": "lab:tone-heuristic",
+          "status": "SUCCESS",
+          "checked_at": "2026-11-01 13:20:13.244148+00:00",
+          "version": null
+        },
+        {
+          "source": "lab:tone-heuristic",
+          "status": "SUCCESS",
+          "checked_at": "2026-11-01 13:13:24.524537+00:00",
+          "version": null
+        },
+        {
+          "source": "lab:circl",
+          "status": "PARTIAL",
+          "checked_at": "2026-11-01 13:08:40.973685+00:00",
+          "version": null
+        },
+        {
+          "source": "lab:ghsa",
+          "status": "SUCCESS",
+          "checked_at": "2026-11-01 13:08:36.098099+00:00",
+          "version": null
+        },
+        {
+          "source": "lab:rss",
+          "status": "SUCCESS",
+          "checked_at": "2026-11-01 13:08:08.000425+00:00",
+          "version": null
+        },
+        {
+          "source": "feed:https://www.exploit-db.com/rss.xml",
+          "status": "SUCCESS",
+          "checked_at": "2026-11-01 13:08:08.000425+00:00",
+          "version": null
+        },
+        {
+          "source": "feed:https://cert.europa.eu/publications/security-advisories-rss",
+          "status": "SUCCESS",
+          "checked_at": "2026-11-01 13:08:08.000425+00:00",
+          "version": null
+        },
+        {
+          "source": "feed:https://www.incibe.es/incibe-cert/alerta-temprana/avisos/feed",
+          "status": "SUCCESS",
+          "checked_at": "2026-11-01 13:08:08.000425+00:00",
+          "version": null
+        },
+        {
+          "source": "feed:https://www.cert.ssi.gouv.fr/alerte/feed/",
+          "status": "SUCCESS",
+          "checked_at": "2026-11-01 13:08:08.000425+00:00",
+          "version": null
+        },
+        {
+          "source": "feed:https://www.fortiguard.com/rss/ir.xml",
+          "status": "SUCCESS",
+          "checked_at": "2026-11-01 13:08:08.000425+00:00",
+          "version": null
+        },
+        {
+          "source": "feed:https://www.ivanti.com/blog/topics/security-advisory/rss",
+          "status": "SUCCESS",
+          "checked_at": "2026-11-01 13:08:08.000425+00:00",
+          "version": null
+        },
+        {
+          "source": "feed:https://security.paloaltonetworks.com/rss.xml",
+          "status": "SUCCESS",
+          "checked_at": "2026-11-01 13:08:08.000425+00:00",
+          "version": null
+        },
+        {
+          "source": "feed:https://www.zerodayinitiative.com/rss/published/",
+          "status": "SUCCESS",
+          "checked_at": "2026-11-01 13:08:08.000425+00:00",
+          "version": null
+        },
+        {
+          "source": "feed:https://sec.cloudapps.cisco.com/security/center/psirtrss20/CiscoSecurityAdvisory.xml",
+          "status": "SUCCESS",
+          "checked_at": "2026-11-01 13:08:08.000425+00:00",
+          "version": null
+        },
+        {
+          "source": "feed:https://api.msrc.microsoft.com/update-guide/rss",
+          "status": "SUCCESS",
+          "checked_at": "2026-11-01 13:08:08.000425+00:00",
+          "version": null
+        },
+        {
+          "source": "feed:https://www.sentinelone.com/labs/feed/",
+          "status": "SUCCESS",
+          "checked_at": "2026-11-01 13:08:08.000425+00:00",
+          "version": null
+        },
+        {
+          "source": "feed:https://isc.sans.edu/rssfeed_full.xml",
+          "status": "SUCCESS",
+          "checked_at": "2026-11-01 13:08:08.000425+00:00",
+          "version": null
+        },
+        {
+          "source": "feed:https://www.sonarsource.com/blog/rss.xml",
+          "status": "SUCCESS",
+          "checked_at": "2026-11-01 13:08:08.000425+00:00",
+          "version": null
+        },
+        {
+          "source": "feed:https://portswigger.net/research/rss",
+          "status": "SUCCESS",
+          "checked_at": "2026-11-01 13:08:08.000425+00:00",
+          "version": null
+        },
+        {
+          "source": "feed:https://www.rapid7.com/blog/rss/",
+          "status": "SUCCESS",
+          "checked_at": "2026-11-01 13:08:08.000425+00:00",
+          "version": null
+        },
+        {
+          "source": "feed:https://cloudblog.withgoogle.com/topics/threat-intelligence/rss/",
+          "status": "SUCCESS",
+          "checked_at": "2026-11-01 13:08:08.000425+00:00",
+          "version": null
+        },
+        {
+          "source": "feed:https://research.checkpoint.com/feed/",
+          "status": "SUCCESS",
+          "checked_at": "2026-11-01 13:08:08.000425+00:00",
+          "version": null
+        },
+        {
+          "source": "feed:https://www.horizon3.ai/feed/",
+          "status": "SUCCESS",
+          "checked_at": "2026-11-01 13:08:08.000425+00:00",
+          "version": null
+        },
+        {
+          "source": "feed:https://labs.watchtowr.com/rss/",
+          "status": "SUCCESS",
+          "checked_at": "2026-11-01 13:08:08.000425+00:00",
+          "version": null
+        },
+        {
+          "source": "feed:https://cyberscoop.com/feed/",
+          "status": "SUCCESS",
+          "checked_at": "2026-11-01 13:08:08.000425+00:00",
+          "version": null
+        },
+        {
+          "source": "feed:https://krebsonsecurity.com/feed/",
+          "status": "SUCCESS",
+          "checked_at": "2026-11-01 13:08:08.000425+00:00",
+          "version": null
+        },
+        {
+          "source": "feed:https://www.tenable.com/blog/feed",
+          "status": "SUCCESS",
+          "checked_at": "2026-11-01 13:08:08.000425+00:00",
+          "version": null
+        },
+        {
+          "source": "feed:https://blog.cloudflare.com/rss/",
+          "status": "SUCCESS",
+          "checked_at": "2026-11-01 13:08:08.000425+00:00",
+          "version": null
+        },
+        {
+          "source": "feed:https://security.googleblog.com/feeds/posts/default",
+          "status": "SUCCESS",
+          "checked_at": "2026-11-01 13:08:08.000425+00:00",
+          "version": null
+        },
+        {
+          "source": "feed:https://googleprojectzero.blogspot.com/feeds/posts/default",
+          "status": "SUCCESS",
+          "checked_at": "2026-11-01 13:08:08.000425+00:00",
+          "version": null
+        },
+        {
+          "source": "feed:https://unit42.paloaltonetworks.com/feed/",
+          "status": "SUCCESS",
+          "checked_at": "2026-11-01 13:08:08.000425+00:00",
+          "version": null
+        },
+        {
+          "source": "feed:https://www.zerodayinitiative.com/blog?format=rss",
+          "status": "SUCCESS",
+          "checked_at": "2026-11-01 13:08:08.000425+00:00",
+          "version": null
+        },
+        {
+          "source": "feed:https://blog.talosintelligence.com/rss/",
+          "status": "SUCCESS",
+          "checked_at": "2026-11-01 13:08:08.000425+00:00",
+          "version": null
+        },
+        {
+          "source": "feed:https://cvefeed.io/rssfeed/latest.xml",
+          "status": "SUCCESS",
+          "checked_at": "2026-11-01 13:08:08.000425+00:00",
+          "version": null
+        },
+        {
+          "source": "feed:https://www.darkreading.com/rss.xml",
+          "status": "SUCCESS",
+          "checked_at": "2026-11-01 13:08:08.000425+00:00",
+          "version": null
+        },
+        {
+          "source": "feed:https://therecord.media/feed",
+          "status": "SUCCESS",
+          "checked_at": "2026-11-01 13:08:08.000425+00:00",
+          "version": null
+        },
+        {
+          "source": "feed:https://www.helpnetsecurity.com/feed/",
+          "status": "SUCCESS",
+          "checked_at": "2026-11-01 13:08:08.000425+00:00",
+          "version": null
+        },
+        {
+          "source": "feed:https://www.securityweek.com/feed/",
+          "status": "SUCCESS",
+          "checked_at": "2026-11-01 13:08:08.000425+00:00",
+          "version": null
+        },
+        {
+          "source": "feed:https://www.bleepingcomputer.com/feed/",
+          "status": "SUCCESS",
+          "checked_at": "2026-11-01 13:08:08.000425+00:00",
+          "version": null
+        },
+        {
+          "source": "feed:https://feeds.feedburner.com/TheHackersNews",
+          "status": "SUCCESS",
+          "checked_at": "2026-11-01 13:08:08.000425+00:00",
+          "version": null
+        },
+        {
+          "source": "lab:exploitdb",
+          "status": "SUCCESS",
+          "checked_at": "2026-11-01 13:07:50.885880+00:00",
+          "version": null
+        },
+        {
+          "source": "lab:epss",
+          "status": "SUCCESS",
+          "checked_at": "2026-11-01 13:07:49.789038+00:00",
+          "version": "v2026.06.15"
+        },
+        {
+          "source": "lab:kev",
+          "status": "SUCCESS",
+          "checked_at": "2026-11-01 13:07:04.623164+00:00",
+          "version": "2026.10.30"
+        }
+      ],
+      "seconds": 0.001
+    },
+    "confirmed_below_tier": {
+      "rows": [
+        {
+          "violations": 0
+        }
+      ],
+      "seconds": 0.041
+    },
+    "invalid_scores": {
+      "rows": [
+        {
+          "violations": 0
+        }
+      ],
+      "seconds": 0.041
+    },
+    "rejected_scored": {
+      "rows": [
+        {
+          "violations": 0
+        }
+      ],
+      "seconds": 0.082
+    },
+    "real_examples": {
+      "rows": [
+        {
+          "cve_id": "CVE-2014-0160",
+          "hype": 0.0,
+          "reality": 8.0,
+          "category": "Sleeper",
+          "exploitation_state": "confirmed-exploitation",
+          "in_kev": 1,
+          "epss": 0.99999,
+          "epss_date": "2026-10-31T12:00:27Z",
+          "exploitdb_poc_count": 4
+        },
+        {
+          "cve_id": "CVE-2017-0144",
+          "hype": 0.0,
+          "reality": 8.99,
+          "category": "Sleeper",
+          "exploitation_state": "confirmed-exploitation",
+          "in_kev": 1,
+          "epss": 0.9923,
+          "epss_date": "2026-10-31T12:00:27Z",
+          "exploitdb_poc_count": 6
+        },
+        {
+          "cve_id": "CVE-2021-44228",
+          "hype": 1.05,
+          "reality": 9.0,
+          "category": "Sleeper",
+          "exploitation_state": "confirmed-exploitation",
+          "in_kev": 1,
+          "epss": 0.99999,
+          "epss_date": "2026-10-31T12:00:27Z",
+          "exploitdb_poc_count": 3
+        },
+        {
+          "cve_id": "CVE-2023-34362",
+          "hype": 0.0,
+          "reality": 9.0,
+          "category": "Sleeper",
+          "exploitation_state": "confirmed-exploitation",
+          "in_kev": 1,
+          "epss": 0.99934,
+          "epss_date": "2026-10-31T12:00:27Z",
+          "exploitdb_poc_count": 0
+        },
+        {
+          "cve_id": "CVE-2024-3094",
+          "hype": 0.0,
+          "reality": 4.54,
+          "category": "Watch",
+          "exploitation_state": "no-known-exploitation",
+          "in_kev": 0,
+          "epss": 0.909,
+          "epss_date": "2026-10-31T12:00:27Z",
+          "exploitdb_poc_count": 0
+        },
+        {
+          "cve_id": "CVE-2024-3400",
+          "hype": 0.0,
+          "reality": 9.0,
+          "category": "Sleeper",
+          "exploitation_state": "confirmed-exploitation",
+          "in_kev": 1,
+          "epss": 0.99999,
+          "epss_date": "2026-10-31T12:00:27Z",
+          "exploitdb_poc_count": 1
+        },
+        {
+          "cve_id": "CVE-2025-24813",
+          "hype": 0.0,
+          "reality": 8.0,
+          "category": "Sleeper",
+          "exploitation_state": "confirmed-exploitation",
+          "in_kev": 1,
+          "epss": 0.99942,
+          "epss_date": "2026-10-31T12:00:27Z",
+          "exploitdb_poc_count": 1
+        }
+      ],
+      "seconds": 0.001
+    },
+    "semantic_audit": {
+      "scope": "Synthetic counterexamples and actual source write/orchestration paths; not predictive calibration.",
+      "scoring_version": "v4.1-evidence-tiers-attention-30d",
+      "source_sha256": {
+        "core/scoring.py": "ee12332c9d37f793cf967545febb4af6454b12264ec3d55c19f6bfe5bafad5b1",
+        "core/normalizer.py": "ecd922bb0f31adaf8df110fa2109b87a8fa713ac1f98fbaba4c62cb749e9b369",
+        "agents/enrichment_agent.py": "ca7c63712457abec1cbed0a955f55d089aa98f9d3d5e1af0222b5ca6f1765193",
+        "agents/intel_agent.py": "a2f7f9603b01f0e646a4906a3932720dc6f00cfd3c966bb8f4b906106e4e7a3b",
+        "config/sources.yaml": "3d7a05268f232e88857a1d66c4071bec3668cd81a7e0ed2fa527cdf0962b388e"
+      },
+      "checks": [
+        {
+          "name": "normalized_grid_is_finite_and_bounded",
+          "kind": "arithmetic",
+          "passed": true,
+          "evidence": {
+            "combinations": 25920,
+            "violations": 0
+          }
+        },
+        {
+          "name": "individual_signals_are_numerically_monotone",
+          "kind": "arithmetic",
+          "passed": true,
+          "evidence": {
+            "signals": 10,
+            "scope": "Each signal varied independently; category semantics evaluated separately."
+          }
+        },
+        {
+          "name": "known_exploitation_not_overhyped",
+          "kind": "model_safety",
+          "passed": true,
+          "evidence": {
+            "hype": 9.75,
+            "reality": 7.01,
+            "category": "Earned the hype"
+          }
+        },
+        {
+          "name": "confirmed_non_kev_can_reach_high_reality",
+          "kind": "model_safety",
+          "passed": true,
+          "evidence": {
+            "maximum_without_ransomware": 8.0
+          }
+        },
+        {
+          "name": "finite_bounded_scores",
+          "kind": "input_integrity",
+          "passed": true,
+          "evidence": {
+            "negative_inputs": {
+              "hype": 0.0,
+              "reality": 0.0,
+              "category": "Unknown"
+            },
+            "infinite_ease_result": "0.0"
+          }
+        },
+        {
+          "name": "invalid_vector_not_maximum_ease",
+          "kind": "input_integrity",
+          "passed": true,
+          "evidence": {
+            "ease_for_garbage": 0.0
+          }
+        },
+        {
+          "name": "cvss4_constraints_affect_ease",
+          "kind": "input_integrity",
+          "passed": true,
+          "evidence": {
+            "AT_N_UI_N": 10.0,
+            "AT_P_UI_A": 4.0
+          }
+        },
+        {
+          "name": "rejected_record_not_treated_as_normal_cve",
+          "kind": "input_integrity",
+          "passed": true,
+          "evidence": {
+            "normalizer_accepts_rejected": false
+          }
+        },
+        {
+          "name": "missing_evidence_distinguished_from_zero",
+          "kind": "model_safety",
+          "passed": true,
+          "evidence": {
+            "same_signals": false
+          }
+        },
+        {
+          "name": "product_name_not_vulnerability_brand",
+          "kind": "input_integrity",
+          "passed": true,
+          "evidence": {
+            "branding": [
+              false,
+              null
+            ]
+          }
+        },
+        {
+          "name": "llm_identifier_grounded_in_input",
+          "kind": "input_integrity",
+          "passed": true,
+          "evidence": {
+            "verdict": [
+              {
+                "cve_id": null,
+                "brand_name": null,
+                "relevant": true
+              }
+            ]
+          }
+        },
+        {
+          "name": "github_zero_preserves_exploitdb_evidence",
+          "kind": "source_integrity",
+          "passed": true,
+          "evidence": {
+            "exploitdb_count": 2,
+            "after_github_zero": 2
+          }
+        },
+        {
+          "name": "configured_advisory_feeds_are_requested",
+          "kind": "source_integrity",
+          "passed": true,
+          "evidence": {
+            "requested_feeds": 35,
+            "unrequested_advisory_feeds": []
+          }
+        }
+      ],
+      "violations": 0
+    },
+    "snapshot_replay": {
+      "evaluations": 96,
+      "violations": 0
+    }
+  },
+  "database_bytes": 2118171671,
+  "peak_rss_mib": 55.8,
+  "elapsed_seconds": 15.07,
+  "acceptance": {
+    "real_volume": true,
+    "epss_coverage": true,
+    "kev_present": true,
+    "curated_poc_present": true,
+    "unchanged_is_noop": true,
+    "snapshot_replay": true
+  },
+  "tests": {
+    "full_suite_passed": 222,
+    "focused_sources_passed": 69
+  },
+  "http_smoke": {
+    "overview_status": 200,
+    "overview_seconds": 1.271263,
+    "log4shell_status": 200,
+    "log4shell_seconds": 0.036994
+  }
+}

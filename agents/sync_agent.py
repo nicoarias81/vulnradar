@@ -10,17 +10,20 @@ import json
 import os
 import subprocess
 import sys
+import yaml
 from datetime import datetime, timezone
 from pathlib import Path
 
 # `python agents/foo.py` puts agents/ on sys.path, not the repo root.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from core.db import get_db, init_db, resolve_path
+from core.db import get_db, init_db, resolve_path, REPO_ROOT
 from core.normalizer import normalize_cve_list_v5
 
-CVE_LIST_PATH = resolve_path(os.getenv("CVE_LIST_PATH", ""), "data/cvelistV5")
-REPO_URL = "https://github.com/CVEProject/cvelistV5.git"
+_sources_config = yaml.safe_load((REPO_ROOT/'config'/'sources.yaml').read_text(encoding='utf-8')).get('sources',{})
+_cve_config = _sources_config.get('cve_list') or {}
+CVE_LIST_PATH = resolve_path(os.getenv("CVE_LIST_PATH", ""), _cve_config.get('path') or "data/cvelistV5")
+REPO_URL = os.getenv('CVE_LIST_URL') or _cve_config.get('url') or "https://github.com/CVEProject/cvelistV5.git"
 
 # The real mirror has cves/delta.json and cves/deltaLog.json at the cves/ root:
 # only the year subdirectories hold CVE List V5 per CVE.
@@ -35,17 +38,21 @@ SYNCED_AT_KEY = "cvelist_synced_at"
 # enrichments/scores FK.
 UPSERT_SQL = """
     INSERT INTO cves (cve_id, published, last_modified, description,
-                      cvss_score, cvss_vector, cvss_severity, raw_json)
+                      cvss_score, cvss_vector, cvss_severity, raw_json, vendor, product, cvss_source)
     VALUES (:cve_id, :published, :last_modified, :description,
-            :cvss_score, :cvss_vector, :cvss_severity, :raw_json)
+            :cvss_score, :cvss_vector, :cvss_severity, :raw_json, :vendor, :product, :cvss_source)
     ON CONFLICT(cve_id) DO UPDATE SET
         published = excluded.published,
         last_modified = excluded.last_modified,
         description = excluded.description,
-        cvss_score = excluded.cvss_score,
-        cvss_vector = excluded.cvss_vector,
-        cvss_severity = excluded.cvss_severity,
+        cvss_score = COALESCE(excluded.cvss_score, cves.cvss_score),
+        cvss_vector = CASE WHEN excluded.cvss_score IS NOT NULL THEN excluded.cvss_vector ELSE cves.cvss_vector END,
+        cvss_severity = COALESCE(excluded.cvss_severity, cves.cvss_severity),
+        cvss_source = CASE WHEN excluded.cvss_score IS NOT NULL THEN excluded.cvss_source ELSE cves.cvss_source END,
+        record_state = 'PUBLISHED',
         raw_json = excluded.raw_json,
+        vendor = excluded.vendor,
+        product = excluded.product,
         synced_at = CURRENT_TIMESTAMP
 """
 
@@ -205,6 +212,11 @@ def process_cve_file(path: Path, conn) -> bool:
 
     record = normalize_cve_list_v5(data)
     if record is None:
+        meta = data.get('cveMetadata') or {}
+        if meta.get('state') == 'REJECTED' and meta.get('cveId'):
+            conn.execute("UPDATE cves SET record_state='REJECTED', raw_json=? WHERE cve_id=?",
+                         (json.dumps(data), meta['cveId']))
+            conn.execute("DELETE FROM scores WHERE cve_id=?", (meta['cveId'],))
         return False
 
     conn.execute(UPSERT_SQL, record)
@@ -274,17 +286,14 @@ def sync(full: bool = False, cve_list_path=None, db_path=None) -> dict:
     conn = get_db(target_db)
     try:
         old_head = get_state(conn, HEAD_KEY)
-        n_cves = conn.execute("SELECT COUNT(*) FROM cves").fetchone()[0]
         if (
             not full
-            and not old_head
+            and old_head
+            and old_head == pull_old
             and pull_old
             and pull_delta is not None
         ):
-            mode, files, reason = "incremental", pull_delta, "no watermark, delta from pull"
-        elif not full and not old_head and n_cves:
-            # Worker restart with the DB already ingested: do not rescan 300k JSON files.
-            mode, files, reason = "incremental", [], "no watermark, DB already populated"
+            mode, files, reason = "incremental", pull_delta, "git delta from pull"
         else:
             mode, files, reason = plan_files(mirror, old_head, new_head, full)
         print(

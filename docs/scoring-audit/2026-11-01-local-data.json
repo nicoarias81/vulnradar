@@ -1,0 +1,21 @@
+{
+  "cves": 26730,
+  "enriched": 25256,
+  "scored": 8,
+  "scored_ids": [
+    "CVE-2026-9001",
+    "CVE-2026-9002",
+    "CVE-2026-9003",
+    "CVE-2026-9004",
+    "CVE-2026-9005",
+    "CVE-2026-9006",
+    "CVE-2026-9007",
+    "CVE-2026-9008"
+  ],
+  "no_epss": 25248,
+  "kev": 4,
+  "wild": 219,
+  "scope": "Local development database only; not production. Queries enforced read-only.",
+  "captured_at_utc": "2026-11-01T12:48:28.756981+00:00",
+  "all_scores_match_demo_ids": true
+}
