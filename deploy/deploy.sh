@@ -85,9 +85,9 @@ step "limpieza de huérfanos de proyectos viejos"
 # y no arranca nada. Se borran antes de levantar.
 ssh_srv "docker ps -a --format '{{.Names}}' | grep -E '^[0-9a-f]{12}_vulnradar-' | xargs -r docker rm -f 2>&1 | tail -5 || true"
 
-step "servicios base (proxy + worker, sin tocar el slot activo)"
+step "servicios base (proxy, sin tocar el slot activo)"
 # El dashboard activo NO se recrea acá: lo reemplaza el blue-green de abajo.
-ssh_srv "cd $REMOTE && docker compose -f deploy/docker-compose.server.yml --env-file deploy/.env.prod up -d --no-deps proxy worker 2>&1 | tail -6"
+ssh_srv "cd $REMOTE && docker compose -f deploy/docker-compose.server.yml --env-file deploy/.env.prod up -d --no-deps proxy 2>&1 | tail -6"
 
 step "blue-green (candidato en paralelo, tráfico intacto hasta que responda)"
 # Construir ANTES de levantar: compilar dentro del up deja el contenedor abajo.
@@ -97,6 +97,10 @@ step "blue-green (candidato en paralelo, tráfico intacto hasta que responda)"
 if [ "$BUILD" -eq 1 ]; then
   ssh_srv "cd $REMOTE && docker compose -f deploy/docker-compose.server.yml build 2>&1 | tail -8"
 fi
+# El worker comparte la imagen con los slots pero no pasa por el blue-green:
+# recrearlo antes del build lo dejaba con el código anterior recalculando y
+# pisando los scores nuevos en cada ciclo. Va después del build, siempre.
+ssh_srv "cd $REMOTE && docker compose -f deploy/docker-compose.server.yml --env-file deploy/.env.prod up -d --no-deps --force-recreate worker 2>&1 | tail -6"
 ssh_srv "cd $REMOTE && COMPOSE_FILE=deploy/docker-compose.server.yml ENV_FILE=deploy/.env.prod PROXY_PORT=8501 SLOT_A_PORT=8511 SLOT_B_PORT=8512 STATE_FILE=$REMOTE/.ab-active bash scripts/ab.sh deploy"
 
 step "cloudflare (ingress + DNS público)"
