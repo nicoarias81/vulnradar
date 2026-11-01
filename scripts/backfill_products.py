@@ -1,16 +1,16 @@
-"""Agrega `vendor`/`product` a `cves` y los puebla desde el CPE de NVD.
+"""Adds `vendor`/`product` to `cves` and populates them from the NVD CPE.
 
-El CPE vive en `raw_json -> configurations[].nodes[].cpeMatch[].criteria`
-(`cpe:2.3:a:google:chrome:...`). Se toma el primer CPE de aplicación; si el CVE
-sólo tiene CPE de sistema operativo/hardware, se usa ese igual para que el
-filtro de producto no quede vacío en la mitad del catálogo.
+The CPE lives in `raw_json -> configurations[].nodes[].cpeMatch[].criteria`
+(`cpe:2.3:a:google:chrome:...`). The first application CPE is taken; if the CVE
+only has an OS/hardware CPE, that one is used anyway so the product
+filter is not empty for half the catalog.
 
     python scripts/backfill_products.py --dry-run
     python scripts/backfill_products.py
 
-Idempotente y por lotes: `raw_json` pesa KBs por fila y traer las 417k de una
-sola vez se come la RAM del contenedor (el proceso muere sin mensaje). Las filas
-sin CPE quedan con product = '' para no volver a leerlas.
+Idempotent and batched: `raw_json` weighs KBs per row and pulling the 417k in one
+go eats the container RAM (the process dies without a message). Rows
+without a CPE keep product = '' so they are not read again.
 """
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ BATCH = 400
 
 
 def product_from_raw(raw):
-    """(vendor, product) del registro CVE 5.0 ya guardado."""
+    """(vendor, product) from the CVE 5.0 record already stored."""
     if not raw:
         return None, None
     try:
@@ -79,7 +79,7 @@ def main(dry_run: bool = False) -> dict:
             if not dry_run:
                 conn.commit()
             if seen % 10000 < BATCH:
-                print(f"  {seen} leidos | con producto {filled} | sin producto {empty}", flush=True)
+                print(f"  {seen} read | with product {filled} | without product {empty}", flush=True)
             if dry_run and seen >= 200:
                 break
 
@@ -87,7 +87,7 @@ def main(dry_run: bool = False) -> dict:
             "SELECT count(*) AS total, "
             "count(*) FILTER (WHERE product <> '') AS con_producto FROM cves"
         ).fetchone()
-        print(f"resultado: {stats['con_producto']}/{stats['total']} con producto")
+        print(f"result: {stats['con_producto']}/{stats['total']} with product")
         return {"seen": seen, "filled": filled, "empty": empty, "total": stats["total"]}
     finally:
         conn.close()

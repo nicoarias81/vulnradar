@@ -1,13 +1,13 @@
 """
-Cliente LLM configurable (proveedor + modelo).
+Configurable LLM client (provider + model).
 
-LiteLLM proxy (alias: litellm) es el default de este repo:
-POST http://192.168.10.5:4000/v1/chat/completions, clave LITELLM_API_KEY.
+LiteLLM proxy (alias: litellm) is the default in this repo:
+POST http://192.168.10.5:4000/v1/chat/completions, key LITELLM_API_KEY.
 
-xAI (aliases: x, grok, spacexai) usa la Responses API documentada en
-https://docs.x.ai — POST https://api.x.ai/v1/responses, clave XAI_API_KEY.
+xAI (aliases: x, grok, spacexai) uses the Responses API documented at
+https://docs.x.ai — POST https://api.x.ai/v1/responses, key XAI_API_KEY.
 
-Pytest no llama a la red: los tests mockean HTTP. Humo en vivo:
+Pytest does not hit the network: tests mock HTTP. Live smoke:
 `python -m core.llm`.
 """
 from __future__ import annotations
@@ -31,7 +31,7 @@ except ImportError:  # pragma: no cover
 
 CONFIG_PATH = REPO_ROOT / "config" / "llm.yaml"
 
-# Nombres que el usuario puede poner en LLM_PROVIDER / config/llm.yaml.
+# Names the user can put in LLM_PROVIDER / config/llm.yaml.
 PROVIDER_ALIASES = {
     "litellm": "litellm",
     "lite": "litellm",
@@ -81,7 +81,7 @@ PROVIDERS = {
 
 
 class LlmConfigError(ValueError):
-    """Proveedor, modelo o clave mal configurados."""
+    """Provider, model or key badly configured."""
 
 
 @dataclass(frozen=True)
@@ -100,7 +100,7 @@ def load_llm_config(
     env: Optional[Mapping[str, str]] = None,
     yaml_path: Optional[Path] = None,
 ) -> LlmConfig:
-    """Env pisa YAML. `provider`/`model` explícitos pisan ambos."""
+    """Env beats YAML. Explicit `provider`/`model` beat both."""
     environ = env if env is not None else os.environ
     file_cfg = _read_yaml(yaml_path or CONFIG_PATH)
 
@@ -113,7 +113,7 @@ def load_llm_config(
     resolved = PROVIDER_ALIASES.get(str(raw_provider).strip().lower())
     if not resolved:
         known = ", ".join(sorted(PROVIDER_ALIASES))
-        raise LlmConfigError(f"Proveedor LLM desconocido: {raw_provider!r}. Usá uno de: {known}")
+        raise LlmConfigError(f"Unknown LLM provider: {raw_provider!r}. Use one of: {known}")
 
     spec = PROVIDERS[resolved]
     timeout = float(environ.get("LLM_TIMEOUT_SECONDS") or file_cfg.get("timeout_seconds") or 60)
@@ -133,7 +133,7 @@ def load_llm_config(
     if key_env:
         api_key = (environ.get(key_env) or environ.get("LLM_API_KEY") or "").strip() or None
         if not api_key:
-            raise LlmConfigError(f"Falta la API key ({key_env} o LLM_API_KEY).")
+            raise LlmConfigError(f"Missing API key ({key_env} or LLM_API_KEY).")
 
     return LlmConfig(
         provider=resolved,
@@ -152,7 +152,7 @@ def complete(
     config: Optional[LlmConfig] = None,
     session: Optional[requests.Session] = None,
 ) -> str:
-    """Una completion de texto. `session` inyectable para tests."""
+    """A single text completion. `session` injectable for tests."""
     cfg = config or load_llm_config()
     messages: list[dict[str, str]] = []
     if system:
@@ -196,7 +196,7 @@ def complete_messages(
     data = response.json()
     text = _extract_text(data, cfg.style)
     if not text:
-        raise LlmConfigError("El LLM devolvió una respuesta vacía.")
+        raise LlmConfigError("The LLM returned an empty response.")
     return text
 
 
@@ -236,7 +236,7 @@ def list_models(
     config: Optional[LlmConfig] = None,
     session: Optional[requests.Session] = None,
 ) -> list[str]:
-    """GET /models del proxy. Útil para ver los ids que LiteLLM expone."""
+    """GET /models of the proxy. Useful to see the ids LiteLLM exposes."""
     cfg = config or load_llm_config()
     http = session or requests
     headers = {}
@@ -249,7 +249,7 @@ def list_models(
 
 
 def _smoke() -> int:
-    """Humo en vivo: lista modelos y una completion mínima. No imprime la API key."""
+    """Live smoke: lists models and a minimal completion. Does not print the API key."""
     cfg = load_llm_config()
     print(f"provider={cfg.provider} model={cfg.model} base_url={cfg.base_url}")
     try:
@@ -258,7 +258,7 @@ def _smoke() -> int:
         if models and cfg.model not in models:
             print(f"warning: {cfg.model!r} is not in /models; the proxy may alias it anyway.")
     except Exception as exc:
-        print(f"aviso: no pude listar /models ({exc})")
+        print(f"warning: could not list /models ({exc})")
     text = complete("Reply with exactly OK.", system="You are a ping probe. No extra text.")
     print(text)
     return 0

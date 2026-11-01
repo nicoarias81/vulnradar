@@ -1,5 +1,5 @@
 """
-Modelos de dominio alineados a schema.sql — dataclasses planas, sin ORM.
+Domain models aligned with schema.sql — plain dataclasses, no ORM.
 """
 from dataclasses import dataclass, field
 from typing import Any, Optional
@@ -7,7 +7,7 @@ from typing import Any, Optional
 
 @dataclass
 class CveRecord:
-    """Fila de la tabla cves."""
+    """Row of the cves table."""
 
     cve_id: str
     published: Optional[str] = None
@@ -22,7 +22,7 @@ class CveRecord:
 
 @dataclass
 class Enrichment:
-    """Fila de la tabla enrichments."""
+    """Row of the enrichments table."""
 
     cve_id: str
     in_kev: bool = False
@@ -41,7 +41,7 @@ class Enrichment:
 
 @dataclass
 class Score:
-    """Fila de la tabla scores: una vigente por CVE (UNIQUE(cve_id))."""
+    """Row of the scores table: one current per CVE (UNIQUE(cve_id))."""
 
     cve_id: str
     hype: float
@@ -52,7 +52,7 @@ class Score:
 
 @dataclass
 class NormalizedCve:
-    """Esquema interno normalizado (ver ARCHITECTURE.md) que consume el scoring."""
+    """Normalized internal schema (see ARCHITECTURE.md) consumed by scoring."""
 
     cve_id: str
     published: Optional[str] = None

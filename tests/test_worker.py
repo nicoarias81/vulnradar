@@ -1,4 +1,4 @@
-"""Worker autónomo: un ciclo loguea eventos sin red."""
+"""Autonomous worker: one cycle logs events with no network."""
 from pathlib import Path
 
 import pytest
@@ -30,7 +30,7 @@ def test_log_event_queda_en_agent_events(db):
     assert last["sync"]["status"] == "SUCCESS"
 
 
-def test_run_cycle_continúa_si_un_paso_falla(db, monkeypatch):
+def test_run_cycle_continues_when_a_step_fails(db, monkeypatch):
     def boom(**kw):
         raise RuntimeError("boom")
 

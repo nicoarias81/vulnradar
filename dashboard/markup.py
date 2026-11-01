@@ -1,4 +1,4 @@
-"""HTML de las tres pantallas, alineado a las specs de UI + mockups."""
+"""HTML for the three screens, aligned with the UI specs + mockups."""
 from __future__ import annotations
 
 from datetime import datetime
@@ -366,8 +366,8 @@ table.mini tr:hover td { background: rgba(255,255,255,.03); }
 
 def document(body: str, *, refresh: int | None = None, track: bool | None = None) -> str:
     meta = f'<meta http-equiv="refresh" content="{int(refresh)}">' if refresh else ""
-    # Las vistas con auto-refresh (/soc recarga cada 8s) cuentan cada recarga como
-    # una visita y se comen la mitad de las métricas de Umami: no se trackean.
+    # Auto-refresh views (/soc reloads every 8s) count every reload as
+    # a visit and eat half the Umami metrics: they are not tracked.
     if track is None:
         track = refresh is None
     analytics = (
@@ -376,7 +376,7 @@ def document(body: str, *, refresh: int | None = None, track: bool | None = None
         if track else ""
     )
     return (
-        "<!DOCTYPE html><html lang='es'><head>"
+        "<!DOCTYPE html><html lang='en'><head>"
         '<meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
         f"{meta}"
@@ -595,7 +595,7 @@ def sparkline_svg(values, color: str, width: int = 160, height: int = 32) -> str
 
 
 def _nice_ceiling(pico: float) -> float:
-    """Techo del eje con paso legible y fino: 1.4 -> 2, 3.4 -> 4, 9.2 -> 10, 47 -> 50."""
+    """Axis ceiling with a readable, fine step: 1.4 -> 2, 3.4 -> 4, 9.2 -> 10, 47 -> 50."""
     if pico <= 0:
         return 10.0
     objetivo = pico * 1.08
@@ -634,12 +634,12 @@ def timeline_svg(series, highlights=None, width: int = 1200, height: int = 220,
             out.append(sum(chunk) / len(chunk))
         return out
 
-    # Auto-zoom: el eje abraza el rango real. Con 0-10 fijo (o 0-techo) los
-    # promedios diarios, que viven entre 0.3 y 2, quedaban pegados al piso.
+    # Auto-zoom: the axis hugs the real range. With a fixed 0-10 (or 0-ceiling) the
+    # daily averages, which live between 0.3 and 2, stayed glued to the floor.
     hype_vals, reality_vals = smooth("hype"), smooth("reality")
     if compact:
-        # Franja al pie del scatter: sin destacados ni eje de valores, sólo la
-        # forma de las dos series y tres fechas de referencia.
+        # Strip at the bottom of the scatter: no highlights or value axis, only the
+        # shape of the two series and three reference dates.
         l, r, t, b = 12, 12, 6, 18
         pw, ph = width - l - r, height - t - b
         techo = max(hype_vals + reality_vals + [0.1]) * 1.15
@@ -670,14 +670,14 @@ def timeline_svg(series, highlights=None, width: int = 1200, height: int = 220,
             + linea(hype_vals, "#FF6B00") + linea(reality_vals, "#22C55E")
             + "".join(ticks) + "</svg>"
         )
-    todos = hype_vals + reality_vals
-    pico = max(todos + [0.0])
-    suelo = min(todos + [0.0])
-    techo = _nice_ceiling(pico)
+    all_vals = hype_vals + reality_vals
+    peak = max(all_vals + [0.0])
+    floor_val = min(all_vals + [0.0])
+    techo = _nice_ceiling(peak)
     base = 0.0
-    if techo > 0 and (pico - suelo) / techo < 0.5:
+    if techo > 0 and (peak - floor_val) / techo < 0.5:
         paso = techo / 5
-        base = max(0.0, math.floor(max(0.0, suelo - paso) / paso) * paso)
+        base = max(0.0, math.floor(max(0.0, floor_val - paso) / paso) * paso)
     alto = max(techo - base, 0.1)
 
     def y_de(val):
@@ -709,7 +709,7 @@ def timeline_svg(series, highlights=None, width: int = 1200, height: int = 220,
         etiqueta = f"{valor:.0f}" if alto >= 10 else f"{valor:.1f}"
         yticks.append(f'<text x="{l-6}" y="{y+4:.1f}" fill="#94A3B8" font-size="11" text-anchor="end">{etiqueta}</text>')
 
-    # Hover: tooltip propio por CSS (el <title> nativo es lento y casi no se ve).
+    # Hover: custom tooltip via CSS (the native <title> is slow and barely visible).
     ancho = pw / max(len(series) - 1, 1)
     hover = []
     for i, item in enumerate(series):
@@ -719,9 +719,9 @@ def timeline_svg(series, highlights=None, width: int = 1200, height: int = 220,
         h_val = float(item.get("hype") or 0)
         r_val = float(item.get("reality") or 0)
         n_val = int(item.get("n") or 0)
-        # En la portada cada punto es el promedio de N CVEs; en la ficha de un
-        # CVE la serie son capturas de su score. Ahí "0 CVEs" no dice nada:
-        # se muestra la categoría del momento.
+        # On the home page each point is the average of N CVEs; in a single
+        # CVE card the series is snapshots of its score. There "0 CVEs" says nothing:
+        # the category of the moment is shown instead.
         if "n" in item:
             cabecera = f"{fecha} · {n_val} CVEs"
         else:
@@ -751,10 +751,10 @@ def timeline_svg(series, highlights=None, width: int = 1200, height: int = 220,
         for x, y in points(vals)
     )
 
-    # Los CVEs más ruidosos del período: guía vertical en su día y etiqueta
-    # escalonada en carriles. Su hype vive en otra escala que el eje (promedios
-    # diarios), así que marcarlos como punto los sacaba del área y, con fechas
-    # consecutivas, las etiquetas se pisaban.
+    # The noisiest CVEs of the period: vertical guide on their day and a
+    # staggered label in lanes. Their hype lives on a different scale than the axis
+    # (daily averages), so marking them as a point pushed them out of the area and, with
+    # consecutive dates, the labels overlapped.
     palette = ("#F472B6", "#A78BFA", "#34D399")
     indice_dia = {item["date"]: i for i, item in enumerate(series)}
     validos = []
@@ -767,8 +767,8 @@ def timeline_svg(series, highlights=None, width: int = 1200, height: int = 220,
 
     marcas, chips = [], []
     ocupado: dict[int, float] = {}
-    # Las guías arrancan debajo de todos los carriles: si nacen en el carril,
-    # la línea vertical de un destacado cruza el texto del que está al lado.
+    # The guides start below every lane: if they start in the lane,
+    # the vertical line of a highlighted CVE crosses the text next to it.
     inicio_guia = t + 17 + (len(validos) + 1) * 14
     for k, (i, hito) in enumerate(validos):
         color = palette[k % len(palette)]
@@ -815,7 +815,7 @@ def timeline_svg(series, highlights=None, width: int = 1200, height: int = 220,
         f'<svg viewBox="0 0 {width} {height}" width="100%" height="{height}" role="img">'
         f'<rect x="0" y="0" width="{width}" height="{height}" fill="#0B1220" rx="6"/>'
         f"{''.join(yticks)}{polyline(hype_vals, '#FF6B00')}{polyline(reality_vals, '#22D3EE')}"
-        # Hover antes que las marcas: si las franjas van encima, se comen el click.
+        # Hover before the marks: if the bands go on top, they swallow the click.
         f"{puntos}{''.join(hover)}{''.join(marcas)}{''.join(ticks)}"
         "</svg>"
         '<p class="tl-legend"><span class="h">━</span> Hype Score (Perceived)&nbsp;&nbsp;'
@@ -866,7 +866,7 @@ def overview_html(
     product_options = "".join(
         f'<option value="{escape(str(row["product"]))}">' for row in (products or [])
     )
-    # El valor viaja en el input de texto; "All products" es el placeholder.
+    # The value travels in the text input; "All products" is the placeholder.
     product_value = "" if product in (None, "", "All products") else str(product)
     start = page * page_size + 1 if total else 0
     end = min(total, page * page_size + page_size)
@@ -976,8 +976,8 @@ def overview_html(
   </div>
 </div>
 """
-    # Recarga la portada cada minuto: los scores se recalculan seguido y la
-    # lectura es pasiva. track=False para no inflar las métricas de visita.
+    # Reloads the home page every minute: scores are recalculated often and
+    # reading is passive. track=False so the visit metrics are not inflated.
     return document(body, refresh=60)
 
 
@@ -1090,7 +1090,7 @@ def agents_html(
 <div class="page">
   <div class="top">
     {logo()}
-    <div class="live">SOC MONITORING · REAL-TIME AGENTS <span class="dot"></span><b>LIVE</b> &nbsp; {escape(now)} &nbsp; · &nbsp; AUTO-REFRESH ON <a href="/soc/logout">Salir</a></div>
+    <div class="live">SOC MONITORING · REAL-TIME AGENTS <span class="dot"></span><b>LIVE</b> &nbsp; {escape(now)} &nbsp; · &nbsp; AUTO-REFRESH ON <a href="/soc/logout">Logout</a></div>
   </div>
   <div class="row row-4">{cards}</div>
   <div class="row row-60" style="margin-top:16px">
@@ -1124,16 +1124,16 @@ def login_html(*, error: str = "") -> str:
   <div class="login-card card">
     {logo()}
     <p class="h3" style="margin-top:18px">SOC monitoring</p>
-    <p class="muted">Panel interno de agentes. No forma parte del dashboard público.</p>
+    <p class="muted">Internal agent panel. Not part of the public dashboard.</p>
     {err}
     <form method="post" action="/soc" autocomplete="off">
-      <div class="filter"><label>Usuario</label>
+      <div class="filter"><label>Username</label>
         <input type="text" name="user" autofocus>
       </div>
-      <div class="filter"><label>Contraseña</label>
+      <div class="filter"><label>Password</label>
         <input type="password" name="password">
       </div>
-      <button type="submit">Entrar</button>
+      <button type="submit">Sign in</button>
     </form>
   </div>
 </div>

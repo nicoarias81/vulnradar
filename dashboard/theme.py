@@ -1,4 +1,4 @@
-"""Look & feel: tokens y componentes de la UI."""
+"""Look & feel: UI tokens and components."""
 
 CATEGORY_COLORS = {
     "Overhyped": "#EF4444",
@@ -21,10 +21,10 @@ CATEGORY_LABEL = {
     "Quiet": "NO SIGNALS",
 }
 
-# Reality mide evidencia de explotación, no gravedad. Decir "sobrevalorado"
-# invita a leer "no hace falta parchear", que es lo contrario de lo que dice
-# un reality bajo: significa que todavía nadie lo está usando, no que sea
-# inofensivo si lo usan.
+# Reality measures exploitation evidence, not severity. Calling it "overhyped"
+# invites reading "no need to patch", which is the opposite of what a low
+# reality says: it means nobody is using it yet, not that it is
+# harmless once they do.
 CATEGORY_DETAIL = {
     "Overhyped": "Lots of noise and little evidence of exploitation so far. "
                  "Reality measures real-world use, not severity: a low score does not "

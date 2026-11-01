@@ -1,1 +1,1 @@
-"""Dashboard Streamlit (Hype vs Reality)."""
+"""Streamlit dashboard (Hype vs Reality)."""

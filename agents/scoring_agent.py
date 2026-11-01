@@ -1,5 +1,5 @@
 """
-Scoring Agent — Calcula Hype y Reality para CVEs enriquecidos
+Scoring Agent — computes Hype and Reality for enriched CVEs
 """
 import sys
 from pathlib import Path
@@ -11,15 +11,15 @@ from core.models import Score
 from core.normalizer import build_signals
 from core.scoring import score_cve
 
-# Columnas explícitas: cves y enrichments comparten nombres (cve_id, timestamps)
-# y un SELECT c.*, e.* devuelve duplicados.
+# Explicit columns: cves and enrichments share names (cve_id, timestamps), so a
+# SELECT c.*, e.* comes back with duplicates.
 SELECT_ENRICHED = """
     SELECT c.cve_id, c.cvss_score, c.cvss_vector,
            e.in_kev, e.epss, e.wild_confirmation, e.ransomware_use,
            e.media_count, e.poc_count, e.tone_score, e.branding
     FROM cves c
     JOIN enrichments e ON e.cve_id = c.cve_id
-    -- Stubs de ensure_cve_stub() sólo tienen cve_id; EPSS masivo no debe puntuarlos.
+    -- ensure_cve_stub() rows only carry cve_id; bulk EPSS must not score them.
     WHERE (c.raw_json IS NOT NULL
        OR c.published IS NOT NULL
        OR c.description IS NOT NULL
@@ -44,10 +44,10 @@ INSERT_HISTORY_SQL = """
 
 
 def _changed(prev, score) -> bool:
-    """True si el score vigente difiere del nuevo.
+    """True when the current score differs from the new one.
 
-    Sólo se guarda historial cuando hype o reality se mueven: registrar cada
-    recálculo idéntico llenaría la tabla con 398k filas por ciclo.
+    History is only written when hype or reality move: recording every
+    identical recalculation would fill the table with 398k rows per cycle.
     """
     if prev is None:
         return True
@@ -61,14 +61,14 @@ def _flush_history(conn, rows) -> None:
 
 
 def score_all(conn) -> int:
-    """Un score vigente por CVE (UNIQUE(cve_id)): reemplaza, no acumula filas.
+    """One current score per CVE (UNIQUE(cve_id)): it replaces, it does not accumulate rows.
 
-    Los cambios se copian a score_history para poder dibujar la evolución; el
-    vigente se lee de una sola pasada en vez de un SELECT por CVE.
+    Changes are copied to score_history so the evolution can be plotted; the
+    current values are read in a single pass instead of one SELECT per CVE.
 
-    Recorre en orden de cve_id y cometea por tandas: sin el orden, este barrido
-    y un backfill puntuando otro lote toman las filas de `scores` en distinto
-    orden y Postgres mata a uno por deadlock.
+    Iterates in cve_id order and commits in batches: without that order this
+    sweep and a backfill scoring another batch take the `scores` rows in a
+    different order and Postgres kills one of them on a deadlock.
     """
     rows = conn.execute(SELECT_ENRICHED + " ORDER BY c.cve_id").fetchall()
     vigentes = {
@@ -77,7 +77,7 @@ def score_all(conn) -> int:
     }
     history = []
     for i, row in enumerate(rows, 1):
-        # Fila unida: las columnas de cves y de enrichments viven en la misma fila.
+        # Joined row: cves and enrichments columns live in the same row.
         signals = build_signals(row, row)
         score = Score(cve_id=row["cve_id"], **score_cve(signals))
         if _changed(vigentes.get(score.cve_id), score):
@@ -93,7 +93,7 @@ def score_all(conn) -> int:
 
 
 def score_cves(conn, cve_ids) -> int:
-    """Recalcula sólo los CVEs indicados: 398k filas por corrida no es viable."""
+    """Recomputes only the given CVEs: 398k rows per run is not viable."""
     ids = sorted({i for i in (cve_ids or []) if i})
     if not ids:
         return 0

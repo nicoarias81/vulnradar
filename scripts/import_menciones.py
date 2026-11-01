@@ -1,10 +1,10 @@
-"""Importa las menciones producidas por backfill_local.py a la base del servidor.
+"""Imports the mentions produced by backfill_local.py into the server DB.
 
-Lee el NDJSON, inserta en media_mentions sin duplicar y suma media_count sólo
-por las URLs nuevas (la PK (cve_id, url) es el candado, igual que en el camino
-normal). Después marca los CVEs en attention_backfill y repuntúa.
+It reads the NDJSON, inserts into media_mentions without duplicating and adds media_count only
+for the new URLs (the PK (cve_id, url) is the lock, same as in the normal
+path). Then it marks the CVEs in attention_backfill and rescores.
 
-    python scripts/import_menciones.py .local/menciones-0de1.jsonl --lote 5000
+    python scripts/import_menciones.py .local/menciones-0de1.jsonl --batch 5000
 """
 
 import argparse
@@ -25,15 +25,15 @@ NUEVAS_POR_CVE = """
 """
 
 
-def importar(conn, filas):
-    """filas: lista de dicts con cve_id/url/title/source/published."""
+def importar(conn, rows):
+    """rows: list of dicts with cve_id/url/title/source/published."""
     cur = conn.cursor()
     cur.execute(STAGING)
     cur.executemany(
         "INSERT INTO stg_menciones (cve_id, url, title, source, published) "
         "VALUES (?, ?, ?, ?, ?)",
         [(f["cve_id"], f["url"], f.get("title"), f.get("source"),
-          f.get("published")) for f in filas],
+          f.get("published")) for f in rows],
     )
     cur.execute(NUEVAS_POR_CVE)
     nuevas = {r[0]: r[1] for r in cur.fetchall()}
@@ -62,12 +62,12 @@ def importar(conn, filas):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("archivo", help="NDJSON con menciones")
-    p.add_argument("--lote", type=int, default=5000)
+    p.add_argument("archivo", help="NDJSON with mentions")
+    p.add_argument("--batch", type=int, default=5000)
     p.add_argument("--no-score", action="store_true")
     p.add_argument("--no-marcar", action="store_true",
-                   help="no tocar attention_backfill: deja la cola de Google intacta "
-                        "cuando las menciones vienen de otra fuente (HN)")
+                   help="do not touch attention_backfill: leaves the Google queue intact "
+                        "when the mentions come from another source (HN)")
     p.add_argument("--dry-run", action="store_true")
     args = p.parse_args()
 
@@ -78,7 +78,7 @@ def main():
     conn = get_db()
     total_leidas = total_insert = 0
     cves_tocados = set()
-    lote = []
+    batch = []
 
     with open(ruta, encoding="utf-8") as fh:
         for linea in fh:
@@ -86,23 +86,23 @@ def main():
             if not linea:
                 continue
             try:
-                lote.append(json.loads(linea))
+                batch.append(json.loads(linea))
             except json.JSONDecodeError:
                 continue
             total_leidas += 1
-            if len(lote) >= args.lote:
+            if len(batch) >= args.batch:
                 if not args.dry_run:
-                    ins, nuevas = importar(conn, lote)
+                    ins, nuevas = importar(conn, batch)
                     total_insert += ins
                     cves_tocados.update(nuevas)
-                print(f"{total_leidas} leídas, {total_insert} insertadas", flush=True)
-                lote = []
+                print(f"{total_leidas} read, {total_insert} inserted", flush=True)
+                batch = []
 
-    if lote and not args.dry_run:
-        ins, nuevas = importar(conn, lote)
+    if batch and not args.dry_run:
+        ins, nuevas = importar(conn, batch)
         total_insert += ins
         cves_tocados.update(nuevas)
-        print(f"{total_leidas} leídas, {total_insert} insertadas", flush=True)
+        print(f"{total_leidas} read, {total_insert} inserted", flush=True)
 
     if cves_tocados:
         cur = conn.cursor()
@@ -116,13 +116,13 @@ def main():
         if not args.no_score:
             from agents.scoring_agent import score_cves
             for i in range(0, len(cves_tocados), 500):
-                trozo = sorted(cves_tocados)[i:i + 500]
-                score_cves(conn, trozo)
+                chunk = sorted(cves_tocados)[i:i + 500]
+                score_cves(conn, chunk)
                 conn.commit()
         cur.close()
 
-    print(f"listo: {total_leidas} menciones leídas, {total_insert} nuevas, "
-          f"{len(cves_tocados)} CVEs marcados", flush=True)
+    print(f"done: {total_leidas} mentions read, {total_insert} new, "
+          f"{len(cves_tocados)} CVEs marked", flush=True)
     conn.close()
 
 

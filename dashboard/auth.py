@@ -1,4 +1,4 @@
-"""Acceso al panel SOC: no es público. Cookie HMAC con SOC_PASSWORD."""
+"""SOC panel access: it is not public. HMAC cookie with SOC_PASSWORD."""
 from __future__ import annotations
 
 import hmac

@@ -1,4 +1,4 @@
-"""Cliente LLM: config y HTTP mockeado. Sin red, sin API keys reales."""
+"""LLM client: config and mocked HTTP. No network, no real API keys."""
 from pathlib import Path
 
 import pytest
@@ -44,7 +44,7 @@ def _env_xai(**extra):
     return env
 
 
-def test_alias_x_resuelve_a_xai(tmp_path: Path):
+def test_x_alias_resolves_to_xai(tmp_path: Path):
     cfg = load_llm_config(env=_env_xai(), yaml_path=tmp_path / "missing.yaml")
 
     assert cfg.provider == "xai"
@@ -54,7 +54,7 @@ def test_alias_x_resuelve_a_xai(tmp_path: Path):
     assert cfg.api_key == "test-key"
 
 
-def test_env_pisa_yaml(tmp_path: Path):
+def test_env_overrides_yaml(tmp_path: Path):
     yaml_path = tmp_path / "llm.yaml"
     yaml_path.write_text(
         yaml.safe_dump({"provider": "openai", "model": "yaml-model", "timeout_seconds": 12}),
@@ -76,7 +76,7 @@ def test_env_pisa_yaml(tmp_path: Path):
     assert cfg.timeout_seconds == 90
 
 
-def test_argumentos_pisan_env(tmp_path: Path):
+def test_arguments_override_env(tmp_path: Path):
     cfg = load_llm_config(
         provider="ollama",
         model="llama3.2",
@@ -90,12 +90,12 @@ def test_argumentos_pisan_env(tmp_path: Path):
     assert cfg.style == "chat"
 
 
-def test_proveedor_desconocido(tmp_path: Path):
-    with pytest.raises(LlmConfigError, match="desconocido"):
+def test_unknown_provider(tmp_path: Path):
+    with pytest.raises(LlmConfigError, match="Unknown LLM provider"):
         load_llm_config(env={"LLM_PROVIDER": "acme", "LLM_MODEL": "x"}, yaml_path=tmp_path / "n.yaml")
 
 
-def test_xai_sin_key_falla(tmp_path: Path):
+def test_xai_without_key_fails(tmp_path: Path):
     with pytest.raises(LlmConfigError, match="XAI_API_KEY"):
         load_llm_config(
             env={"LLM_PROVIDER": "xai", "LLM_MODEL": "grok-4.7"},
@@ -103,7 +103,7 @@ def test_xai_sin_key_falla(tmp_path: Path):
         )
 
 
-def test_complete_xai_usa_responses_y_no_guarda(tmp_path: Path):
+def test_complete_xai_uses_responses_and_does_not_store(tmp_path: Path):
     session = _FakeSession({"output_text": "  OK  "})
     cfg = load_llm_config(env=_env_xai(), yaml_path=tmp_path / "n.yaml")
 
@@ -118,7 +118,7 @@ def test_complete_xai_usa_responses_y_no_guarda(tmp_path: Path):
     assert call["headers"]["Authorization"] == "Bearer test-key"
 
 
-def test_litellm_apunta_al_proxy_local(tmp_path: Path):
+def test_litellm_points_to_the_local_proxy(tmp_path: Path):
     cfg = load_llm_config(
         env={"LLM_PROVIDER": "litellm", "LLM_MODEL": "grok-4.7", "LITELLM_API_KEY": "sk-proxy"},
         yaml_path=tmp_path / "n.yaml",
@@ -130,7 +130,7 @@ def test_litellm_apunta_al_proxy_local(tmp_path: Path):
     assert cfg.api_key == "sk-proxy"
 
 
-def test_complete_litellm_usa_chat_completions(tmp_path: Path):
+def test_complete_litellm_uses_chat_completions(tmp_path: Path):
     session = _FakeSession({"choices": [{"message": {"content": "OK"}}]})
     cfg = load_llm_config(
         env={"LLM_PROVIDER": "proxy", "LLM_MODEL": "mi-modelo", "LITELLM_API_KEY": "sk-proxy"},
@@ -146,7 +146,7 @@ def test_complete_litellm_usa_chat_completions(tmp_path: Path):
     assert call["headers"]["Authorization"] == "Bearer sk-proxy"
 
 
-def test_complete_openai_usa_chat_completions(tmp_path: Path):
+def test_complete_openai_uses_chat_completions(tmp_path: Path):
     session = _FakeSession({"choices": [{"message": {"content": "hola"}}]})
     cfg = load_llm_config(
         env={"LLM_PROVIDER": "openai", "LLM_MODEL": "gpt-4.1-mini", "OPENAI_API_KEY": "sk-test"},
@@ -160,7 +160,7 @@ def test_complete_openai_usa_chat_completions(tmp_path: Path):
     assert session.calls[0]["json"]["messages"][0]["content"] == "hola"
 
 
-def test_complete_extrae_output_anidado(tmp_path: Path):
+def test_complete_extracts_nested_output(tmp_path: Path):
     session = _FakeSession({
         "output": [
             {"type": "message", "content": [{"type": "output_text", "text": "nested"}]}

@@ -1,16 +1,16 @@
 """
-Enrichment Agent — señales por CVE: KEV, EPSS, media (RSS), PoCs (GitHub)
-y branding/tone_score (LLM).
+Enrichment Agent — per-CVE signals: KEV, EPSS, media (RSS), PoCs (GitHub)
+and branding/tone_score (LLM).
 
-Uso:
-    python agents/enrichment_agent.py                 # corre todo
-    python agents/enrichment_agent.py --rss-only      # sólo RSS (local)
-    python agents/enrichment_agent.py --skip-llm      # sin llamadas al LLM
-    python agents/enrichment_agent.py --llm-smoke     # 1 llamada real y sale
+Usage:
+    python agents/enrichment_agent.py                 # run everything
+    python agents/enrichment_agent.py --rss-only      # RSS only (local)
+    python agents/enrichment_agent.py --skip-llm      # no LLM calls
+    python agents/enrichment_agent.py --llm-smoke     # 1 real call and exit
 
-Cada fuente escribe SÓLO sus columnas: un INSERT OR REPLACE borraría el resto
-de la fila de enrichments. En tests no hay red: las funciones de red aceptan
-`session` y el paso LLM acepta un `completer` inyectable.
+Every source writes ONLY its own columns: an INSERT OR REPLACE would wipe the
+rest of the enrichments row. Tests have no network: the network functions take
+`session` and the LLM step takes an injectable `completer`.
 """
 import argparse
 import csv
@@ -35,8 +35,8 @@ from core import llm as llm_client
 from core.db import REPO_ROOT, ensure_cve_stub, get_db, init_db
 
 KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
-# cisa.gov responde 403 "Access Denied" (Akamai) a IPs de datacenter: el repo oficial kev-data
-# publica el mismo catálogo en JSON, con idéntico formato y versión.
+# cisa.gov answers 403 "Access Denied" (Akamai) to datacenter IPs: the official
+# kev-data repo publishes the same catalog in JSON, same format and version.
 KEV_MIRROR_URL = "https://raw.githubusercontent.com/cisagov/kev-data/main/known_exploited_vulnerabilities.json"
 EPSS_URL = "https://epss.empiricalsecurity.com/epss_scores-current.csv.gz"
 GITHUB_SEARCH_URL = "https://api.github.com/search/repositories"
@@ -45,7 +45,7 @@ SOURCES_PATH = REPO_ROOT / "config" / "sources.yaml"
 USER_AGENT = "vulnradar/0.3 (+https://github.com/nicoarias81/vulnradar)"
 DEFAULT_POC_QUERY = "{cve_id}"
 
-# CVE-YYYY-NNNN (4+ dígitos de secuencia).
+# CVE-YYYY-NNNN (sequence of 4+ digits).
 CVE_PATTERN = re.compile(r"\bCVE-\d{4}-\d{4,}\b", re.IGNORECASE)
 
 
@@ -54,15 +54,15 @@ CVE_PATTERN = re.compile(r"\bCVE-\d{4}-\d{4,}\b", re.IGNORECASE)
 # --------------------------------------------------------------------------
 def upsert_kev(conn, vulnerabilities) -> int:
     """
-    Escribe SÓLO las columnas de KEV: un INSERT OR REPLACE borraría el EPSS
-    ya cargado de la misma fila de enrichments.
+    Writes ONLY the KEV columns: an INSERT OR REPLACE would wipe the EPSS
+    already loaded on the same enrichments row.
     """
     count = 0
     for vuln in vulnerabilities:
         cve_id = (vuln.get("cveID") or "").strip()
         if not cve_id:
             continue
-        # El FK exige el CVE padre; un stub mínimo evita perder la señal.
+        # The FK needs the parent CVE; a minimal stub keeps the signal from being lost.
         ensure_cve_stub(conn, cve_id)
         conn.execute("""
             INSERT INTO enrichments (cve_id, in_kev, kev_date, ransomware_use)
@@ -94,12 +94,12 @@ EPSS_UPSERT = """
 
 
 def upsert_epss(conn, rows) -> int:
-    """Escribe SÓLO las columnas de EPSS, preservando KEV y el resto.
+    """Writes ONLY the EPSS columns, preserving KEV and the rest.
 
-    El feed trae ~400k filas y antes iba en una única transacción: sostenía el
-    lock sobre `cves` durante minutos y el `CREATE INDEX` del arranque del
-    dashboard esperaba ese lock, así que el server no llegaba a abrir el puerto.
-    Ahora va por lotes con commit y sólo crea stubs de los CVEs que faltan.
+    The feed carries ~400k rows and used to run in a single transaction: it held
+    the lock on `cves` for minutes and the `CREATE INDEX` on dashboard startup
+    waited on that lock, so the server never got as far as opening the port.
+    It now goes in batches with a commit and only stubs the CVEs that are missing.
     """
     known = {row[0] for row in conn.execute("SELECT cve_id FROM cves").fetchall()}
     count = 0
@@ -135,8 +135,8 @@ def load_kev(conn) -> int:
             data = response.json()
             vulns = data.get("vulnerabilities") or []
             if not vulns:
-                raise RuntimeError("JSON sin 'vulnerabilities'")
-        except Exception as exc:  # 403/HTML de Akamai, red, JSON inválido
+                raise RuntimeError("JSON without 'vulnerabilities'")
+        except Exception as exc:  # Akamai 403/HTML, network, invalid JSON
             last_error = exc
             print(f"KEV: fuente descartada ({type(exc).__name__}: {exc})")
             continue
@@ -144,14 +144,14 @@ def load_kev(conn) -> int:
         conn.commit()
         print(f"KEV loaded: {count} CVEs (catalog {data.get('catalogVersion', '?')}).")
         return count
-    raise RuntimeError(f"KEV: ninguna fuente respondió ({last_error})")
+    raise RuntimeError(f"KEV: no source responded ({last_error})")
 
 
 def load_epss(conn) -> int:
     print("Downloading EPSS...")
     response = requests.get(EPSS_URL, timeout=60)
     with gzip.open(io.BytesIO(response.content), "rt", encoding="utf-8") as stream:
-        # EPSS antepone metadatos ("#model_version:...,score_date:...") antes del header real.
+        # EPSS prepends metadata ("#model_version:...,score_date:...") before the real header.
         rows = (line for line in stream if line.strip() and not line.startswith("#"))
         count = upsert_epss(conn, csv.DictReader(rows))
     conn.commit()
@@ -160,10 +160,10 @@ def load_epss(conn) -> int:
 
 
 # --------------------------------------------------------------------------
-# RSS: menciones de prensa
+# RSS: press mentions
 # --------------------------------------------------------------------------
 def parse_feed(content, source=None) -> list:
-    """Entradas de un feed RSS/Atom ya descargado. No toca la red."""
+    """Entries of an already downloaded RSS/Atom feed. Does not touch the network."""
     parsed = feedparser.parse(content)
     feed_title = ""
     if parsed.feed:
@@ -171,7 +171,7 @@ def parse_feed(content, source=None) -> list:
 
     entries = []
     for entry in parsed.entries:
-        # Google News RSS pone el medio real en <source>: feed.title es la consulta.
+        # Google News RSS puts the real outlet in <source>: feed.title is the query.
         medio = entry.get("source")
         if isinstance(medio, dict):
             medio = medio.get("title") or ""
@@ -180,14 +180,14 @@ def parse_feed(content, source=None) -> list:
             "title": (entry.get("title") or "").strip(),
             "summary": _strip_html(entry.get("summary") or entry.get("description") or ""),
             "published": _iso_date(entry),
-            # El nombre del medio sale de la entrada; el feed y el host son fallback.
+            # The outlet name comes from the entry; feed and host are the fallback.
             "source": (medio or "").strip() or feed_title or source,
         })
     return entries
 
 
 def collect_mentions(entries) -> list:
-    """Explota cada entrada en menciones (cve_id, url). Un CVE por entrada."""
+    """Expands each entry into mentions (cve_id, url). One CVE per entry."""
     mentions = []
     for entry in entries:
         haystack = " ".join(filter(None, [
@@ -197,7 +197,7 @@ def collect_mentions(entries) -> list:
         for cve_id in sorted({match.group(0).upper() for match in CVE_PATTERN.finditer(haystack)}):
             mentions.append({
                 "cve_id": cve_id,
-                # Sin link usable, la clave de dedupe es el propio CVE.
+                # With no usable link, the dedupe key is the CVE itself.
                 "url": url or f"urn:cve:{cve_id}",
                 "title": entry.get("title"),
                 "source": entry.get("source"),
@@ -211,15 +211,15 @@ SEARCH_NEWS_URL = "https://news.google.com/rss/search?q={query}&hl=en-US&gl=US&c
 
 def search_mentions(cve_id, brand_name=None, *, session=None,
                     template=SEARCH_NEWS_URL, limit=25, timeout=20) -> list:
-    """Menciones de prensa buscando el CVE (y su apodo) fuera de los feeds fijos.
+    """Press mentions searching the CVE (and its nickname) beyond the fixed feeds.
 
-    Los 7 feeds del ciclo sólo traen lo último publicado: un CVE que explotó hace
-    dos semanas desaparece del radar aunque tenga 700 PoCs y esté en KEV. Esto
-    levanta el historial completo desde la búsqueda de noticias.
+    The cycle's 7 feeds only carry the latest published items: a CVE exploited
+    two weeks ago drops off the radar even with 700 PoCs and KEV membership.
+    This pulls the full history from news search.
     """
     http = session or requests.Session()
     queries = [cve_id] + ([brand_name.strip()] if brand_name and brand_name.strip() else [])
-    vistas, salida = set(), []
+    seen_urls, chunks = set(), []
     for query in queries:
         url = template.format(query=quote_plus(query))
         try:
@@ -229,22 +229,22 @@ def search_mentions(cve_id, brand_name=None, *, session=None,
             continue
         for entry in parse_feed(response.content, source=f"news:{query}")[:limit]:
             clave = entry["url"]
-            if not clave or clave in vistas:
+            if not clave or clave in seen_urls:
                 continue
-            vistas.add(clave)
+            seen_urls.add(clave)
             entry["cve_id"] = cve_id
-            salida.append(entry)
-    return salida
+            chunks.append(entry)
+    return chunks
 
 
 HN_SEARCH_URL = "https://hn.algolia.com/api/v1/search"
 
 
 def google_disponible(session=None, timeout=10) -> bool:
-    """Google News responde 503 a IPs que ya hizo miles de consultas.
+    """Google News answers 503 to IPs that already made thousands of queries.
 
-    Un probe por ciclo evita gastar 20 s de timeout por objetivo cuando la
-    fuente está caída: si falla, el ciclo entero usa HN.
+    One probe per cycle avoids burning a 20 s timeout per target when the source
+    is down: if it fails, the whole cycle uses HN.
     """
     http = session or requests
     try:
@@ -256,10 +256,10 @@ def google_disponible(session=None, timeout=10) -> bool:
 
 
 def search_mentions_hn(cve_id, *, session=None, timeout=20, limit=30) -> list:
-    """Menciones en Hacker News (Algolia). Sin key; ~30 req/min sostenidos.
+    """Hacker News (Algolia) mentions. No key; ~30 req/min sustained.
 
-    Alternativa a search_mentions cuando Google bloquea. Sólo stories: los
-    comentarios mencionan CVEs al pasar y ensucian el conteo.
+    The alternative to search_mentions when Google blocks. Stories only:
+    comments name CVEs in passing and pollute the count.
     """
     http = session or requests
     try:
@@ -270,7 +270,7 @@ def search_mentions_hn(cve_id, *, session=None, timeout=20, limit=30) -> list:
         hits = r.json().get("hits", [])
     except Exception:
         return []
-    salida, vistas = [], set()
+    chunks, seen_urls = [], set()
     for hit in hits:
         if "story" not in (hit.get("_tags") or []):
             continue
@@ -280,24 +280,24 @@ def search_mentions_hn(cve_id, *, session=None, timeout=20, limit=30) -> list:
             continue
         if not url:
             url = f"https://news.ycombinator.com/item?id={hit.get('objectID')}"
-        if url in vistas:
+        if url in seen_urls:
             continue
-        vistas.add(url)
-        salida.append({
+        seen_urls.add(url)
+        chunks.append({
             "cve_id": cve_id,
             "url": url,
             "title": titulo,
             "source": "Hacker News",
             "published": hit.get("created_at"),
         })
-    return salida
+    return chunks
 
 
 def load_attention(conn, limit=15, *, session=None) -> dict:
-    """Busca prensa para los CVEs donde la atención importa (KEV/PoC/recientes).
+    """Searches press for the CVEs where attention matters (KEV/PoC/recent).
 
-    Google primero, HN como respaldo: en producción Google lleva bloqueado desde
-    el primer día, así que HN es la fuente que realmente trae datos.
+    Google first, HN as the fallback: in production Google has been blocked
+    since day one, so HN is the source that actually brings data.
     """
     http = session or requests.Session()
     objetivos = select_attention_targets(conn, limit)
@@ -320,10 +320,10 @@ def load_attention(conn, limit=15, *, session=None) -> dict:
 
 
 def select_attention_targets(conn, limit=40) -> list:
-    """CVEs donde la atención importa: con PoCs, en KEV o recientes.
+    """CVEs where attention matters: with PoCs, in KEV or recent.
 
-    `cves.published` es TEXT ISO ('2026-10-31T10:11:47.188Z'): se compara como
-    texto contra una fecha ISO, no casteando a timestamp (falla si viene vacío).
+    `cves.published` is ISO TEXT ('2026-10-31T10:11:47.188Z'): it is compared as
+    text against an ISO date, not cast to timestamp (which fails when empty).
     """
     rows = conn.execute("""
         SELECT e.cve_id AS cve_id, e.brand_name AS brand_name
@@ -340,10 +340,10 @@ def select_attention_targets(conn, limit=40) -> list:
 
 def upsert_media_mentions(conn, mentions) -> dict:
     """
-    Inserta menciones nuevas y suma media_count sólo por las nuevas.
+    Inserts new mentions and adds to media_count only for the new ones.
 
-    Devuelve {cve_id: menciones_nuevas}. La PK (cve_id, url) es el candado:
-    una URL ya vista no vuelve a contar aunque el feed la republique.
+    Returns {cve_id: new_mentions}. The (cve_id, url) PK is the lock: a URL
+    already seen never counts again even if the feed republishes it.
     """
     nuevas: dict = {}
     for mention in mentions:
@@ -358,7 +358,7 @@ def upsert_media_mentions(conn, mentions) -> dict:
             ON CONFLICT(cve_id, url) DO NOTHING
         """, (cve_id, url, mention.get("title"), mention.get("source"),
               mention.get("published")))
-        if cursor.rowcount:  # 0 = URL ya vista: no se re-cuenta
+        if cursor.rowcount:  # 0 = URL already seen: not counted again
             nuevas[cve_id] = nuevas.get(cve_id, 0) + 1
 
     for cve_id, delta in nuevas.items():
@@ -397,11 +397,11 @@ Items:
 RERANK_BATCH = 6
 RERANK_TITLE_CHARS = 160
 RERANK_SUMMARY_CHARS = 180
-# Tope por feed y corrida: el rerank es el paso caro (LLM), y los feeds
-# republican decenas de notas viejas que no aportan menciones nuevas.
+# Cap per feed and per run: rerank is the expensive step (LLM), and the feeds
+# republish dozens of old items that bring no new mentions.
 RERANK_MAX_ENTRIES = 40
-# Advisories con CVE en el titular: no pasan por el modelo, pero un catálogo
-# como el de MSRC trae miles de entradas y sólo interesa el tramo reciente.
+# Advisories with the CVE in the headline: they skip the model, but a catalog
+# like MSRC's carries thousands of entries and only the recent stretch matters.
 REGEX_MAX_ENTRIES = 250
 
 
@@ -415,7 +415,7 @@ def build_rerank_prompt(entries) -> str:
 
 
 def parse_rerank_reply(reply) -> list:
-    """Saca el array JSON de la respuesta, tolerando fences o prosa alrededor."""
+    """Pulls the JSON array out of the reply, tolerating fences or prose around it."""
     text = (reply or "").strip()
     if not text:
         return []
@@ -430,10 +430,10 @@ def parse_rerank_reply(reply) -> list:
 
 
 def rerank_entries(entries, *, config=None, completer=None, batch_size=RERANK_BATCH) -> list:
-    """Pasa las entradas por el LLM y devuelve {cve_id, brand_name, relevant}.
+    """Runs the entries through the LLM and returns {cve_id, brand_name, relevant}.
 
-    Mismo orden que `entries`. Si el LLM falla en un lote, esas entradas quedan
-    sin rerank (cve_id None) y el llamador decide: no se pierde el feed.
+    Same order as `entries`. If the LLM fails on a batch, those entries stay
+    unreranked (cve_id None) and the caller decides: the feed is not lost.
     """
     call = completer or (lambda prompt: llm_client.complete(
         prompt, system=RERANK_SYSTEM, config=config))
@@ -442,7 +442,7 @@ def rerank_entries(entries, *, config=None, completer=None, batch_size=RERANK_BA
         chunk = entries[start:start + batch_size]
         try:
             reply = call(build_rerank_prompt(chunk))
-        except Exception as exc:  # LLM caído no debe tumbar el enrich
+        except Exception as exc:  # a dead LLM must not take the enrich down
             print(f"rerank: {type(exc).__name__}: {str(exc)[:120]}")
             continue
         for item in parse_rerank_reply(reply):
@@ -453,7 +453,7 @@ def rerank_entries(entries, *, config=None, completer=None, batch_size=RERANK_BA
             if cve_id and not CVE_PATTERN.fullmatch(cve_id):
                 cve_id = None
             brand = str(item.get("brand_name") or "").strip() or None
-            # Un apodo sin CVE no se puede colgar de ninguna fila.
+            # A nickname with no CVE cannot be attached to any row.
             if brand and len(brand) > 48:
                 brand = None
             out[start + index - 1] = {
@@ -468,7 +468,7 @@ RERANK_URL_TTL_DAYS = 45
 
 
 def _reranked_urls(conn, entries) -> set:
-    """URLs que ya pasaron por el rerank dentro de la ventana de retención."""
+    """URLs that already went through rerank inside the retention window."""
     urls = [e.get("url") for e in entries if e.get("url")]
     if not urls:
         return set()
@@ -480,12 +480,12 @@ def _reranked_urls(conn, entries) -> set:
             (urls,),
         ).fetchall()
     except Exception:
-        return set()  # base sin la tabla (schema viejo): se reprocesa, no se rompe
+        return set()  # DB without the table (old schema): reprocess, do not break
     return {row["url"] for row in rows}
 
 
 def _mark_reranked(conn, entries, reranked) -> None:
-    """Registra sólo las entradas que el LLM contestó: los lotes caídos se reintentan."""
+    """Records only the entries the LLM answered: failed batches get retried."""
     try:
         for entry, verdict in zip(entries, reranked):
             url = entry.get("url")
@@ -500,7 +500,7 @@ def _mark_reranked(conn, entries, reranked) -> None:
 
 
 def mentions_from_rerank(entries, reranked) -> list:
-    """Menciones a partir del rerank; las que no son de una vuln se descartan."""
+    """Mentions built from the rerank; anything that is not about a vuln is dropped."""
     mentions = []
     for entry, verdict in zip(entries, reranked):
         if not verdict or verdict.get("relevant") is False:
@@ -522,16 +522,16 @@ def mentions_from_rerank(entries, reranked) -> list:
 
 def load_rss(conn, feeds, *, session=None, timeout=30, rerank=False,
              config=None, completer=None, regex_feeds=None) -> dict:
-    """Descarga los feeds y acumula menciones. Un feed caído no corta el resto.
+    """Downloads the feeds and accumulates mentions. A dead feed does not cut the rest.
 
-    Con `rerank` cada entrada pasa por el LLM: descarta lo que no es una
-    vulnerabilidad concreta, resuelve el CVE del texto y, cuando el titular usa
-    un apodo (Log4Shell), lo guarda como brand_name del CVE.
+    With `rerank` every entry goes through the LLM: it drops what is not a
+    concrete vulnerability, resolves the CVE from the text and, when the
+    headline uses a nickname (Log4Shell), stores it as the CVE's brand_name.
 
-    `regex_feeds` son los que ya traen el CVE en el titular (advisories de
-    vendor y CERT): ahí el regex alcanza. Van sin LLM y sin el tope de 40, que
-    en un catálogo de miles siempre deja entrar los mismos 40 y nunca los
-    nuevos.
+    `regex_feeds` are the ones that already carry the CVE in the headline
+    (vendor and CERT advisories): there the regex is enough. They skip the LLM
+    and the cap of 40, which in a catalog of thousands always lets the same 40
+    in and never the new ones.
     """
     http = session or requests
     regex_set = set(regex_feeds or ())
@@ -547,8 +547,8 @@ def load_rss(conn, feeds, *, session=None, timeout=30, rerank=False,
         entries = parse_feed(content, source=_host(url))
         if rerank and url not in regex_set:
             entries = entries[:RERANK_MAX_ENTRIES]
-            # Los RSS rotan lento: lo ya rerankeado no se vuelve a mandar al LLM
-            # (medido: ~5 min de modelo por ciclo para 0 menciones nuevas).
+            # RSS rotates slowly: what was already reranked is not sent to the
+            # LLM again (measured: ~5 min of model per cycle for 0 new mentions).
             known = _reranked_urls(conn, entries)
             fresh = [e for e in entries if (e.get("url") or "") not in known]
             if fresh:
@@ -558,8 +558,8 @@ def load_rss(conn, feeds, *, session=None, timeout=30, rerank=False,
             else:
                 mentions = []
         else:
-            # Los catálogos vienen de más nuevo a más viejo: el tope deja el
-            # tramo reciente y el upsert se encarga del resto.
+            # Catalogs come newest first: the cap keeps the recent stretch and
+            # the upsert takes care of the rest.
             mentions = collect_mentions(entries[:REGEX_MAX_ENTRIES])
         for cve_id, delta in upsert_media_mentions(conn, mentions).items():
             nuevas[cve_id] = nuevas.get(cve_id, 0) + delta
@@ -568,9 +568,9 @@ def load_rss(conn, feeds, *, session=None, timeout=30, rerank=False,
 
 
 def apply_mention_brands(conn, mentions) -> int:
-    """Escribe en enrichments el apodo que el titular usa para el CVE.
+    """Writes into enrichments the nickname the headline uses for the CVE.
 
-    El apodo sólo se acepta desde la prensa: es el único lugar donde aparece.
+    The nickname is only accepted from the press: it is the only place it shows up.
     """
     written = 0
     for mention in mentions:
@@ -582,7 +582,7 @@ def apply_mention_brands(conn, mentions) -> int:
             "SELECT brand_name FROM enrichments WHERE cve_id = ?", (cve_id,)
         ).fetchone()
         if current and (current["brand_name"] or "").strip():
-            continue  # no se pisa un apodo ya establecido
+            continue  # never overwrite an established nickname
         ensure_cve_stub(conn, cve_id)
         conn.execute("""
             INSERT INTO enrichments (cve_id, branding, brand_name) VALUES (?, 1, ?)
@@ -598,22 +598,22 @@ def apply_mention_brands(conn, mentions) -> int:
 # GitHub: PoCs
 # --------------------------------------------------------------------------
 def build_poc_query(template, cve_id) -> str:
-    """Renderiza el template de sources.yaml y le agrega `poc` si falta."""
+    """Renders the sources.yaml template and appends `poc` when missing."""
     rendered = (template or DEFAULT_POC_QUERY).format(cve_id=cve_id).strip()
     return rendered if "poc" in rendered.lower() else f"{rendered} poc"
 
 
 def _http_status(exc) -> int:
-    """Código HTTP de una excepción de requests, 0 si no hubo respuesta."""
+    """HTTP status of a requests exception, 0 when there was no response."""
     response = getattr(exc, "response", None)
     return int(getattr(response, "status_code", 0) or 0)
 
 
 def fetch_poc_repos(cve_id, *, session=None, token=None, template=DEFAULT_POC_QUERY,
                     timeout=20, per_page=30) -> tuple:
-    """(total en GitHub, repos con métricas, status HTTP).
+    """(GitHub total, repos with metrics, HTTP status).
 
-    El status importa: un 403/429 es rate limit, no "este CVE no tiene PoCs".
+    The status matters: a 403/429 is a rate limit, not "this CVE has no PoCs".
     """
     http = session or requests
     resolved_token = os.getenv("GITHUB_TOKEN") if token is None else token
@@ -661,7 +661,7 @@ def fetch_poc_repos(cve_id, *, session=None, token=None, template=DEFAULT_POC_QU
 
 
 def upsert_pocs(conn, cve_id, repos) -> int:
-    """Guarda los repos con sus métricas: se refrescan en cada pasada."""
+    """Stores the repos with their metrics: they refresh on every pass."""
     guardados = 0
     for repo in repos or []:
         nombre = (repo.get("repo") or "").strip()
@@ -692,8 +692,8 @@ def upsert_pocs(conn, cve_id, repos) -> int:
 def fetch_poc_count(cve_id, *, session=None, token=None, template=DEFAULT_POC_QUERY,
                     timeout=20) -> int:
     """
-    Cuenta repos que probablemente son PoC. Sin GITHUB_TOKEN la API puede
-    devolver 403 por rate limit: se loguea y se sigue con 0.
+    Counts repos that are probably PoCs. Without GITHUB_TOKEN the API may
+    return 403 on rate limit: it gets logged and the run continues with 0.
     """
     total, _, _ = fetch_poc_repos(
         cve_id, session=session, token=token, template=template, timeout=timeout,
@@ -703,7 +703,7 @@ def fetch_poc_count(cve_id, *, session=None, token=None, template=DEFAULT_POC_QU
 
 
 def upsert_poc_count(conn, cve_id, count) -> None:
-    """Reemplaza poc_count: la búsqueda es la verdad, no se suma a ciegas."""
+    """Replaces poc_count: the search is the truth, nothing is added blindly."""
     cve_id = (cve_id or "").strip().upper()
     if not cve_id:
         return
@@ -717,11 +717,11 @@ def upsert_poc_count(conn, cve_id, count) -> None:
 
 
 def select_poc_targets(conn, limit=25) -> list:
-    """Lote acotado: los de más prensa que todavía no tienen repos cargados.
+    """Bounded batch: the most covered ones that still have no repos loaded.
 
-    Sin el NOT EXISTS el orden es determinista, así que cada ciclo vuelve a
-    pedir los mismos CVEs y la cola no avanza nunca: el lote se quedaba en el
-    top por menciones y el resto no llegaba a tener PoCs.
+    Without the NOT EXISTS the order is deterministic, so every cycle asks for
+    the same CVEs again and the queue never advances: the batch got stuck on
+    the top by mentions and the rest never got PoCs.
     """
     rows = conn.execute("""
         SELECT e.cve_id AS cve_id
@@ -734,9 +734,9 @@ def select_poc_targets(conn, limit=25) -> list:
     return [row["cve_id"] for row in rows]
 
 
-# La búsqueda de GitHub permite 30 pedidos por minuto con token (10 sin él) y
-# responde 403 si se pasa. Sin pausa, un lote grande quema la cuota, falla en
-# silencio y encima guarda poc_count=0 encima del conteo bueno.
+# The GitHub search allows 30 requests per minute with a token (10 without) and
+# answers 403 past that. With no pause, a big batch burns the quota, fails
+# silently and even overwrites the good count with poc_count=0.
 GITHUB_MIN_INTERVAL = 2.1
 GITHUB_RATE_LIMIT_WAIT = 60
 RATE_LIMIT_STATUS = (403, 429)
@@ -744,23 +744,23 @@ RATE_LIMIT_STATUS = (403, 429)
 
 def load_pocs(conn, cve_ids, *, session=None, token=None,
               template=DEFAULT_POC_QUERY, pause=None, sleep=None) -> int:
-    espera = GITHUB_MIN_INTERVAL if pause is None else pause
+    wait_s = GITHUB_MIN_INTERVAL if pause is None else pause
     dormir = sleep or time.sleep
     count = 0
     for i, cve_id in enumerate(cve_ids or []):
-        if i and espera:
-            dormir(espera)
+        if i and wait_s:
+            dormir(wait_s)
         total, repos, status = fetch_poc_repos(
             cve_id, session=session, token=token, template=template,
         )
         if status in RATE_LIMIT_STATUS:
-            # Un 403 acá no dice nada del CVE: se espera la ventana y se reintenta.
+            # A 403 here says nothing about the CVE: wait out the window and retry.
             dormir(GITHUB_RATE_LIMIT_WAIT)
             total, repos, status = fetch_poc_repos(
                 cve_id, session=session, token=token, template=template,
             )
         if status in RATE_LIMIT_STATUS:
-            continue  # sigue limitado: no se pisa el conteo que ya estaba
+            continue  # still limited: never overwrite the count that was already there
         upsert_poc_count(conn, cve_id, total)
         upsert_pocs(conn, cve_id, repos)
         count += 1
@@ -768,7 +768,7 @@ def load_pocs(conn, cve_ids, *, session=None, token=None,
 
 
 # --------------------------------------------------------------------------
-# Branding + tone_score (LLM con fallback heurístico)
+# Branding + tone_score (LLM with heuristic fallback)
 # --------------------------------------------------------------------------
 TONE_SYSTEM = (
     "You are a security-news hype analyst. You answer with JSON only, no prose."
@@ -776,7 +776,7 @@ TONE_SYSTEM = (
 
 TONE_MIN, TONE_MAX = 0.0, 10.0
 
-# Señales del fallback heurístico (el LLM es el camino principal).
+# Heuristic fallback cues (the LLM is the main path).
 PANIC_CUES = (
     "apocalyp", "catastroph", "chaos", "devastat", "nightmare", "massive",
     "critical", "severe", "under attack", "wormable", "zero-day", "0day",
@@ -786,13 +786,13 @@ CALM_CUES = (
     "advisory", "patch", "mitigat", "coordinated disclosure", "routine",
     "low severity",
 )
-# Nombres de exploit conocidos: el heurístico no puede adivinar todos.
+# Known exploit names: the heuristic cannot guess them all.
 KNOWN_BRANDS = (
     "Log4Shell", "Spring4Shell", "Heartbleed", "Shellshock", "RegreSSHion",
     "Dirty Pipe", "Dirty COW", "BlueKeep", "EternalBlue", "Pwn2Own",
 )
 BRAND_CUES = ("named", "dubbed", "christened", "nicknamed", "called")
-# Token con mayúsculas adentro: Log4Shell, Pwn2Own (CVE o HTTP quedan afuera).
+# Token with inner uppercase: Log4Shell, Pwn2Own (CVE or HTTP are left out).
 MIXED_CASE_TOKEN = re.compile(r"\b[A-Za-z0-9][A-Za-z0-9]*[A-Z][A-Za-z0-9]*\b")
 NAMED_BRAND = re.compile(
     r"(?:named|dubbed|christened|nicknamed|called)\s+[\"“']?([A-Z][\w.-]{2,})"
@@ -819,7 +819,7 @@ def build_tone_prompt(items) -> str:
 
 
 def heuristic_tone(title) -> float:
-    """0 = seco/técnico, 10 = pánico. Signos de exclamación + palabras."""
+    """0 = dry/technical, 10 = panic. Exclamation marks + wording."""
     text = (title or "").lower()
     score = 3.0
     panic = sum(1 for cue in PANIC_CUES if cue in text)
@@ -831,7 +831,7 @@ def heuristic_tone(title) -> float:
 
 
 def heuristic_branding(text) -> tuple:
-    """(branding, brand_name) por nombre conocido, CamelCase o 'dubbed X'."""
+    """(branding, brand_name) from a known name, CamelCase or 'dubbed X'."""
     raw = text or ""
 
     lowered = raw.lower()
@@ -852,8 +852,8 @@ def heuristic_branding(text) -> tuple:
 
 def analyze_tone_batch(items, *, completer=None, config=None, session=None) -> list:
     """
-    Una sola llamada al LLM por lote. Si el modelo falla o devuelve JSON roto,
-    cada ítem cae al heurístico (la fila nunca queda sin tone_score).
+    One LLM call per batch. If the model fails or returns broken JSON, every
+    item falls back to the heuristic (a row never ends up without tone_score).
     """
     batch = [item for item in items or [] if (item.get("cve_id") or "").strip()]
     if not batch:
@@ -882,7 +882,7 @@ def analyze_tone_batch(items, *, completer=None, config=None, session=None) -> l
         entry = answered.get(cve_id)
         tone = _to_tone(entry.get("tone_score")) if entry else None
         if tone is None:
-            # Sin respuesta del modelo (o sin tone_score usable) manda el heurístico.
+            # No model reply (or no usable tone_score) means the heuristic decides.
             branding, brand_name = heuristic_branding(title)
             results.append({
                 "cve_id": cve_id,
@@ -904,13 +904,13 @@ def analyze_tone_batch(items, *, completer=None, config=None, session=None) -> l
 
 
 def upsert_tone(conn, results) -> int:
-    """Escribe SÓLO tone_score/branding/brand_name: KEV y EPSS quedan intactos."""
+    """Writes ONLY tone_score/branding/brand_name: KEV and EPSS stay untouched."""
     count = 0
     for result in results or []:
         cve_id = (result.get("cve_id") or "").strip().upper()
         tone = _to_tone(result.get("tone_score"))
         if not cve_id or tone is None:
-            continue  # sin tone usable no se escribe: huele a dato inventado
+            continue  # no usable tone means no write: it smells like an invented value
         ensure_cve_stub(conn, cve_id)
         conn.execute("""
             INSERT INTO enrichments (cve_id, tone_score, branding, brand_name)
@@ -931,7 +931,7 @@ def upsert_tone(conn, results) -> int:
 
 
 def select_tone_targets(conn, limit=50) -> list:
-    """Titulares a analizar: primero los CVEs que nunca tuvieron tone_score."""
+    """Headlines to analyze: the CVEs that never had a tone_score come first."""
     rows = conn.execute("""
         SELECT m.cve_id AS cve_id, m.title AS title, e.tone_score AS tone_score
         FROM media_mentions m
@@ -954,7 +954,7 @@ def select_tone_targets(conn, limit=50) -> list:
 
 def load_tone(conn, *, limit=50, batch_size=10, completer=None, config=None,
               session=None) -> int:
-    """Un lote = una llamada. Default 10 titulares por lote."""
+    """One batch = one call. 10 headlines per batch by default."""
     targets = select_tone_targets(conn, limit)
     size = max(1, int(batch_size))
     updated = 0
@@ -967,10 +967,10 @@ def load_tone(conn, *, limit=50, batch_size=10, completer=None, config=None,
 
 
 # --------------------------------------------------------------------------
-# Config, orquestación y CLI
+# Config, orchestration and CLI
 # --------------------------------------------------------------------------
 def load_sources_config(path=None) -> dict:
-    """Bloque `sources:` de config/sources.yaml (o {} si no existe)."""
+    """The `sources:` block of config/sources.yaml ({} when it does not exist)."""
     source_path = Path(path) if path else SOURCES_PATH
     if not source_path.exists():
         return {}
@@ -983,9 +983,9 @@ def run(*, skip_kev=False, skip_epss=False, skip_rss=False, skip_github=False,
         skip_llm=False, skip_attention=False, db_path=None, sources_path=None,
         github_limit=25, llm_limit=50, llm_batch_size=10, session=None,
         completer=None) -> dict:
-    """Corre las seis señales en orden y devuelve un resumen de conteos."""
+    """Runs the six signals in order and returns a summary of counts."""
     sources = load_sources_config(sources_path)
-    path = init_db(db_path)  # idempotente: crea media_mentions si falta
+    path = init_db(db_path)  # idempotent: creates media_mentions when missing
     conn = get_db(path)
     summary = {"kev": 0, "epss": 0, "rss": {}, "poc": 0, "tone": 0, "attention": {}}
     try:
@@ -1033,18 +1033,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--skip-kev", action="store_true", help="No descarga CISA KEV.")
     parser.add_argument("--skip-epss", action="store_true", help="No descarga FIRST EPSS.")
-    parser.add_argument("--skip-rss", action="store_true", help="No lee los feeds RSS.")
+    parser.add_argument("--skip-rss", action="store_true", help="Does not read the RSS feeds.")
     parser.add_argument("--skip-github", action="store_true", help="No busca PoCs en GitHub.")
     parser.add_argument("--skip-llm", action="store_true", help="No llama al LLM (no escribe tone/branding).")
     parser.add_argument("--skip-attention", action="store_true",
-                        help="No busca prensa de los CVEs con KEV/PoC/recencia (Google + HN).")
-    parser.add_argument("--rss-only", action="store_true", help="Sólo RSS (local): implica los demás --skip-*.")
+                        help="Does not search press coverage for CVEs with KEV/PoC/recency (Google + HN).")
+    parser.add_argument("--rss-only", action="store_true", help="RSS only (local): implies every other --skip-*.")
     parser.add_argument("--github-limit", type=int, default=25, help="CVEs a buscar en GitHub (default 25).")
-    parser.add_argument("--llm-limit", type=int, default=50, help="CVEs a analizar con el LLM (default 50).")
-    parser.add_argument("--llm-batch-size", type=int, default=10, help="Titulares por llamada (default 10).")
+    parser.add_argument("--llm-limit", type=int, default=50, help="CVEs to analyze with the LLM (default 50).")
+    parser.add_argument("--llm-batch-size", type=int, default=10, help="Headlines per call (default 10).")
     parser.add_argument("--sources", default=None, help="Ruta a sources.yaml (default config/sources.yaml).")
-    parser.add_argument("--db-path", default=None, help="Schema de test. Producción: DATABASE_URL.")
-    parser.add_argument("--llm-smoke", action="store_true", help="Una llamada real al LLM y sale.")
+    parser.add_argument("--db-path", default=None, help="Test schema. Production: DATABASE_URL.")
+    parser.add_argument("--llm-smoke", action="store_true", help="One real LLM call, then exits.")
     return parser
 
 
@@ -1078,7 +1078,7 @@ def main(argv=None) -> int:
 
 
 def _llm_smoke() -> int:
-    """Humo en vivo: una sola llamada real. Nunca imprime la API key."""
+    """Live smoke: a single real call. Never prints the API key."""
     cfg = llm_client.load_llm_config()
     print(f"provider={cfg.provider} model={cfg.model} base_url={cfg.base_url}")
     sample = [{
@@ -1094,10 +1094,10 @@ def _llm_smoke() -> int:
 # Helpers
 # --------------------------------------------------------------------------
 def _parse_tone_response(text) -> list:
-    """Acepta un objeto o un array, con o sin ```json ... ``` alrededor."""
+    """Accepts an object or an array, with or without ```json ... ``` around it."""
     raw = (text or "").strip()
     if not raw:
-        raise ValueError("respuesta LLM vacía")
+        raise ValueError("empty LLM response")
 
     fenced = re.search(r"```(?:json)?\s*(.+?)```", raw, re.DOTALL)
     if fenced:
@@ -1105,18 +1105,18 @@ def _parse_tone_response(text) -> list:
 
     starts = [index for index in (raw.find("["), raw.find("{")) if index >= 0]
     if not starts:
-        raise ValueError("respuesta LLM sin JSON")
+        raise ValueError("LLM response without JSON")
     payload, _ = json.JSONDecoder().raw_decode(raw[min(starts):])
 
     if isinstance(payload, dict):
         return [payload]
     if isinstance(payload, list):
         return [item for item in payload if isinstance(item, dict)]
-    raise ValueError("respuesta LLM con JSON inesperado")
+    raise ValueError("LLM response with unexpected JSON")
 
 
 def _looks_like_brand(token: str) -> bool:
-    """FooShell sí; CVE, HTTP o 2026 no."""
+    """FooShell yes; CVE, HTTP or 2026 no."""
     if len(token) < 5:
         return False
     if any(char.isdigit() for char in token) and any(char.isalpha() for char in token):
@@ -1129,7 +1129,7 @@ def _strip_html(value) -> str:
 
 
 def _iso_date(entry) -> str | None:
-    """Fecha del feed en ISO 8601 UTC; si no se puede parsear, el texto crudo."""
+    """Feed date as ISO 8601 UTC; when it cannot be parsed, the raw text."""
     stamp = entry.get("published_parsed") or entry.get("updated_parsed")
     if not stamp:
         return entry.get("published") or entry.get("updated")
@@ -1149,7 +1149,7 @@ def _to_float(value):
 
 
 def _to_tone(value):
-    """tone_score acotado a 0-10, o None si el valor no es numérico."""
+    """tone_score clamped to 0-10, or None when the value is not numeric."""
     number = _to_float(value)
     if number is None:
         return None

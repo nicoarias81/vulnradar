@@ -1,13 +1,13 @@
 """
-Fórmulas de scoring v2 — VulnRadar
+Scoring v2 formulas — VulnRadar
 """
 
 def exploit_ease(vector: str | None) -> float:
-    """Facilidad técnica de explotación desde el vector CVSS 3.1 (10 = trivial).
+    """Technical ease of exploitation from the CVSS 3.1 vector (10 = trivial).
 
-    AC manda: una condición de carrera (AC:H) no se repite igual en cada
-    corrida y baja fuerte. Después se recorta si hace falta acceso local o
-    adyacente, privilegios altos o interacción de la víctima.
+    AC rules: a race condition (AC:H) does not repeat the same on every run
+    and drops hard. Then it is capped if local or adjacent access, high
+    privileges or victim interaction are required.
     """
     if not vector:
         return 0.0
@@ -25,14 +25,14 @@ def exploit_ease(vector: str | None) -> float:
 def calculate_reality(signals: dict) -> float:
     """
     Reality v3
-    40% KEV + 25% EPSS + 15% PoC público + 10% Wild + 5% Ransomware + 5% Facilidad
+    40% KEV + 25% EPSS + 15% public PoC + 10% Wild + 5% Ransomware + 5% Ease
 
-    Los PoC pesan acá además de en hype: son la señal de explotabilidad más
-    temprana (aparecen semanas antes de KEV y de un EPSS con señal), así que
-    dejarlos sólo del lado del hype penalizaba doble a un CVE con exploit
-    público. La facilidad sale del vector CVSS, no de un default fijo: el
-    ``complexity_score`` que se leía antes nunca se escribía en la base y le
-    regalaba 0.25 a todos los CVEs por igual.
+    PoCs weigh in here on top of hype: they are the earliest exploitability
+    signal (they show up weeks before KEV and before an EPSS with signal), so
+    leaving them only on the hype side double-penalized a CVE with a public
+    exploit. Ease comes from the CVSS vector, not from a fixed default: the
+    ``complexity_score`` read before was never written to the database and
+    handed 0.25 to every CVE alike.
     """
     kev = 10.0 if signals.get("in_kev") else 0.0
     epss = min(signals.get("epss", 0) * 10, 10.0)

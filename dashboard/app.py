@@ -1,8 +1,8 @@
 """
-Dashboard VulnRadar.
+VulnRadar dashboard.
 
-La UI es HTML servido por `dashboard.server` (puerto 8501). Streamlit ya no
-pinta las pantallas: el CSS de los mockups no sobrevive a su layout.
+The UI is HTML served by `dashboard.server` (port 8501). Streamlit no longer
+renders the screens: the mockup CSS does not survive its layout.
 """
 from dashboard.server import main
 

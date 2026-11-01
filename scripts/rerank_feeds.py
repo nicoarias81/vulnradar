@@ -1,8 +1,8 @@
-"""Corre sólo la etapa RSS con rerank LLM (CVE + apodo de prensa).
+"""Runs only the RSS stage with LLM rerank (CVE + press nickname).
 
-Imprime progreso por feed: el rerank es lo caro (una llamada al LLM cada
-RERANK_BATCH entradas), así que sin líneas intermedias un log vacío no dice si
-está trabajando o si se colgó.
+It prints progress per feed: the rerank is the expensive part (one LLM call every
+RERANK_BATCH entries), so without intermediate lines an empty log does not say whether
+it is working or hung.
 
     python scripts/rerank_feeds.py
 """
@@ -27,7 +27,7 @@ def main() -> None:
         total_mentions = 0
         total_cves = 0
         for item in feeds:
-            # sources.yaml mezcla strings y {name, url}: load_rss espera la URL.
+            # sources.yaml mixes strings and {name, url}: load_rss expects the URL.
             if isinstance(item, dict):
                 url, name = item.get("url"), item.get("name") or item.get("url")
             else:
@@ -43,13 +43,13 @@ def main() -> None:
                 total_cves += cves
                 total_mentions += mentions
                 print(
-                    f"  {name}: {cves} CVEs con mención nueva, {mentions} menciones "
+                    f"  {name}: {cves} CVEs with a new mention, {mentions} mentions "
                     f"({time.time() - start:.0f}s)",
                     flush=True,
                 )
-            except Exception as exc:  # un feed roto no frena al resto
-                # Sin rollback la conexión queda en "transaction aborted" y
-                # todos los feeds siguientes fallan en cascada.
+            except Exception as exc:  # a broken feed does not stop the rest
+                # Without a rollback the connection stays in "transaction aborted" and
+                # every following feed fails in a cascade.
                 conn.rollback()
                 print(f"  {name}: ERROR {type(exc).__name__}: {exc}", flush=True)
 

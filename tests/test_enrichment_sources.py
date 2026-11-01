@@ -1,7 +1,7 @@
-"""Fase 3: RSS, PoCs de GitHub y tone/branding vía LLM.
+"""Phase 3: RSS, GitHub PoCs and tone/branding through the LLM.
 
-Sin red: los feeds y la búsqueda salen de fixtures, y el LLM se inyecta o se
-mockea. Todo se persiste contra un schema PostgreSQL aislado (`tmp_path` como clave).
+No network: feeds and search come from fixtures, and the LLM is either injected
+or mocked. Everything is persisted against an isolated PostgreSQL schema (`tmp_path` as key).
 """
 import json
 from pathlib import Path
@@ -35,7 +35,7 @@ FEEDS = Path(__file__).parent / "fixtures" / "feeds"
 
 
 # --------------------------------------------------------------------------
-# Dobles de red
+# Network doubles
 # --------------------------------------------------------------------------
 class _FakeResponse:
     def __init__(self, payload=None, content=b"", status_code=200):
@@ -55,7 +55,7 @@ class _FakeResponse:
 
 
 class _FakeSession:
-    """Registra cada GET y devuelve una respuesta fija por URL."""
+    """Records every GET and returns a fixed response per URL."""
 
     def __init__(self, responses):
         self.responses = responses
@@ -111,7 +111,7 @@ def _feed_mentions(conn, cve_id=CVE_1):
 # --------------------------------------------------------------------------
 # RSS
 # --------------------------------------------------------------------------
-def test_schema_crea_la_tabla_media_mentions(db_file):
+def test_schema_creates_media_mentions_table(db_file):
     conn = get_db(db_file)
     try:
         from core.db import list_tables
@@ -123,10 +123,10 @@ def test_schema_crea_la_tabla_media_mentions(db_file):
     assert "media_mentions" in tables
 
 
-def test_rss_cuenta_menciones_por_cve_sin_repetir_url(conn, rss_session):
+def test_rss_counts_mentions_per_cve_without_repeating_url(conn, rss_session):
     nuevas = load_rss(conn, ["https://feeds.example.com/rss"], session=rss_session)
 
-    # story-1 menciona los dos CVEs, story-3 sólo al segundo.
+    # story-1 mentions both CVEs, story-3 only the second one.
     assert nuevas == {CVE_1: 1, CVE_2: 2}
     assert _enrichment_row(conn, CVE_1)["media_count"] == 1
     assert _enrichment_row(conn, CVE_2)["media_count"] == 2
@@ -135,10 +135,10 @@ def test_rss_cuenta_menciones_por_cve_sin_repetir_url(conn, rss_session):
     urls_9002 = {row["url"] for row in _media_rows(conn, CVE_2)}
     assert urls_9001 == {"https://example.com/story-1"}
     assert urls_9002 == {"https://example.com/story-1", "https://example.com/story-3"}
-    assert len(_media_rows(conn)) == 3  # la URL repetida no duplica la fila
+    assert len(_media_rows(conn)) == 3  # the repeated URL does not duplicate the row
 
 
-def test_rss_guarda_titulo_y_medio(conn, rss_session):
+def test_rss_stores_title_and_source(conn, rss_session):
     load_rss(conn, ["https://feeds.example.com/rss"], session=rss_session)
 
     row = _media_rows(conn, CVE_1)[0]
@@ -147,7 +147,7 @@ def test_rss_guarda_titulo_y_medio(conn, rss_session):
     assert row["published"].startswith("2026-01-05")
 
 
-def test_rss_no_doble_cuenta_si_se_repite_la_corrida(conn, rss_session):
+def test_rss_does_not_double_count_on_repeated_run(conn, rss_session):
     load_rss(conn, ["https://feeds.example.com/rss"], session=rss_session)
     nuevas = load_rss(conn, ["https://feeds.example.com/rss"], session=rss_session)
 
@@ -157,7 +157,7 @@ def test_rss_no_doble_cuenta_si_se_repite_la_corrida(conn, rss_session):
     assert len(_media_rows(conn)) == 3
 
 
-def test_rss_crea_stub_del_cve(conn, rss_session):
+def test_rss_creates_cve_stub(conn, rss_session):
     load_rss(conn, ["https://feeds.example.com/rss"], session=rss_session)
 
     stub = conn.execute("SELECT * FROM cves WHERE cve_id = ?", (CVE_2,)).fetchone()
@@ -165,7 +165,7 @@ def test_rss_crea_stub_del_cve(conn, rss_session):
     assert stub["description"] is None
 
 
-def test_rss_ignora_feed_caido_y_sigue(conn):
+def test_rss_ignores_dead_feed_and_continues(conn):
     session = _FakeSession({
         "https://roto.example.com/rss": _FakeResponse(status_code=500),
         "https://feeds.example.com/rss": _FakeResponse(content=(FEEDS / "example_rss.xml").read_bytes()),
@@ -177,7 +177,7 @@ def test_rss_ignora_feed_caido_y_sigue(conn):
     assert nuevas == {CVE_1: 1, CVE_2: 2}
 
 
-def test_atom_tambien_se_parsea(conn):
+def test_atom_is_also_parsed(conn):
     session = _FakeSession({
         "https://atom.example.com/feed": _FakeResponse(content=(FEEDS / "example_atom.xml").read_bytes()),
     })
@@ -188,25 +188,25 @@ def test_atom_tambien_se_parsea(conn):
     assert _media_rows(conn, "CVE-2026-9100")[0]["source"] == "Example Atom Feed"
 
 
-def test_parse_feed_sin_cves_no_genera_menciones():
+def test_parse_feed_without_cves_generates_no_mentions():
     entries = parse_feed((FEEDS / "example_atom.xml").read_bytes())
 
     assert len(entries) == 2
-    assert collect_mentions(entries[1:]) == []  # entrada sin CVE
+    assert collect_mentions(entries[1:]) == []  # entry without a CVE
 
 
 # --------------------------------------------------------------------------
 # GitHub PoCs
 # --------------------------------------------------------------------------
-def test_github_poc_count_se_reemplaza_no_se_suma(conn):
+def test_github_poc_count_is_replaced_not_added(conn):
     upsert_poc_count(conn, CVE_1, 7)
     assert _enrichment_row(conn)["poc_count"] == 7
 
     upsert_poc_count(conn, CVE_1, 2)
-    assert _enrichment_row(conn)["poc_count"] == 2  # reemplaza
+    assert _enrichment_row(conn)["poc_count"] == 2  # replaces
 
 
-def test_github_lee_total_count_del_search(conn):
+def test_github_reads_total_count_from_search(conn):
     session = _FakeSession({
         "https://api.github.com/search/repositories": _FakeResponse(payload={"total_count": 4}),
     })
@@ -218,10 +218,10 @@ def test_github_lee_total_count_del_search(conn):
 
     call = session.calls[0]
     assert call["params"]["q"] == f"{CVE_1} poc"
-    assert "Authorization" not in call["headers"]  # sin token no se inventa header
+    assert "Authorization" not in call["headers"]  # without a token no header is invented
 
 
-def test_github_manda_token_si_existe(conn):
+def test_github_sends_token_when_present(conn):
     session = _FakeSession({
         "https://api.github.com/search/repositories": _FakeResponse(payload={"total_count": 1}),
     })
@@ -231,7 +231,7 @@ def test_github_manda_token_si_existe(conn):
     assert session.calls[0]["headers"]["Authorization"] == "Bearer ghp_test"
 
 
-def test_github_usa_items_cuando_no_hay_total_count(conn):
+def test_github_uses_items_when_no_total_count(conn):
     session = _FakeSession({
         "https://api.github.com/search/repositories": _FakeResponse(payload={"items": [{}, {}]}),
     })
@@ -239,7 +239,7 @@ def test_github_usa_items_cuando_no_hay_total_count(conn):
     assert fetch_poc_count(CVE_1, session=session, token="") == 2
 
 
-def test_github_403_por_rate_limit_no_rompe(conn):
+def test_github_403_rate_limit_does_not_break(conn):
     import requests
 
     session = _FakeSession({
@@ -252,13 +252,13 @@ def test_github_403_por_rate_limit_no_rompe(conn):
     assert fetch_poc_count(CVE_1, session=session, token="") == 0
 
 
-def test_build_poc_query_agrega_poc_si_falta():
+def test_build_poc_query_adds_poc_when_missing():
     assert build_poc_query("{cve_id}", CVE_1) == f"{CVE_1} poc"
     assert build_poc_query("{cve_id} poc", CVE_1) == f"{CVE_1} poc"
-    assert build_poc_query("", CVE_1) == f"{CVE_1} poc"  # default del módulo
+    assert build_poc_query("", CVE_1) == f"{CVE_1} poc"  # module default
 
 
-def test_github_poc_count_preserva_kev_y_epss(conn):
+def test_github_poc_count_preserves_kev_and_epss(conn):
     upsert_kev(conn, [{"cveID": CVE_1, "dateAdded": "2026-01-10"}])
     upsert_epss(conn, [{"cve": CVE_1, "epss": "0.42", "percentile": "0.5"}])
 
@@ -282,7 +282,7 @@ def _fake_llm(payload, calls=None):
     return _complete
 
 
-def test_llm_persiste_tone_y_branding(conn, rss_session, monkeypatch):
+def test_llm_persists_tone_and_branding(conn, rss_session, monkeypatch):
     load_rss(conn, ["https://feeds.example.com/rss"], session=rss_session)
     payload = json.dumps([
         {"cve_id": CVE_1, "tone_score": 9, "branding": True, "brand_name": "ExampleShell"},
@@ -301,13 +301,13 @@ def test_llm_persiste_tone_y_branding(conn, rss_session, monkeypatch):
     assert row_2["branding"] == 0
     assert row_2["brand_name"] is None
 
-    # Un lote -> una sola llamada, con las dos cabeceras en el prompt.
+    # One batch -> a single call, with both headlines in the prompt.
     assert len(calls) == 1
     assert CVE_1 in calls[0]["prompt"] and CVE_2 in calls[0]["prompt"]
     assert calls[0]["system"] == agent.TONE_SYSTEM
 
 
-def test_llm_un_lote_por_cada_diez_titulares(conn, monkeypatch):
+def test_llm_one_batch_per_ten_headlines(conn, monkeypatch):
     for index in range(12):
         _feed_mentions(conn, f"CVE-2026-80{index:02d}")
     calls = []
@@ -315,10 +315,10 @@ def test_llm_un_lote_por_cada_diez_titulares(conn, monkeypatch):
 
     assert load_tone(conn, limit=12, batch_size=10) == 12
 
-    assert len(calls) == 2  # 10 + 2, no una llamada por CVE
+    assert len(calls) == 2  # 10 + 2, not one call per CVE
 
 
-def test_llm_json_roto_cae_al_heurístico(conn, monkeypatch):
+def test_llm_broken_json_falls_back_to_the_heuristic(conn, monkeypatch):
     upsert_media_mentions(conn, [
         {"cve_id": CVE_1, "url": "https://example.com/log4shell",
          "title": "Log4Shell apocalypse!!!", "source": "Example", "published": "2026-01-05"},
@@ -333,7 +333,7 @@ def test_llm_json_roto_cae_al_heurístico(conn, monkeypatch):
     assert row["tone_score"] >= 7.0
 
 
-def test_llm_envuelto_en_markdown_y_fences(conn, monkeypatch):
+def test_llm_wrapped_in_markdown_and_fences(conn, monkeypatch):
     _feed_mentions(conn, CVE_1)
     payload = 'Claro:\n```json\n[{"cve_id": "%s", "tone_score": 5, "branding": true, "brand_name": "X"}]\n```' % CVE_1
     monkeypatch.setattr("core.llm.complete", _fake_llm(payload))
@@ -342,11 +342,11 @@ def test_llm_envuelto_en_markdown_y_fences(conn, monkeypatch):
     assert _enrichment_row(conn)["tone_score"] == pytest.approx(5.0)
 
 
-def test_llm_sin_proxy_usa_heurística_y_no_rompe(conn):
+def test_llm_without_proxy_uses_heuristic_and_does_not_break(conn):
     _feed_mentions(conn, CVE_1)
 
     def _explota(*args, **kwargs):
-        raise agent.llm_client.LlmConfigError("Falta la API key")
+        raise agent.llm_client.LlmConfigError("Missing API key")
 
     results = analyze_tone_batch([{"cve_id": CVE_1, "title": "Dry vendor advisory, patch available"}],
                                  completer=_explota)
@@ -356,7 +356,7 @@ def test_llm_sin_proxy_usa_heurística_y_no_rompe(conn):
     assert results[0]["tone_score"] <= 3.0
 
 
-def test_llm_no_pisa_kev_ni_epss(conn, rss_session, monkeypatch):
+def test_llm_does_not_overwrite_kev_or_epss(conn, rss_session, monkeypatch):
     upsert_kev(conn, [{"cveID": CVE_1, "dateAdded": "2026-01-10",
                        "knownRansomwareCampaignUse": "Known"}])
     upsert_epss(conn, [{"cve": CVE_1, "epss": "0.42", "percentile": "0.97"}])
@@ -378,36 +378,36 @@ def test_llm_no_pisa_kev_ni_epss(conn, rss_session, monkeypatch):
     assert row["brand_name"] == "Z"
 
 
-def test_tone_fuera_de_rango_se_acota(conn):
+def test_tone_out_of_range_is_clamped(conn):
     upsert_tone(conn, [{"cve_id": CVE_1, "tone_score": 42, "branding": False}])
 
     assert _enrichment_row(conn)["tone_score"] == pytest.approx(10.0)
 
 
-def test_tone_sin_valor_numerico_no_escribe(conn):
+def test_tone_without_numeric_value_does_not_write(conn):
     assert upsert_tone(conn, [{"cve_id": CVE_1, "tone_score": "panic"}]) == 0
     assert _enrichment_row(conn) is None
 
 
 # --------------------------------------------------------------------------
-# Heurístico
+# Heuristic
 # --------------------------------------------------------------------------
-def test_heuristica_de_tone_separa_panico_de_advisory():
+def test_tone_heuristic_separates_panic_from_advisory():
     assert heuristic_tone("Log4Shell apocalypse!!!") >= 7.0
     assert heuristic_tone("Vendor advisory: patch available for CVE-2026-9001") <= 3.0
     assert 0.0 <= heuristic_tone("") <= 10.0
 
 
-def test_heuristica_de_branding_por_nombre_conocido_y_camel_case():
+def test_branding_heuristic_by_known_name_and_camel_case():
     assert heuristic_branding("Log4Shell apocalypse!!!") == (True, "Log4Shell")
     assert heuristic_branding("New flaw dubbed GhostBreak hits routers") == (True, "GhostBreak")
     assert heuristic_branding("CVE-2026-9001 patched in HTTP/2 stack") == (False, None)
 
 
 # --------------------------------------------------------------------------
-# CLI y orquestación
+# CLI and orchestration
 # --------------------------------------------------------------------------
-def test_parser_flags_de_skip():
+def test_parser_skip_flags():
     args = build_parser().parse_args(["--skip-kev", "--skip-epss", "--skip-rss",
                                       "--skip-github", "--skip-llm"])
 
@@ -416,7 +416,7 @@ def test_parser_flags_de_skip():
     assert args.rss_only is False
 
 
-def test_parser_rss_only_y_defaults():
+def test_parser_rss_only_and_defaults():
     args = build_parser().parse_args(["--rss-only"])
 
     assert args.rss_only is True
@@ -424,7 +424,7 @@ def test_parser_rss_only_y_defaults():
     assert args.llm_batch_size == 10
 
 
-def test_rss_only_no_toca_red(tmp_path, monkeypatch):
+def test_rss_only_does_not_touch_the_network(tmp_path, monkeypatch):
     def _sin_red(*args, **kwargs):
         raise AssertionError("--rss-only no debe llamar a la red")
 
@@ -444,12 +444,12 @@ def test_rss_only_no_toca_red(tmp_path, monkeypatch):
         conn.close()
 
 
-def test_run_con_todo_skippeado_devuelve_ceros(tmp_path):
+def test_run_with_everything_skipped_returns_zeros(tmp_path):
     summary = agent.run(skip_kev=True, skip_epss=True, skip_rss=True, skip_github=True,
                         skip_llm=True, db_path=tmp_path / "humo.db")
 
-    # Por clave y no por dict exacto: cada fuente nueva que devuelve su propio
-    # contador rompía este test sin que nada estuviera mal.
+    # By key and not by exact dict: every new source returning its own
+    # counter broke this test even though nothing was wrong.
     assert summary["kev"] == 0
     assert summary["epss"] == 0
     assert summary["rss"] == {}
@@ -458,15 +458,15 @@ def test_run_con_todo_skippeado_devuelve_ceros(tmp_path):
     assert summary["attention"]["nuevas"] == 0
 
 
-def test_load_sources_config_lee_fuentes_del_repo():
+def test_load_sources_config_reads_repo_sources():
     sources = agent.load_sources_config()
 
     assert isinstance(sources.get("rss"), list) and sources["rss"]
     assert sources["github_search"]["enabled"] is True
 
 
-def test_load_pocs_no_pisa_el_conteo_cuando_github_limita(conn):
-    """Un 403 es rate limit, no "sin PoCs": guardar 0 borraria el conteo bueno."""
+def test_load_pocs_does_not_overwrite_count_when_github_rate_limits(conn):
+    """A 403 is rate limiting, not "no PoCs": storing 0 would wipe the good count."""
     import requests
 
     conn.execute("INSERT INTO cves (cve_id, published) VALUES (?, ?)", (CVE_1, "2026-06-01T00:00:00Z"))
@@ -482,45 +482,45 @@ def test_load_pocs_no_pisa_el_conteo_cuando_github_limita(conn):
         def json(self):
             return {}
 
-    class Sesion:
+    class FakeSession:
         def get(self, *args, **kwargs):
             return Respuesta()
 
-    procesados = agent.load_pocs(
-        conn, [CVE_1], session=Sesion(), pause=0, sleep=lambda segundos: None,
+    processed = agent.load_pocs(
+        conn, [CVE_1], session=FakeSession(), pause=0, sleep=lambda seconds: None,
     )
 
-    assert procesados == 0
+    assert processed == 0
     assert conn.execute(
         "SELECT poc_count FROM enrichments WHERE cve_id = ?", (CVE_1,)
     ).fetchone()[0] == 7
 
 
-def test_select_poc_targets_saca_de_la_cola_los_ya_cargados(conn, rss_session):
-    """Sin este filtro el lote repite el mismo top y los PoCs no llegan nunca."""
+def test_select_poc_targets_drops_already_loaded_from_queue(conn, rss_session):
+    """Without this filter the batch repeats the same top and PoCs never arrive."""
     conn.execute("INSERT INTO cves (cve_id, published) VALUES (?, ?)", ("CVE-2026-7000", "2026-06-01T00:00:00Z"))
     upsert_kev(conn, [{"cveID": "CVE-2026-7000", "dateAdded": "2026-06-02"}])
     load_rss(conn, ["https://feeds.example.com/rss"], session=rss_session)
 
     assert agent.select_poc_targets(conn, limit=1) == [CVE_2]
     agent.upsert_pocs(conn, CVE_2, [{"repo": "x/y", "url": "https://github.com/x/y"}])
-    # Ya cargado: el siguiente de la cola pasa a ser el primero del lote.
+    # Already loaded: the next in the queue becomes the head of the batch.
     assert agent.select_poc_targets(conn, limit=1) == [CVE_1]
 
 
-def test_select_poc_targets_prioriza_cves_con_prensa(conn, rss_session):
+def test_select_poc_targets_prioritizes_cves_with_press(conn, rss_session):
     conn.execute("INSERT INTO cves (cve_id, published) VALUES (?, ?)", ("CVE-2026-7000", "2026-06-01T00:00:00Z"))
     upsert_kev(conn, [{"cveID": "CVE-2026-7000", "dateAdded": "2026-06-02"}])
     load_rss(conn, ["https://feeds.example.com/rss"], session=rss_session)
 
     targets = agent.select_poc_targets(conn, limit=2)
 
-    # Los CVEs con más menciones van primero; el lote está acotado por limit.
+    # CVEs with more mentions go first; the batch is bounded by limit.
     assert targets == [CVE_2, CVE_1]
     assert agent.select_poc_targets(conn, limit=0) == []
 
 
-def test_select_tone_targets_toma_un_titular_por_cve(conn, rss_session):
+def test_select_tone_targets_takes_one_headline_per_cve(conn, rss_session):
     load_rss(conn, ["https://feeds.example.com/rss"], session=rss_session)
 
     targets = agent.select_tone_targets(conn, limit=10)
@@ -530,9 +530,9 @@ def test_select_tone_targets_toma_un_titular_por_cve(conn, rss_session):
 
 
 # --------------------------------------------------------------------------
-# Rerank LLM de feeds: descarta no-vulns, resuelve CVE y captura apodos
+# LLM rerank of feeds: drops non-vulns, resolves the CVE and captures nicknames
 # --------------------------------------------------------------------------
-def test_parse_rerank_reply_acepta_fences_y_prosa():
+def test_parse_rerank_reply_accepts_fences_and_prose():
     reply = (
         "Aca va:\n```json\n"
         '[{"i": 1, "cve_id": "CVE-2026-1111", "brand_name": "Log4Shell", "relevant": true}]\n'
@@ -545,13 +545,13 @@ def test_parse_rerank_reply_acepta_fences_y_prosa():
     assert items[0]["brand_name"] == "Log4Shell"
 
 
-def test_parse_rerank_reply_sin_json_devuelve_vacio():
+def test_parse_rerank_reply_without_json_returns_empty():
     assert agent.parse_rerank_reply("no pude procesar") == []
     assert agent.parse_rerank_reply(None) == []
     assert agent.parse_rerank_reply("[{roto}]") == []
 
 
-def test_rerank_entries_mapea_por_indice_y_descarta_cve_invalido():
+def test_rerank_entries_maps_by_index_and_drops_invalid_cve():
     entries = [
         {"title": "Uno", "summary": ""},
         {"title": "Dos", "summary": ""},
@@ -565,15 +565,15 @@ def test_rerank_entries_mapea_por_indice_y_descarta_cve_invalido():
 
     out = agent.rerank_entries(entries, completer=lambda prompt: reply)
 
-    assert out[0]["cve_id"] == "CVE-2026-2222"  # se normaliza a mayúsculas
+    assert out[0]["cve_id"] == "CVE-2026-2222"  # normalized to uppercase
     assert out[0]["brand_name"] == "Heartbleed"
-    assert out[1]["cve_id"] is None  # formato inválido no se propaga
+    assert out[1]["cve_id"] is None  # invalid format is not propagated
     assert out[1]["brand_name"] is None
     assert out[2]["relevant"] is False
-    assert out[2]["brand_name"] is None  # apodo sin CVE no sirve
+    assert out[2]["brand_name"] is None  # a nickname without a CVE is useless
 
 
-def test_rerank_entries_llm_caido_no_pierde_entradas():
+def test_rerank_entries_llm_down_does_not_lose_entries():
     entries = [{"title": "Uno"}, {"title": "Dos"}]
 
     def boom(prompt):
@@ -584,7 +584,7 @@ def test_rerank_entries_llm_caido_no_pierde_entradas():
     assert out == [{}, {}]
 
 
-def test_mentions_from_rerank_solo_toma_vulns_con_cve():
+def test_mentions_from_rerank_only_takes_vulns_with_cve():
     entries = [
         {"title": "Chrome RCE", "url": "https://x/1", "source": "x"},
         {"title": "Conferencia anual", "url": "https://x/2", "source": "x"},

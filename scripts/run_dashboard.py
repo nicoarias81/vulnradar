@@ -1,4 +1,4 @@
-"""Arranca el dashboard: init DB, seed de demo si hace falta, servidor HTML."""
+"""Starts the dashboard: init the DB, seed the demo if needed, HTML server."""
 from __future__ import annotations
 
 import os
@@ -23,7 +23,7 @@ def _score_count() -> int:
 def main() -> int:
     init_db()
     if os.getenv("SEED_DEMO", "1") != "0":
-        print("Cargando / actualizando CVEs de demostración…")
+        print("Loading / updating demo CVEs...")
         seed()
         print(f"scores en DB: {_score_count()}")
 

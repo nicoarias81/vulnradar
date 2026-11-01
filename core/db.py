@@ -1,8 +1,8 @@
 """
-PostgreSQL: conexión, esquema e aislamiento de tests.
+PostgreSQL: connection, schema and test isolation.
 
-Producción usa DATABASE_URL (postgres externo). Los tests reutilizan la misma
-URL con un schema `t_<hash>` por clave (antes era un archivo SQLite).
+Production uses DATABASE_URL (external postgres). Tests reuse the same URL
+with a `t_<hash>` schema per key (it used to be a SQLite file).
 """
 from __future__ import annotations
 
@@ -26,14 +26,14 @@ except ImportError:  # pragma: no cover
 
 
 def resolve_path(value: str, default: str) -> Path:
-    """Resuelve una ruta de configuración relativa a la raíz del repo."""
+    """Resolves a config path relative to the repo root."""
     raw = (value or "").strip() or default
     path = Path(raw).expanduser()
     return path if path.is_absolute() else (REPO_ROOT / path)
 
 
-# Tests: monkeypatch DB_PATH a un Path único para aislar el schema.
-# Producción: None → schema public.
+# Tests: monkeypatch DB_PATH to a unique Path to isolate the schema.
+# Production: None → public schema.
 DB_PATH = None
 
 _NAMED = re.compile(r"(?<!:):([a-zA-Z_][a-zA-Z0-9_]*)")
@@ -51,7 +51,7 @@ def database_url() -> str:
 
 
 def schema_name(path) -> str:
-    """Schema de aislamiento. None → public. Cualquier otra clave → t_<sha1>."""
+    """Isolation schema. None → public. Any other key → t_<sha1>."""
     if path is None:
         return "public"
     digest = hashlib.sha1(str(path).encode("utf-8")).hexdigest()[:16]
@@ -59,10 +59,10 @@ def schema_name(path) -> str:
 
 
 class Row:
-    """Fila con acceso por nombre e índice, como sqlite3.Row.
+    """Row with access by name and index, like sqlite3.Row.
 
-    `SELECT AVG(a), AVG(b)` en Postgres nombra las dos columnas `avg`; el
-    índice 0/1 sigue distinguiéndolas.
+    `SELECT AVG(a), AVG(b)` in Postgres names both columns `avg`; the
+    index 0/1 still tells them apart.
     """
 
     __slots__ = ("_names", "_values", "_map")
@@ -111,7 +111,7 @@ def _row_factory(cursor):
 
 
 def adapt_sql(sql_text: str) -> str:
-    """Traduce placeholders SQLite (`?`, `:name`) y INSERT OR IGNORE a Postgres."""
+    """Translates SQLite placeholders (`?`, `:name`) and INSERT OR IGNORE to Postgres."""
     if _INSERT_OR_IGNORE.search(sql_text):
         sql_text = _INSERT_OR_IGNORE.sub("INSERT INTO", sql_text, count=1)
         stripped = sql_text.rstrip()
@@ -142,7 +142,7 @@ def split_sql(script: str) -> list[str]:
 
 
 class PgConnection:
-    """Fachada mínima compatible con sqlite3.Connection (execute/commit/close)."""
+    """Minimal facade compatible with sqlite3.Connection (execute/commit/close)."""
 
     def __init__(self, raw: psycopg.Connection):
         self._raw = raw
@@ -160,12 +160,12 @@ class PgConnection:
             return cur
 
     def executescript(self, script: str) -> list:
-        """Aplica el script sentencia por sentencia, cada una con su savepoint.
+        """Applies the script statement by statement, each with its own savepoint.
 
-        Sin savepoints, una sola sentencia que falla aborta la transacción entera y
-        las siguientes mueren con InFailedSqlTransaction: el error que se veía era
-        el de la sentencia posterior, no el real. El esquema es idempotente y
-        aditivo, así que una falla puntual no debe impedir el resto.
+        Without savepoints, a single failing statement aborts the whole transaction
+        and the following ones die with InFailedSqlTransaction: the error seen was
+        the one from the later statement, not the real one. The schema is idempotent
+        and additive, so a one-off failure must not block the rest.
         """
         fallidas = []
         for stmt in split_sql(script):
@@ -198,52 +198,52 @@ class PgConnection:
 
 
 def get_db(path: Path | str | None = None) -> PgConnection:
-    """Abre Postgres. `path` aísla un schema de test; None usa DB_PATH o public."""
+    """Opens Postgres. `path` isolates a test schema; None uses DB_PATH or public."""
     isolation = path if path is not None else DB_PATH
     schema = schema_name(isolation)
     raw = psycopg.connect(database_url(), row_factory=_row_factory)
     raw.execute("SET timezone TO 'UTC'")
-    # Sin commit la sesión queda "idle in transaction" desde el primer SET: retiene
-    # locks y, si algo falla, cualquier sentencia siguiente muere con
-    # InFailedSqlTransaction (así se rompía init_db al arrancar).
+    # Without a commit the session stays "idle in transaction" from the first SET:
+    # it holds locks and, if something fails, any following statement dies with
+    # InFailedSqlTransaction (that is how init_db broke on startup).
     raw.commit()
     if schema != "public":
         ident = sql.Identifier(schema)
-        # `CREATE SCHEMA IF NOT EXISTS` no es atómico entre sesiones: dashboard y
-        # worker arrancan a la vez y la segunda choca en pg_namespace_nspname_index.
-        # Esa UniqueViolation abortaba la transacción y dejaba el schema sin aplicar
-        # (el "Aviso: no se pudo aplicar el esquema" del deploy).
+        # `CREATE SCHEMA IF NOT EXISTS` is not atomic across sessions: dashboard and
+        # worker start at once and the second one hits pg_namespace_nspname_index.
+        # That UniqueViolation aborted the transaction and left the schema unapplied
+        # (the "Warning: could not apply the schema" from the deploy).
         try:
             raw.execute(sql.SQL("CREATE SCHEMA IF NOT EXISTS {}").format(ident))
             raw.commit()
         except psycopg.errors.UniqueViolation:
-            raw.rollback()  # otra sesión lo creó primero: el schema existe igual
-        # public va de respaldo: las extensiones (pg_trgm, unaccent) viven ahí y sin
-        # él los índices gin_trgm_ops de un schema aislado no resuelven.
+            raw.rollback()  # another session created it first: the schema exists anyway
+        # public goes as fallback: the extensions (pg_trgm, unaccent) live there and
+        # without it the gin_trgm_ops indexes of an isolated schema do not resolve.
         raw.execute(sql.SQL("SET search_path TO {}, public").format(ident))
         raw.commit()
     return PgConnection(raw)
 
 
 def init_db(path: Path | str | None = None):
-    """Crea el esquema. Idempotente: schema.sql sólo usa IF NOT EXISTS.
+    """Creates the schema. Idempotent: schema.sql only uses IF NOT EXISTS.
 
-    Dashboard y worker arrancan a la vez y `CREATE TABLE IF NOT EXISTS` no es atómico
-    consigo mismo en Postgres: la segunda sesión choca en `pg_type_typname_nsp_index`.
-    Las dos se serializan con un advisory lock de sesión (se libera solo si el proceso muere).
+    Dashboard and worker start at once and `CREATE TABLE IF NOT EXISTS` is not atomic
+    with itself in Postgres: the second session hits `pg_type_typname_nsp_index`.
+    Both are serialized with a session advisory lock (released only if the process dies).
     """
     isolation = path if path is not None else DB_PATH
     lock_key = f"vulnradar.init_db.{schema_name(isolation)}"
     conn = get_db(isolation)
     try:
-        # El DDL necesita ACCESS EXCLUSIVE: si el worker está en medio de un lote
-        # grande (enrich), esperar acá colgaba el arranque del dashboard, que
-        # nunca llegaba a abrir el puerto. Mejor fallar rápido y seguir con el
-        # esquema existente (schema.sql es idempotente).
+        # DDL needs ACCESS EXCLUSIVE: if the worker is in the middle of a large
+        # batch (enrich), waiting here hung the dashboard startup, which never got
+        # to open the port. Better to fail fast and go on with the existing schema
+        # (schema.sql is idempotent).
         conn.execute("SET lock_timeout = '10s'")
-        # pg_trgm sostiene los índices gin_trgm_ops del schema: sin la extensión el
-        # script entero aborta y la base queda vacía (así fallaban los tests y el
-        # aviso de arranque). Si el rol no puede crearla, se sigue y se ve el error real.
+        # pg_trgm backs the schema's gin_trgm_ops indexes: without the extension the
+        # whole script aborts and the DB stays empty (so the tests and the startup
+        # warning failed). If the role cannot create it, it goes on and the real error shows.
         try:
             conn.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
             conn.commit()
@@ -269,8 +269,8 @@ def init_db(path: Path | str | None = None):
 
 def ensure_cve_stub(conn, cve_id: str) -> None:
     """
-    Fila mínima en cves para no perder señales (KEV/EPSS) de CVEs que el sync
-    todavía no trajo. El FK de enrichments exige el CVE padre.
+    Minimal row in cves so signals (KEV/EPSS) are not lost for CVEs the sync
+    has not brought yet. The enrichments FK requires the parent CVE.
     """
     conn.execute(
         "INSERT INTO cves (cve_id) VALUES (?) ON CONFLICT (cve_id) DO NOTHING",
@@ -322,7 +322,7 @@ def table_indexes(conn, name: str) -> set[str]:
 
 
 def drop_test_schemas() -> None:
-    """Borra schemas t_* creados por pytest. No toca public."""
+    """Drops t_* schemas created by pytest. Does not touch public."""
     try:
         url = database_url()
     except RuntimeError:

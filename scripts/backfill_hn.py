@@ -1,16 +1,16 @@
-"""Atención técnica vía Hacker News (Algolia API), sin key ni registro.
+"""Technical attention via Hacker News (Algolia API), no key or registration.
 
-Google News nos bloqueó la IP con 503 después de unos miles de consultas y su
-ritmo sostenido era ~1,2 CVE/s. HN responde en ~0,6 s y aguanta 12 req/s
-medidos, con cobertura del 55% en CVEs de 2021-2024: sirve como barrido masivo
-donde Google ya no da abasto.
+Google News blocked our IP with 503 after a few thousand queries and its
+sustained rate was ~1.2 CVE/s. HN answers in ~0.6 s and holds 12 req/s
+measured, with 55% coverage on 2021-2024 CVEs: it works as a massive sweep
+where Google no longer keeps up.
 
     python scripts/backfill_hn.py --entrada .cache/pendientes.csv \
         --salida .cache/hn --shard 0/1 --hilos 8 --rate 10
 
-Escribe el mismo NDJSON que backfill_local.py, así entra por
-import_menciones.py. El estado es propio (hechos-hn-<shard>.txt): HN y Google
-no comparten qué está hecho, porque un CVE puede estar en una y no en la otra.
+It writes the same NDJSON as backfill_local.py, so it goes in through
+import_menciones.py. Its state is its own (hechos-hn-<shard>.txt): HN and Google
+do not share what is done, because a CVE can be in one and not the other.
 """
 
 import argparse
@@ -25,18 +25,18 @@ import requests
 
 API = "https://hn.algolia.com/api/v1/search"
 UA = "vulnradar-research/0.1 (+https://nan.builders)"
-POR_PAGINA = 100
+PER_PAGE = 100
 
 
-def buscar(cve_id, sesion, timeout=20):
-    """(menciones, estado). Sólo stories: los comentarios son ruido para esto."""
+def search(cve_id, session, timeout=20):
+    """(mentions, state). Stories only: comments are noise for this."""
     try:
-        r = sesion.get(API, params={"query": cve_id, "hitsPerPage": POR_PAGINA},
+        r = session.get(API, params={"query": cve_id, "hitsPerPage": PER_PAGE},
                        timeout=timeout, headers={"User-Agent": UA})
     except Exception as exc:
         return [], f"error:{type(exc).__name__}"
     if r.status_code in (429, 503):
-        return [], "bloqueado"
+        return [], "throttled"
     if r.status_code != 200:
         return [], f"error:{r.status_code}"
     try:
@@ -44,30 +44,30 @@ def buscar(cve_id, sesion, timeout=20):
     except ValueError:
         return [], "error:json"
 
-    salida, vistas = [], set()
+    results, seen = [], set()
     for hit in hits:
-        etiquetas = hit.get("_tags") or []
-        if "story" not in etiquetas:
+        tags = hit.get("_tags") or []
+        if "story" not in tags:
             continue
-        titulo = (hit.get("title") or hit.get("story_title") or "").strip()
-        if not titulo:
+        title = (hit.get("title") or hit.get("story_title") or "").strip()
+        if not title:
             continue
         url = (hit.get("url") or "").strip()
         if not url:
             url = f"https://news.ycombinator.com/item?id={hit.get('objectID')}"
-        if url in vistas:
+        if url in seen:
             continue
-        vistas.add(url)
-        salida.append({
+        seen.add(url)
+        results.append({
             "cve_id": cve_id,
             "url": url,
-            "title": titulo,
+            "title": title,
             "source": "Hacker News",
             "published": hit.get("created_at"),
             "points": hit.get("points") or 0,
             "comments": hit.get("num_comments") or 0,
         })
-    return salida, "ok"
+    return results, "ok"
 
 
 def main():
@@ -81,97 +81,97 @@ def main():
     args = p.parse_args()
 
     i, n = (int(x) for x in args.shard.split("/"))
-    salida = Path(args.salida)
-    salida.mkdir(parents=True, exist_ok=True)
-    ndjson = salida / f"hn-{i}de{n}.jsonl"
-    hechos = salida / f"hechos-hn-{i}de{n}.txt"
+    out_dir = Path(args.salida)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    ndjson = out_dir / f"hn-{i}de{n}.jsonl"
+    done_file = out_dir / f"hechos-hn-{i}de{n}.txt"
 
-    ya = set()
-    if hechos.exists():
-        ya = {l.strip() for l in hechos.read_text(encoding="utf-8").splitlines() if l.strip()}
+    already = set()
+    if done_file.exists():
+        already = {l.strip() for l in done_file.read_text(encoding="utf-8").splitlines() if l.strip()}
 
-    pendientes = []
+    pending = []
     with open(args.entrada, newline="", encoding="utf-8") as fh:
-        for idx, fila in enumerate(csv.reader(fh)):
-            if not fila:
+        for idx, row in enumerate(csv.reader(fh)):
+            if not row:
                 continue
-            if idx % n != i or fila[0] in ya:
+            if idx % n != i or row[0] in already:
                 continue
-            pendientes.append(fila[0])
-            if args.limite and len(pendientes) >= args.limite:
+            pending.append(row[0])
+            if args.limite and len(pending) >= args.limite:
                 break
 
-    print(f"shard {i}/{n}: {len(pendientes)} CVEs por consultar en HN "
-          f"({len(ya)} ya hechos)", flush=True)
-    if not pendientes:
+    print(f"shard {i}/{n}: {len(pending)} CVEs to query on HN "
+          f"({len(already)} already done)", flush=True)
+    if not pending:
         return
 
-    intervalo = (1.0 / args.rate) if args.rate > 0 else 0.0
-    turno_lock = threading.Lock()
-    ultimo = [0.0]
-    hilo_local = threading.local()
+    interval = (1.0 / args.rate) if args.rate > 0 else 0.0
+    rate_lock = threading.Lock()
+    last = [0.0]
+    thread_local = threading.local()
 
-    def turno():
-        if not intervalo:
+    def throttle():
+        if not interval:
             return
-        with turno_lock:
-            espera = intervalo - (time.monotonic() - ultimo[0])
-            if espera > 0:
-                time.sleep(espera)
-            ultimo[0] = time.monotonic()
+        with rate_lock:
+            wait = interval - (time.monotonic() - last[0])
+            if wait > 0:
+                time.sleep(wait)
+            last[0] = time.monotonic()
 
-    def sesion():
-        if not hasattr(hilo_local, "s"):
-            hilo_local.s = requests.Session()
-        return hilo_local.s
+    def session():
+        if not hasattr(thread_local, "s"):
+            thread_local.s = requests.Session()
+        return thread_local.s
 
-    def procesar(cve):
-        turno()
-        return cve, buscar(cve, sesion())
+    def process(cve):
+        throttle()
+        return cve, search(cve, session())
 
     t0 = time.perf_counter()
-    con_datos = total = bloqueos = 0
+    with_data = total = blocked_streak = 0
     with open(ndjson, "a", encoding="utf-8") as out, \
-            open(hechos, "a", encoding="utf-8") as done, \
+            open(done_file, "a", encoding="utf-8") as done, \
             ThreadPoolExecutor(max_workers=args.hilos) as pool:
-        futuros = {pool.submit(procesar, c): c for c in pendientes}
+        futures = {pool.submit(process, c): c for c in pending}
         try:
-            for k, fut in enumerate(as_completed(futuros), 1):
+            for k, fut in enumerate(as_completed(futures), 1):
                 try:
-                    cve, (menciones, estado) = fut.result()
+                    cve, (mentions, state) = fut.result()
                 except Exception as exc:
-                    print(f"  {futuros[fut]}: {type(exc).__name__}", flush=True)
+                    print(f"  {futures[fut]}: {type(exc).__name__}", flush=True)
                     continue
-                if estado != "ok":
-                    bloqueos += 1
-                    if bloqueos >= 25:
-                        for pend in futuros:
+                if state != "ok":
+                    blocked_streak += 1
+                    if blocked_streak >= 25:
+                        for pend in futures:
                             pend.cancel()
-                        print(f"\nABORTADO: {bloqueos} consultas sin respuesta útil "
-                              f"({estado}). Los CVEs con error quedan pendientes.",
+                        print(f"\nABORTED: {blocked_streak} queries without a useful response "
+                              f"({state}). CVEs with an error stay pending.",
                               flush=True)
                         return
                     continue
-                bloqueos = 0
-                for m in menciones:
+                blocked_streak = 0
+                for m in mentions:
                     out.write(json.dumps(m, ensure_ascii=False) + "\n")
-                total += len(menciones)
-                if menciones:
-                    con_datos += 1
+                total += len(mentions)
+                if mentions:
+                    with_data += 1
                 done.write(cve + "\n")
                 if k % 250 == 0:
                     out.flush()
                     done.flush()
                     dt = time.perf_counter() - t0
-                    print(f"{k}/{len(pendientes)}  {k/dt:5.1f} CVE/s  "
-                          f"con_menciones={con_datos}  menciones={total}", flush=True)
+                    print(f"{k}/{len(pending)}  {k/dt:5.1f} CVE/s  "
+                          f"with_mentions={with_data}  mentions={total}", flush=True)
         finally:
             out.flush()
             done.flush()
 
     dt = time.perf_counter() - t0
-    print(f"fin: {len(pendientes)} CVEs en {dt:.0f}s ({len(pendientes)/dt:.1f} CVE/s), "
-          f"{con_datos} con menciones, {total} menciones -> {ndjson}", flush=True)
+    print(f"done: {len(pending)} CVEs in {dt:.0f}s ({len(pending)/dt:.1f} CVE/s), "
+          f"{with_data} with mentions, {total} mentions -> {ndjson}", flush=True)
 
 
 if __name__ == "__main__":

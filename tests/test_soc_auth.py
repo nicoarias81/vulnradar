@@ -1,4 +1,4 @@
-"""El panel SOC no es público: cookie HMAC y credenciales de entorno."""
+"""The SOC panel is not public: HMAC cookie and environment credentials."""
 from __future__ import annotations
 
 import threading
@@ -13,7 +13,7 @@ from dashboard import auth
 from dashboard.server import DashboardHandler
 
 
-def test_sin_password_nadie_entra(monkeypatch):
+def test_without_password_nobody_gets_in(monkeypatch):
     monkeypatch.setenv("SOC_PASSWORD", "")
     monkeypatch.delenv("SOC_USER", raising=False)
     assert auth.configured() is False
@@ -22,7 +22,7 @@ def test_sin_password_nadie_entra(monkeypatch):
     assert auth.token() is None
 
 
-def test_password_correcto_emite_cookie_valida(monkeypatch):
+def test_correct_password_issues_valid_cookie(monkeypatch):
     monkeypatch.setenv("SOC_USER", "op")
     monkeypatch.setenv("SOC_PASSWORD", "secret")
     assert auth.check("op", "secret") is True
@@ -33,7 +33,7 @@ def test_password_correcto_emite_cookie_valida(monkeypatch):
     assert auth.authorized(f"{auth.COOKIE}=deadbeef") is False
 
 
-def test_overview_no_enlaza_el_soc():
+def test_overview_does_not_link_soc():
     from dashboard.markup import overview_html
 
     html = overview_html(
@@ -46,7 +46,7 @@ def test_overview_no_enlaza_el_soc():
     assert "SOC MONITORING" not in html
 
 
-def test_login_html_no_es_el_panel():
+def test_login_html_is_not_the_panel():
     from dashboard.markup import login_html
 
     html = login_html()
@@ -84,41 +84,41 @@ def _http(httpd: ThreadingHTTPServer, method: str, path: str, *, body: str | Non
         conn.close()
 
 
-def test_soc_sin_cookie_muestra_login(soc_http):
+def test_soc_without_cookie_shows_login(soc_http):
     status, body, _ = _http(soc_http, "GET", "/soc")
     assert status == 200
-    assert "Entrar" in body
+    assert "Sign in" in body
     assert "REAL-TIME AGENTS" not in body
     assert "Live processing feed" not in body
 
 
-def test_agentes_sin_cookie_muestra_login(soc_http):
+def test_agents_without_cookie_shows_login(soc_http):
     status, body, _ = _http(soc_http, "GET", "/agentes")
     assert status == 200
-    assert "Entrar" in body
+    assert "Sign in" in body
     assert "REAL-TIME AGENTS" not in body
 
 
-def test_publico_no_expone_soc(soc_http):
+def test_public_page_does_not_expose_soc(soc_http):
     status, body, _ = _http(soc_http, "GET", "/")
     assert status == 200
     assert 'href="/soc"' not in body
     assert "SOC MONITORING" not in body
 
 
-def test_login_incorrecto_sigue_en_formulario(soc_http):
+def test_wrong_login_stays_on_form(soc_http):
     status, body, hdrs = _http(
         soc_http, "POST", "/soc",
         body=urlencode({"user": "op", "password": "nope"}),
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
     assert status == 200
-    assert "inválidos" in body
+    assert "Invalid username or password" in body
     assert "set-cookie" not in hdrs
     assert "REAL-TIME AGENTS" not in body
 
 
-def test_login_correcto_abre_panel_y_logout_cierra(soc_http):
+def test_correct_login_opens_panel_and_logout_closes(soc_http):
     status, _, hdrs = _http(
         soc_http, "POST", "/soc",
         body=urlencode({"user": "op", "password": "secret"}),
@@ -137,5 +137,5 @@ def test_login_correcto_abre_panel_y_logout_cierra(soc_http):
     cleared = hdrs.get("set-cookie", "")
     assert "Max-Age=0" in cleared
     status, body, _ = _http(soc_http, "GET", "/soc")
-    assert "Entrar" in body
+    assert "Sign in" in body
     assert "REAL-TIME AGENTS" not in body

@@ -1,14 +1,14 @@
-# Producción — personal-1 (Hetzner CAX21, ARM64), acceso sólo por Cloudflare Tunnel.
+# Production — personal-1 (Hetzner CAX21, ARM64), reachable only through the Cloudflare Tunnel.
 #
-#   bash deploy/deploy.sh        (blue-green: levanta el slot inactivo y mueve el tráfico)
+#   bash deploy/deploy.sh        (blue-green: brings up the idle slot and moves traffic)
 #
-# - `proxy` (Caddy) publica 127.0.0.1:8501, que es lo que consume el túnel, y
-#   enruta al slot activo (dashboard-a:8511 o dashboard-b:8512).
-# - Los slots NO se publican al público: sólo en loopback para inspección.
-# - `default` = bridge con salida a internet (worker: git/CISA/EPSS/RSS/GitHub).
-# - `litellm` = red `internal` compartida con el LiteLLM de /opt/stack.
-# - `../data` (bind mount) guarda el mirror cvelistV5: NUNCA se pisa con git archive.
-# - La DB es PostgreSQL externo (`DATABASE_URL` en `.env.prod`).
+# - `proxy` (Caddy) publishes 127.0.0.1:8501, which is what the tunnel consumes,
+#   and routes to the active slot (dashboard-a:8511 or dashboard-b:8512).
+# - The slots are NOT published publicly: loopback only, for inspection.
+# - `default` = bridge with outbound internet (worker: git/CISA/EPSS/RSS/GitHub).
+# - `litellm` = `internal` network shared with the LiteLLM from /opt/stack.
+# - `../data` (bind mount) holds the cvelistV5 mirror: NEVER overwrite it with git archive.
+# - The DB is external PostgreSQL (`DATABASE_URL` in `.env.prod`).
 
 name: vulnradar
 
@@ -35,7 +35,7 @@ services:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8501/health')"]
       interval: 30s
       timeout: 5s
-      # Arranca en ~2 min; con 20s quedaba unhealthy mientras todavía cargaba.
+      # It boots in ~2 min; with 20s it was marked unhealthy while still loading.
       start_period: 240s
       retries: 3
 
@@ -50,9 +50,9 @@ services:
     ports:
       - "127.0.0.1:8512:8501"
 
-  # Caddy publica el puerto que consume el túnel (8501) y enruta al slot
-  # activo. El switch es un reload atómico: las conexiones en curso terminan
-  # contra el slot anterior, así que un deploy no corta el sitio.
+  # Caddy publishes the port the tunnel consumes (8501) and routes to the
+  # active slot. The switch is an atomic reload: connections in flight finish
+  # against the previous slot, so a deploy does not drop the site.
   proxy:
     image: caddy:2-alpine
     ports:
@@ -79,7 +79,7 @@ services:
       - ../data:/app/data
     networks: [default, litellm, db]
     restart: unless-stopped
-    # Un ciclo de sync/enrich puede tardar; que el SIGTERM no corte una escritura.
+    # A sync/enrich cycle can take a while; don't let SIGTERM cut a write short.
     stop_grace_period: 2m
     healthcheck:
       disable: true

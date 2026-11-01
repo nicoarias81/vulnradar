@@ -1,22 +1,22 @@
-"""El snippet de Umami no va en las vistas con auto-refresh.
+"""The Umami snippet is not injected into views that auto-refresh.
 
-/soc recarga cada 8s por `<meta http-equiv="refresh">`: si trackea, cada recarga
-suma una visita y las métricas del sitio quedan infladas (medido: 167 de 396
-eventos eran recargas del panel).
+/soc reloads every 8s through `<meta http-equiv="refresh">`: if it tracked, every
+reload would add a visit and the site metrics would be inflated (measured: 167 out
+of 396 events were panel reloads).
 """
 from dashboard.markup import document
 
 SCRIPT = "analytics.munalabs.eu/script.js"
 
 
-def test_pagina_normal_trackea():
+def test_normal_page_tracks():
     assert SCRIPT in document("<p>x</p>")
 
 
-def test_vista_con_auto_refresh_no_trackea():
+def test_view_with_auto_refresh_does_not_track():
     assert SCRIPT not in document("<p>x</p>", refresh=8)
 
 
-def test_track_explicito_gana_sobre_el_refresh():
+def test_explicit_track_wins_over_refresh():
     assert SCRIPT in document("<p>x</p>", refresh=8, track=True)
     assert SCRIPT not in document("<p>x</p>", track=False)

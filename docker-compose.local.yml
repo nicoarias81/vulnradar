@@ -1,7 +1,7 @@
-# Ambiente local con blue-green real: Caddy publica 8500 y enruta al slot
-# activo (dashboard-a o dashboard-b). Los slots se publican en 8511/8512 sólo
-# para inspección directa; el tráfico público no pasa por ahí.
-# Uso: ./scripts/ab.sh up | deploy | status | rollback
+# Local environment with real blue-green: Caddy publishes 8500 and routes to the
+# active slot (dashboard-a or dashboard-b). The slots are published on 8511/8512
+# only for direct inspection; public traffic does not go through them.
+# Usage: ./scripts/ab.sh up | deploy | status | rollback
 
 services:
   postgres:
@@ -45,8 +45,8 @@ services:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8501/health')"]
       interval: 15s
       timeout: 5s
-      # El dashboard tarda ~2 min en quedar listo: con start_period corto se
-      # marcaba unhealthy mientras todavía estaba arrancando.
+      # The dashboard takes ~2 min to come up: with a short start_period it
+      # was marked unhealthy while it was still booting.
       start_period: 240s
       retries: 3
 
@@ -73,8 +73,8 @@ services:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8501/health')"]
       interval: 15s
       timeout: 5s
-      # El dashboard tarda ~2 min en quedar listo: con start_period corto se
-      # marcaba unhealthy mientras todavía estaba arrancando.
+      # The dashboard takes ~2 min to come up: with a short start_period it
+      # was marked unhealthy while it was still booting.
       start_period: 240s
       retries: 3
 

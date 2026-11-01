@@ -1,7 +1,7 @@
-"""Regresión: dashboard y worker llaman init_db() a la vez al arrancar.
+"""Regression: dashboard and worker call init_db() at the same time on startup.
 
-En Postgres, dos `CREATE TABLE IF NOT EXISTS` simultáneos chocan en
-pg_type_typname_nsp_index (db.py usa un advisory lock para serializarlos).
+In Postgres, two simultaneous `CREATE TABLE IF NOT EXISTS` collide on
+pg_type_typname_nsp_index (db.py uses an advisory lock to serialize them).
 """
 import multiprocessing as mp
 import os
@@ -19,12 +19,12 @@ def _run(path: str, q) -> None:
 
         init_db(pathlib.Path(path))
         q.put("ok")
-    except Exception as exc:  # noqa: BLE001 - el test reporta el tipo de error
+    except Exception as exc:  # noqa: BLE001 - the test reports the error type
         q.put(f"{type(exc).__name__}: {exc}")
 
 
 @pytest.mark.parametrize("_round", range(3))
-def test_init_db_concurrente_no_choca(_round):
+def test_concurrent_init_db_does_not_collide(_round):
     path = str(pathlib.Path(tempfile.gettempdir()) / f"race_test_{os.getpid()}_{_round}.db")
     q = mp.Queue()
     procs = [mp.Process(target=_run, args=(path, q)) for _ in range(4)]

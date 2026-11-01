@@ -1,4 +1,4 @@
-"""Tests del dashboard sin runtime de Streamlit: carga y filtrado de scores."""
+"""Dashboard tests without the Streamlit runtime: loading and filtering scores."""
 from pathlib import Path
 
 import pytest
@@ -36,7 +36,7 @@ def conn(db_file):
     connection.close()
 
 
-def _score(conn, cve_id, hype, reality, category, *, description="Descripción de prueba"):
+def _score(conn, cve_id, hype, reality, category, *, description="Test description"):
     conn.execute(
         "INSERT INTO cves (cve_id, description, cvss_score, cvss_severity) "
         "VALUES (?, ?, ?, ?)",
@@ -49,12 +49,12 @@ def _score(conn, cve_id, hype, reality, category, *, description="Descripción d
     conn.commit()
 
 
-def test_load_scores_con_db_vacia_devuelve_cero_filas(conn):
-    # Sin scores la UI muestra el empty state: la carga no puede explotar.
+def test_load_scores_with_empty_db_returns_zero_rows(conn):
+    # With no scores the UI shows the empty state: loading must not blow up.
     assert load_scores(conn) == []
 
 
-def test_load_scores_devuelve_los_dos_scores_con_su_categoria(conn):
+def test_load_scores_returns_both_scores_with_category(conn):
     _score(conn, OVERHYPED, 9.2, 2.1, "Overhyped")
     _score(conn, QUIET, 1.5, 3.0, "Quiet")
 
@@ -64,15 +64,15 @@ def test_load_scores_devuelve_los_dos_scores_con_su_categoria(conn):
     por_cve = {row["cve_id"]: row for row in rows}
     assert por_cve[OVERHYPED]["category"] == "Overhyped"
     assert por_cve[QUIET]["category"] == "Quiet"
-    # JOIN con cves: la descripción y el CVSS llegan al dashboard.
-    assert por_cve[OVERHYPED]["description"] == "Descripción de prueba"
+    # JOIN with cves: description and CVSS reach the dashboard.
+    assert por_cve[OVERHYPED]["description"] == "Test description"
     assert por_cve[OVERHYPED]["cvss_score"] == 9.8
-    # LEFT JOIN con enrichments: sin enrichment las señales son NULL, no filas menos.
+    # LEFT JOIN with enrichments: without enrichment signals are NULL, not fewer rows.
     assert por_cve[OVERHYPED]["tone_score"] is None
     assert por_cve[OVERHYPED]["alertado"] is False
 
 
-def test_filter_scores_por_categoria_deja_solo_overhyped(conn):
+def test_filter_scores_by_category_keeps_only_overhyped(conn):
     _score(conn, OVERHYPED, 9.2, 2.1, "Overhyped")
     _score(conn, QUIET, 1.5, 3.0, "Quiet")
     rows = load_scores(conn)
@@ -80,11 +80,11 @@ def test_filter_scores_por_categoria_deja_solo_overhyped(conn):
     filtradas = filter_scores(rows, ["Overhyped"])
 
     assert [row["cve_id"] for row in filtradas] == [OVERHYPED]
-    # Sin categorías elegidas no se filtra nada.
+    # With no categories selected nothing is filtered.
     assert len(filter_scores(rows, [])) == 2
 
 
-def test_filter_scores_respeta_los_minimos_de_hype_y_reality(conn):
+def test_filter_scores_respects_hype_and_reality_minimums(conn):
     _score(conn, OVERHYPED, 9.2, 2.1, "Overhyped")
     _score(conn, QUIET, 1.5, 3.0, "Quiet")
     rows = load_scores(conn)
@@ -94,12 +94,12 @@ def test_filter_scores_respeta_los_minimos_de_hype_y_reality(conn):
 
     assert [row["cve_id"] for row in solo_hype] == [OVERHYPED]
     assert [row["cve_id"] for row in solo_reality] == [QUIET]
-    # Un mínimo en 0 es "sin filtro" (default de los sliders).
+    # A minimum of 0 means "no filter" (slider default).
     assert len(filter_scores(rows, None, 0, 0)) == 2
 
 
-def test_load_scores_sin_tabla_alerts_sent_no_falla(conn):
-    # Base creada antes de la Fase 4: sin alerts_sent todo queda no alertado.
+def test_load_scores_without_alerts_sent_table_does_not_fail(conn):
+    # DB created before Phase 4: without alerts_sent everything stays unalerted.
     conn.execute("DROP TABLE alerts_sent")
     conn.commit()
     _score(conn, OVERHYPED, 9.2, 2.1, "Overhyped")
@@ -111,10 +111,10 @@ def test_load_scores_sin_tabla_alerts_sent_no_falla(conn):
     assert rows[0]["alertas"] == 0
 
 
-def test_load_scores_marca_los_cves_ya_alertados(conn):
+def test_load_scores_marks_already_alerted_cves(conn):
     _score(conn, OVERHYPED, 9.2, 2.1, "Overhyped")
     _score(conn, QUIET, 1.5, 3.0, "Quiet")
-    # Dos alertas para el mismo CVE: el flag es "count > 0", no la regla.
+    # Two alerts for the same CVE: the flag is "count > 0", not the rule.
     for rule in ("overhyped", "humo"):
         conn.execute(
             "INSERT INTO alerts_sent (cve_id, channel, rule) VALUES (?, 'slack', ?)",
@@ -129,7 +129,7 @@ def test_load_scores_marca_los_cves_ya_alertados(conn):
     assert por_cve[QUIET]["alertado"] is False
 
 
-def test_guess_vuln_type_y_daily_averages(conn):
+def test_guess_vuln_type_and_daily_averages(conn):
     assert guess_vuln_type("Remote code execution in foo") == "RCE"
     assert guess_vuln_type("reflected XSS") == "XSS"
     conn.execute(
@@ -159,7 +159,7 @@ def test_guess_vuln_type_y_daily_averages(conn):
     assert {item["key"] for item in comps} == {"cvss", "media", "tone", "branding", "pocs"}
 
 
-def test_count_y_limit_no_materializan_todo(conn):
+def test_count_and_limit_do_not_materialize_everything(conn):
     for i in range(5):
         _score(conn, f"CVE-2026-02{i:02d}", 9.0 - i, 1.0, "Overhyped",
                description="RCE")
@@ -175,7 +175,7 @@ def test_count_y_limit_no_materializan_todo(conn):
     assert count_scores(conn, category="Quiet") == 0
 
 
-def test_load_recent_events_y_ultimo_status(conn):
+def test_load_recent_events_and_last_status(conn):
     conn.execute(
         "INSERT INTO agent_events (agent, event_type, details, status) "
         "VALUES ('sync', 'SYNC', 'ok', 'SUCCESS')"
@@ -193,12 +193,12 @@ def test_load_recent_events_y_ultimo_status(conn):
     assert stats["agents"]["sync"]["status"] == "RUNNING"
 
 
-def test_la_categoria_no_juzga_gravedad():
-    """Un reality bajo es falta de evidencia de uso, no un fallo inofensivo.
+def test_category_does_not_judge_severity():
+    """Low reality means missing evidence of use, not a harmless bug.
 
-    "Sobrevalorado" se leía como "no hace falta parchear": la etiqueta ahora
-    dice qué se midió, y el aviso aclara que un CVE recién publicado todavía
-    no acumuló evidencia.
+    "Overrated" read as "no need to patch": the label now says what was
+    measured, and the note makes clear that a freshly published CVE has not
+    accumulated evidence yet.
     """
     from dashboard.markup import detail_html
 
@@ -224,8 +224,8 @@ def test_la_categoria_no_juzga_gravedad():
     assert "Published 3 days ago" in html
 
 
-def test_parse_dt_acepta_rfc822_de_los_feeds():
-    """Las menciones guardan la fecha del RSS tal cual llega, no en ISO."""
+def test_parse_dt_accepts_rfc822_from_feeds():
+    """Mentions store the RSS date exactly as it arrives, not in ISO."""
     from dashboard import screens
 
     momento = screens.parse_dt("Fri, 16 Oct 2026 07:00:00 GMT")
@@ -233,7 +233,7 @@ def test_parse_dt_acepta_rfc822_de_los_feeds():
     assert momento is not None
     assert momento.year == 2026 and momento.month == 10 and momento.day == 16
     assert momento.tzinfo is not None
-    # ISO sigue funcionando (NVD y Postgres) y lo inválido no rompe.
+    # ISO still works (NVD and Postgres) and invalid input does not break.
     assert screens.parse_dt("2026-10-16T07:00:00Z").day == 16
     assert screens.parse_dt("") is None
     assert screens.parse_dt("no es una fecha") is None

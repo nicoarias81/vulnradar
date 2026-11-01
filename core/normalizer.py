@@ -1,8 +1,8 @@
 """
-Normalización — CVE List V5 al esquema de la tabla cves y señales internas.
+Normalization — CVE List V5 to the cves table schema and internal signals.
 
-`build_signals` es la ÚNICA fuente de verdad del mapeo DB -> fórmulas v2:
-lo usan el scoring agent (fila unida) y los tests.
+`build_signals` is the ONLY source of truth for the DB -> v2 formula mapping:
+both the scoring agent (joined row) and the tests use it.
 """
 import json
 import re
@@ -11,24 +11,24 @@ from typing import Any, Mapping, Optional
 from core.models import CveRecord, Enrichment, NormalizedCve
 from core.scoring import exploit_ease
 
-# Orden de preferencia de CVSS: v3.1, luego v3.0, luego v4.0.
+# CVSS preference order: v3.1, then v3.0, then v4.0.
 CVSS_KEYS = ("cvssV3_1", "cvssV3_0", "cvssV4_0")
 
-# Escalas de las señales blandas (antes inline en scoring_agent).
+# Scales for the soft signals (previously inline in scoring_agent).
 MEDIA_COUNT_PER_POINT = 2.0   # media_score = min(media_count / 2, 10)
 POC_COUNT_PER_POINT = 2.0     # poc_score   = min(poc_count * 2, 10)
 SCALE_CAP = 10.0
 
 
-# Los CNA escriben el producto con la versión adentro: "Google Chrome prior to
-# 55.0.2883.75 for Mac, Windows and Linux". Como filtro de producto eso es ruido:
-# cada versión sería una opción distinta del desplegable.
+# CNAs write the product with the version inside: "Google Chrome prior to
+# 55.0.2883.75 for Mac, Windows and Linux". As a product filter that is noise:
+# each version would be a different option in the dropdown.
 VERSION_SPLIT = re.compile(
     r"\s+(?:prior\s+to|before|through|up\s+to|all\s+versions)\s+",
     re.IGNORECASE,
 )
-# "versions" por sí solo aparece en frases ("customize the mobile version
-# without redirections"): sólo corta si le sigue un número o un comparador.
+# "versions" on its own shows up in phrases ("customize the mobile version
+# without redirections"): it only cuts if a number or comparator follows.
 VERSION_WORD = re.compile(r"\s+versions?\s+(?=[<>=~]?\s*[vV]?\d)", re.IGNORECASE)
 VERSION_TAIL = re.compile(r"\s*[<>=~]+\s*[\w.]+.*$")
 VERSION_NUMBER = re.compile(r"\s+v?\d+(?:\.\d+)+.*$")
@@ -36,7 +36,7 @@ PRODUCT_EMPTY = {"", "*", "-", "n/a", "unknown"}
 
 
 def clean_product(product: str) -> str:
-    """Producto sin la versión pegada: 'Chrome prior to 120' -> 'Chrome'."""
+    """Product without the trailing version: 'Chrome prior to 120' -> 'Chrome'."""
     text = (product or "").strip()
     text = VERSION_SPLIT.split(text, maxsplit=1)[0]
     text = VERSION_WORD.split(text, maxsplit=1)[0]
@@ -46,10 +46,10 @@ def clean_product(product: str) -> str:
 
 
 def extract_vendor_product(data: Mapping[str, Any]) -> tuple:
-    """(vendor, product) del primer `affected` que declare producto.
+    """(vendor, product) from the first `affected` that declares a product.
 
-    El registro CVE 5.0 lo pone en `containers.cna.affected[]` y, si el CNA no lo
-    declaró, en los bloques ADP.
+    The CVE 5.0 record puts it in `containers.cna.affected[]` and, if the CNA
+    did not declare it, in the ADP blocks.
     """
     if not isinstance(data, Mapping):
         return None, None
@@ -70,8 +70,8 @@ def extract_vendor_product(data: Mapping[str, Any]) -> tuple:
 
 def normalize_cve_list_v5(raw: Mapping[str, Any]) -> Optional[dict]:
     """
-    Convierte un JSON CVE List V5 (dataType CVE_RECORD) en los campos de cves.
-    Devuelve None si el registro no trae cveId.
+    Turns a CVE List V5 JSON (dataType CVE_RECORD) into the cves fields.
+    Returns None if the record carries no cveId.
     """
     meta = raw.get("cveMetadata") or {}
     cve_id = (meta.get("cveId") or "").strip()
@@ -95,7 +95,7 @@ def normalize_cve_list_v5(raw: Mapping[str, Any]) -> Optional[dict]:
 
 
 def build_normalized_cve(cve_row, enrichment_row=None) -> NormalizedCve:
-    """Arma el esquema interno normalizado a partir de una fila de DB."""
+    """Builds the normalized internal schema from a DB row."""
     cve = CveRecord(
         cve_id=_get(cve_row, "cve_id") or "",
         published=_get(cve_row, "published"),
@@ -132,7 +132,7 @@ def build_normalized_cve(cve_row, enrichment_row=None) -> NormalizedCve:
 
 
 def build_signals(cve_row, enrichment_row=None) -> dict:
-    """Señales planas compatibles con core.scoring.score_cve."""
+    """Flat signals compatible with core.scoring.score_cve."""
     normalized = build_normalized_cve(cve_row, enrichment_row)
     signals = normalized.signals
 
@@ -159,7 +159,7 @@ def poc_score(poc_count: int) -> float:
 
 
 def _extract_cvss(cna: Mapping[str, Any], adp: list) -> dict:
-    """Primer bloque CVSS según CVSS_KEYS, buscando en cna y luego en adp."""
+    """First CVSS block per CVSS_KEYS, looking in cna and then in adp."""
     blocks = [m for m in (cna.get("metrics") or []) if isinstance(m, Mapping)]
     for container in adp:
         if isinstance(container, Mapping):
@@ -182,7 +182,7 @@ def _extract_description(cna: Mapping[str, Any]) -> str:
 
 
 def _get(row, key: str):
-    """Lee una clave de un dict o de una fila (Row / mapping)."""
+    """Reads a key from a dict or from a row (Row / mapping)."""
     if row is None:
         return None
     if isinstance(row, Mapping):

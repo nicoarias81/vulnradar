@@ -1,7 +1,7 @@
-"""El rerank no debe volver a mandar al LLM las entradas ya procesadas.
+"""Rerank must not send already processed entries to the LLM again.
 
-Medido en producción: los 7 feeds tardaban ~5 min por ciclo y devolvían 0 menciones
-nuevas, porque los RSS rotan lento y cada corrida re-analizaba las mismas notas.
+Measured in production: the 7 feeds took ~5 min per cycle and returned 0 new
+mentions, because RSS rotates slowly and every run re-analyzed the same items.
 """
 import json
 from pathlib import Path
@@ -54,7 +54,7 @@ def session():
 
 
 class _Counter:
-    """Completer falso: cuenta llamadas y contesta un CVE fijo por entrada."""
+    """Fake completer: counts calls and answers a fixed CVE per entry."""
 
     def __init__(self, fail=False):
         self.calls = 0
@@ -63,8 +63,8 @@ class _Counter:
     def __call__(self, prompt):
         self.calls += 1
         if self.fail:
-            raise RuntimeError("LLM caído")
-        # Cada entrada del prompt viene como 'N. title="..." summary="..."'.
+            raise RuntimeError("LLM down")
+        # Each entry in the prompt comes as 'N. title="..." summary="..."'.
         n = sum(1 for line in prompt.splitlines() if line.strip()[:2].rstrip(".").isdigit())
         return json.dumps([
             {"i": i + 1, "cve_id": "CVE-2026-9001", "brand_name": None, "relevant": True}
@@ -79,7 +79,7 @@ def _rerank(conn, session, counter):
     )
 
 
-def test_primera_corrida_usa_el_llm(conn, session):
+def test_first_run_uses_the_llm(conn, session):
     counter = _Counter()
     nuevas = _rerank(conn, session, counter)
 
@@ -87,7 +87,7 @@ def test_primera_corrida_usa_el_llm(conn, session):
     assert nuevas
 
 
-def test_segunda_corrida_no_gasta_llm(conn, session):
+def test_second_run_does_not_spend_llm(conn, session):
     first = _Counter()
     _rerank(conn, session, first)
 
@@ -98,7 +98,7 @@ def test_segunda_corrida_no_gasta_llm(conn, session):
     assert nuevas == {}
 
 
-def test_guarda_las_urls_procesadas(conn, session):
+def test_stores_processed_urls(conn, session):
     _rerank(conn, session, _Counter())
 
     guardadas = {row["url"] for row in conn.execute("SELECT url FROM reranked_urls").fetchall()}
@@ -108,7 +108,7 @@ def test_guarda_las_urls_procesadas(conn, session):
     assert guardadas == del_fixture
 
 
-def test_lote_caido_no_se_marca_y_se_reintenta(conn, session):
+def test_failed_batch_is_not_marked_and_is_retried(conn, session):
     _rerank(conn, session, _Counter(fail=True))
 
     assert conn.execute("SELECT count(*) c FROM reranked_urls").fetchone()["c"] == 0
@@ -118,9 +118,9 @@ def test_lote_caido_no_se_marca_y_se_reintenta(conn, session):
     assert retry.calls > 0, "una entrada sin veredicto no puede quedar como procesada"
 
 
-def test_get_db_no_deja_transaccion_abierta(db_file):
-    # Sin commit del SET inicial la sesión queda "idle in transaction" y cualquier
-    # sentencia posterior muere con InFailedSqlTransaction si algo falló antes.
+def test_get_db_leaves_no_open_transaction(db_file):
+    # Without committing the initial SET the session stays "idle in transaction" and any
+    # later statement dies with InFailedSqlTransaction if something failed earlier.
     conn = get_db(db_file)
     try:
         assert conn._raw.info.transaction_status == psycopg.pq.TransactionStatus.IDLE

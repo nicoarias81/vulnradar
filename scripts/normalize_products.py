@@ -1,14 +1,14 @@
-"""Normaliza la columna `product` de `cves` (saca la versión pegada al nombre).
+"""Normalizes the `product` column of `cves` (strips the version glued to the name).
 
-Los CNA escriben "Google Chrome prior to 55.0.2883.75 for Mac, Windows and Linux"
-y así cada versión queda como un producto distinto: 60k opciones en el filtro.
-`clean_product` corta el sufijo de versión.
+The CNAs write "Google Chrome prior to 55.0.2883.75 for Mac, Windows and Linux"
+and that way every version becomes a different product: 60k options in the filter.
+`clean_product` cuts the version suffix.
 
     python scripts/normalize_products.py --dry-run
     python scripts/normalize_products.py
 
-Un solo UPDATE contra una tabla temporal: 61k UPDATE fila por fila reconstruyen
-el índice trigram muchas veces y tardan minutos.
+A single UPDATE against a temp table: 61k row-by-row UPDATEs rebuild
+the trigram index many times and take minutes.
 """
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ def main(dry_run: bool = False) -> dict:
     conn = get_db()
     try:
         mapping = build_mapping(conn)
-        print(f"productos distintos con versión pegada: {len(mapping)}")
+        print(f"distinct products with a version glued on: {len(mapping)}")
         if dry_run:
             for old, new in list(mapping.items())[:10]:
                 print(f"  {old!r} -> {new!r}")
@@ -65,7 +65,7 @@ def main(dry_run: bool = False) -> dict:
                    count(*) FILTER (WHERE product <> '') AS con_producto
             FROM cves
         """).fetchone()
-        print(f"productos distintos ahora: {stats['distintos']} | con producto: {stats['con_producto']}")
+        print(f"distinct products now: {stats['distintos']} | with product: {stats['con_producto']}")
         return {"mapped": len(mapping), "distintos": stats["distintos"]}
     finally:
         conn.close()

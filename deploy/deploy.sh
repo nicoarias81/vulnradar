@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Deploy de VulnRadar a personal-1 (Hetzner CAX21, ARM64) vía Cloudflare Tunnel.
+# Deploy VulnRadar to personal-1 (Hetzner CAX21, ARM64) over a Cloudflare Tunnel.
 #
 #   bash deploy/deploy.sh                   # deploy completo (exige tree limpio y deploy/ commiteado)
 #   bash deploy/deploy.sh --from-worktree    # deploya el working tree actual (sin commitear)
-#   bash deploy/deploy.sh --allow-dirty      # deploya HEAD aunque haya cambios sin commitear
-#   bash deploy/deploy.sh --no-build         # sólo recreate (cambios de env, no de código)
+#   bash deploy/deploy.sh --allow-dirty      # deploy HEAD even with uncommitted changes
+#   bash deploy/deploy.sh --no-build         # recreate only (env changes, not code)
 #   bash deploy/deploy.sh --skip-cloudflare  # sin tocar ingress/DNS
 #
-# El código viaja por tar (el server NO es git repo). `data/` y `deploy/.env.prod` nunca se pisan.
+# Code travels as a tarball (the server is NOT a git repo). `data/` and `deploy/.env.prod` are never overwritten.
 set -euo pipefail
 
 REMOTE_HOST=root@ssh.munalabs.eu
@@ -37,8 +37,8 @@ ssh_srv() {
       -i "$KEY" "$REMOTE_HOST" "$@"
 }
 
-# Con hora en cada paso: sin esto no se sabe qué tramo del deploy consume los
-# ~2 min que el sitio pasa abajo.
+# Timestamp on every step: without it there is no telling which part of the deploy eats the
+# ~2 min the site spends down.
 step() { printf '\n== %s  [%s]\n' "$*" "$(date +%H:%M:%S)"; }
 
 step "preflight"
@@ -80,26 +80,26 @@ ssh_srv "grep -q '^SOC_PASSWORD=.' $REMOTE/deploy/.env.prod && echo 'soc: passwo
 ssh_srv "grep -q '^LITELLM_API_KEY=.' $REMOTE/deploy/.env.prod && echo 'llm: key present' || echo 'llm: NO key -> tone/branding fall back to heuristic'"
 
 step "cleanup of old project orphans"
-# Contenedores de un compose anterior quedan como `<hash>_vulnradar-<svc>` y se
-# quedan con el nombre del servicio: el `up` los reconoce, los deja en `created`
-# y no arranca nada. Se borran antes de levantar.
+# Containers from an earlier compose keep the name `<hash>_vulnradar-<svc>` and stay
+# stuck on the service name: `up` recognises them, leaves them in `created`
+# and starts nothing. They are removed before bringing anything up.
 ssh_srv "docker ps -a --format '{{.Names}}' | grep -E '^[0-9a-f]{12}_vulnradar-' | xargs -r docker rm -f 2>&1 | tail -5 || true"
 
 step "base services (proxy, active slot untouched)"
-# El dashboard activo NO se recrea acá: lo reemplaza el blue-green de abajo.
+# The active dashboard is NOT recreated here: the blue-green switch below replaces it.
 ssh_srv "cd $REMOTE && docker compose -f deploy/docker-compose.server.yml --env-file deploy/.env.prod up -d --no-deps proxy 2>&1 | tail -6"
 
 step "blue-green (candidate in parallel, traffic untouched until it responds)"
-# Construir ANTES de levantar: compilar dentro del up deja el contenedor abajo.
-# ab.sh levanta el slot inactivo, espera su /health (hasta 4 min) y recién ahí
-# mueve el tráfico con un reload atómico de Caddy; si el candidato no responde,
-# el sitio sigue sirviendo desde el slot anterior.
+# Build BEFORE bringing up: compiling inside `up` leaves the container down.
+# ab.sh starts the idle slot, waits for its /health (up to 4 min) and only then
+# moves traffic with an atomic Caddy reload; if the candidate does not answer,
+# the site keeps serving from the previous slot.
 if [ "$BUILD" -eq 1 ]; then
   ssh_srv "cd $REMOTE && docker compose -f deploy/docker-compose.server.yml build 2>&1 | tail -8"
 fi
-# El worker comparte la imagen con los slots pero no pasa por el blue-green:
-# recrearlo antes del build lo dejaba con el código anterior recalculando y
-# pisando los scores nuevos en cada ciclo. Va después del build, siempre.
+# The worker shares the image with the slots but does not go through blue-green:
+# recreating it before the build left it running the previous code and
+# overwriting the new scores on every cycle. It always goes after the build.
 ssh_srv "cd $REMOTE && docker compose -f deploy/docker-compose.server.yml --env-file deploy/.env.prod up -d --no-deps --force-recreate worker 2>&1 | tail -6"
 ssh_srv "cd $REMOTE && COMPOSE_FILE=deploy/docker-compose.server.yml ENV_FILE=deploy/.env.prod PROXY_PORT=8501 SLOT_A_PORT=8511 SLOT_B_PORT=8512 STATE_FILE=$REMOTE/.ab-active bash scripts/ab.sh deploy"
 
@@ -128,7 +128,7 @@ ssh_srv "
   echo -n 'worker last log    : '; docker logs --tail 3 vulnradar-worker-1 2>&1 | tr '\n' ' ' | cut -c1-200; echo
 "
 sleep 3
-# El resolver de Windows puede tener NXDOMAIN cacheado de un dominio recién creado: forzamos la IP del edge.
+# The Windows resolver can cache NXDOMAIN for a freshly created domain: force the edge IP.
 IP=$(nslookup vulnradar.munalabs.eu 1.1.1.1 2>/dev/null | grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' | grep -v '^1\.1\.1\.1$' | head -1 | tr -d '\r')
 if [ -n "${IP:-}" ]; then RES=(--resolve "vulnradar.munalabs.eu:443:$IP"); else RES=(); fi
 echo -n "public https       : "

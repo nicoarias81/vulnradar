@@ -1,30 +1,30 @@
 """
-Alert Agent — avisa cuando un CVE merece atención.
+Alert Agent — flags when a CVE deserves attention.
 
-Lee los scores vigentes (JOIN cves + enrichments), evalúa reglas opt-in y
-entrega por Slack y/o webhook genérico. La tabla `alerts_sent` es el candado
-anti-spam: una alerta enviada no se repite.
+Reads the current scores (JOIN cves + enrichments), evaluates opt-in rules and
+delivers over Slack and/or a generic webhook. The `alerts_sent` table is the
+anti-spam lock: an alert already sent is never repeated.
 
-Uso:
-    python agents/alert_agent.py                 # una pasada y sale (default)
-    python agents/alert_agent.py --dry-run       # evalúa e imprime, sin POST ni escrituras
-    python agents/alert_agent.py --skip-slack    # sólo webhook genérico
+Usage:
+    python agents/alert_agent.py                 # one pass and exit (default)
+    python agents/alert_agent.py --dry-run       # evaluate and print, no POST and no writes
+    python agents/alert_agent.py --skip-slack    # generic webhook only
     python agents/alert_agent.py --once
 
-Reglas (todas opt-in por umbral, no hay alertas "por defecto"):
-    overhyped        category == "Overhyped"      hype alto, miedo bajo
-    earned_the_hype  category == "Earned the hype" hype y miedo altos
-    humo             tone_score >= 7 y reality < 5  humo mediático
-    sleeper          category == "Sleeper"        miedo alto, poca prensa
+Rules (all opt-in by threshold, there are no "default" alerts):
+    overhyped        category == "Overhyped"      high hype, low fear
+    earned_the_hype  category == "Earned the hype" high hype and fear
+    humo             tone_score >= 7 and reality < 5  media hype
+    sleeper          category == "Sleeper"        high fear, little press
 
-Un CVE puede disparar más de una regla: cada (cve_id, regla) es una alerta
-distinta y se deduplica por su propia fila en `alerts_sent`.
+A CVE can trip more than one rule: each (cve_id, rule) pair is a separate alert
+and is deduplicated by its own row in `alerts_sent`.
 
-Canales (URLs por entorno; sin URL el canal se omite):
+Channels (URLs from the environment; a channel with no URL is skipped):
     SLACK_WEBHOOK_URL   Slack incoming webhook      -> JSON {text, blocks}
-    ALERT_WEBHOOK_URL   webhook genérico (JSON POST)
+    ALERT_WEBHOOK_URL   generic webhook (JSON POST)
 
-En tests no hay red: `session` es inyectable (basta un objeto con `.post`).
+Tests have no network: `session` is injectable (anything with `.post` will do).
 """
 import argparse
 import hashlib
@@ -45,7 +45,7 @@ TIMEOUT_SECONDS = 15
 
 NVD_URL = "https://nvd.nist.gov/vuln/detail/{cve_id}"
 
-# Umbral de la regla "humo": pánico en los titulares sin miedo real detrás.
+# Threshold for the "humo" rule: panic in the headlines with no real fear behind.
 HUMO_TONE_THRESHOLD = 7.0
 HUMO_REALITY_THRESHOLD = 5.0
 
@@ -55,12 +55,12 @@ WEBHOOK_ENV = "ALERT_WEBHOOK_URL"
 RULE_LABELS = {
     "overhyped": "Overhyped",
     "earned_the_hype": "Earned the hype",
-    "humo": "Hype sin sustento",
+    "humo": "Unearned hype",
     "sleeper": "Sleeper",
 }
 
-# scores tiene UNIQUE(cve_id): no hace falta MAX(id) ni ventana histórica,
-# la fila del CVE ya ES el score vigente. enrichments puede faltar (LEFT JOIN).
+# scores has UNIQUE(cve_id): no MAX(id) or history window needed, the CVE row
+# already IS the current score. enrichments may be missing (LEFT JOIN).
 SELECT_SCORED = """
     SELECT s.cve_id, s.hype, s.reality, s.category, s.calculated_at,
            c.description, c.cvss_score, c.cvss_severity,
@@ -81,7 +81,7 @@ INSERT_SENT = """
 
 @dataclass
 class Alert:
-    """Una regla disparada sobre un CVE: la unidad que viaja y se deduplica."""
+    """One rule fired on one CVE: the unit that travels and gets deduplicated."""
 
     cve_id: str
     rule: str
@@ -107,16 +107,16 @@ class Alert:
 
 
 # --------------------------------------------------------------------------
-# Lectura de scores vigentes y evaluación de reglas
+# Reading current scores and evaluating rules
 # --------------------------------------------------------------------------
 def load_scored(conn) -> list:
-    """Scores vigentes con su CVE y (si existe) su enrichment."""
+    """Current scores with their CVE and, when present, their enrichment."""
     return conn.execute(SELECT_SCORED).fetchall()
 
 
 def fired_rules(row, *, humo_tone=HUMO_TONE_THRESHOLD,
                 humo_reality=HUMO_REALITY_THRESHOLD) -> list:
-    """Reglas que dispara una fila, en orden estable. Sin señales, no hay regla."""
+    """Rules a row fires, in stable order. No signals, no rule."""
     category = (row["category"] or "").strip()
     rules = []
     if category == "Overhyped":
@@ -126,7 +126,7 @@ def fired_rules(row, *, humo_tone=HUMO_TONE_THRESHOLD,
 
     tone = row["tone_score"]
     reality = row["reality"]
-    # "humo": titulares de pánico con poco miedo real. Independiente de la categoría.
+    # "humo": panic headlines with little real fear. Independent of the category.
     if tone is not None and reality is not None \
             and tone >= humo_tone and reality < humo_reality:
         rules.append("humo")
@@ -138,7 +138,7 @@ def fired_rules(row, *, humo_tone=HUMO_TONE_THRESHOLD,
 
 def build_alerts(rows, *, humo_tone=HUMO_TONE_THRESHOLD,
                  humo_reality=HUMO_REALITY_THRESHOLD) -> list:
-    """Una Alert por cada regla disparada. La categoría sale del score, no se recalcula."""
+    """One Alert per fired rule. The category comes from the score, it is not recomputed."""
     alerts = []
     for row in rows:
         for rule in fired_rules(row, humo_tone=humo_tone, humo_reality=humo_reality):
@@ -162,7 +162,7 @@ def build_alerts(rows, *, humo_tone=HUMO_TONE_THRESHOLD,
 
 def evaluate(conn, *, humo_tone=HUMO_TONE_THRESHOLD,
              humo_reality=HUMO_REALITY_THRESHOLD) -> list:
-    """Azúcar sobre build_alerts para quien ya tiene la conexión."""
+    """Sugar over build_alerts for callers that already hold the connection."""
     return build_alerts(load_scored(conn), humo_tone=humo_tone,
                         humo_reality=humo_reality)
 
@@ -171,7 +171,7 @@ def evaluate(conn, *, humo_tone=HUMO_TONE_THRESHOLD,
 # Payloads
 # --------------------------------------------------------------------------
 def build_slack_payload(alert: Alert) -> dict:
-    """Slack incoming webhook: `text` siempre presente, `blocks` simple."""
+    """Slack incoming webhook: `text` always present, `blocks` kept simple."""
     summary = (f"{alert.cve_id} — {alert.label} "
                f"(hype {alert.hype:.1f} / reality {alert.reality:.1f})")
     return {
@@ -190,7 +190,7 @@ def build_slack_payload(alert: Alert) -> dict:
 
 
 def build_webhook_payload(alert: Alert) -> dict:
-    """Webhook genérico: JSON plano para cualquier consumidor."""
+    """Generic webhook: plain JSON for any consumer."""
     return {
         "event": "vulnradar.alert",
         "cve_id": alert.cve_id,
@@ -217,13 +217,13 @@ def build_payload(alert: Alert, channel: str) -> dict:
 
 
 def payload_hash(payload: dict) -> str:
-    """sha256 del JSON canónico: auditoría de qué se envió realmente."""
+    """sha256 of the canonical JSON: an audit trail of what was really sent."""
     canonical = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 # --------------------------------------------------------------------------
-# Envío y dedupe
+# Delivery and dedupe
 # --------------------------------------------------------------------------
 def already_sent(conn, alert: Alert, channel: str) -> bool:
     row = conn.execute(
@@ -234,12 +234,12 @@ def already_sent(conn, alert: Alert, channel: str) -> bool:
 
 
 def post_alert(session, url, payload, *, channel, cve_id) -> bool:
-    """POST con timeout. Un 4xx/5xx o una excepción devuelven False: no se marca."""
+    """POST with a timeout. A 4xx/5xx or an exception returns False: it is not marked."""
     headers = {"User-Agent": USER_AGENT, "Content-Type": "application/json"}
     try:
         response = session.post(url, json=payload, headers=headers,
                                 timeout=TIMEOUT_SECONDS)
-    except Exception as exc:  # timeout, DNS, TLS, conexión rechazada
+    except Exception as exc:  # timeout, DNS, TLS, connection refused
         print(f"{channel} {cve_id}: {exc}")
         return False
 
@@ -251,27 +251,27 @@ def post_alert(session, url, payload, *, channel, cve_id) -> bool:
 
 
 def mark_sent(conn, alert: Alert, channel: str, digest: str) -> None:
-    """Sólo se llama después de un POST exitoso."""
+    """Only called after a successful POST."""
     conn.execute(INSERT_SENT, (alert.cve_id, channel, alert.rule, digest))
 
 
 def resolve_channel_url(env, name, explicit=None) -> str | None:
-    """URL del canal: el argumento explícito pisa el entorno. Sin URL, no hay canal."""
+    """Channel URL: the explicit argument overrides the environment. No URL, no channel."""
     value = explicit if explicit is not None else env.get(name)
     value = (value or "").strip()
     return value or None
 
 
 # --------------------------------------------------------------------------
-# Orquestación y CLI
+# Orchestration and CLI
 # --------------------------------------------------------------------------
 def run(*, dry_run=False, skip_slack=False, skip_webhook=False, db_path=None,
         session=None, env=None, slack_url=None, webhook_url=None,
         humo_tone=HUMO_TONE_THRESHOLD, humo_reality=HUMO_REALITY_THRESHOLD) -> dict:
     """
-    Una pasada: evalúa, filtra lo ya enviado y entrega por los canales activos.
+    One pass: evaluate, drop what was already sent, deliver on active channels.
 
-    `dry_run` no POSTea ni escribe en alerts_sent: sólo imprime el plan.
+    `dry_run` neither POSTs nor writes to alerts_sent: it only prints the plan.
     """
     environ = os.environ if env is None else env
     http = session or requests
@@ -286,7 +286,7 @@ def run(*, dry_run=False, skip_slack=False, skip_webhook=False, db_path=None,
         if url:
             channels.append(("webhook", url))
 
-    path = init_db(db_path)  # idempotente: crea alerts_sent si falta
+    path = init_db(db_path)  # idempotent: creates alerts_sent when missing
     conn = get_db(path)
     summary = {"evaluated": 0, "alerts": 0, "pending": 0, "sent": 0,
                "skipped": 0, "failed": 0, "channels": [name for name, _ in channels]}
@@ -322,32 +322,32 @@ def run(*, dry_run=False, skip_slack=False, skip_webhook=False, db_path=None,
         conn.close()
 
     if not summary["alerts"]:
-        print("Nada para alertar: no hay scores que disparen reglas.")
+        print("Nothing to alert: no scores trigger any rules.")
     elif dry_run:
-        print(f"[dry-run] {summary['pending']} alertas pendientes, "
-              f"{summary['skipped']} ya enviadas. No se envió ni se escribió nada.")
+        print(f"[dry-run] {summary['pending']} alerts pending, "
+              f"{summary['skipped']} already sent. Nothing was sent and nothing was written.")
     else:
-        print(f"Alertas: evaluadas={summary['evaluated']} disparadas={summary['alerts']} "
-              f"enviadas={summary['sent']} omitidas={summary['skipped']} "
-              f"fallidas={summary['failed']} canales={','.join(summary['channels']) or 'ninguno'}")
+        print(f"Alerts: evaluated={summary['evaluated']} triggered={summary['alerts']} "
+              f"sent={summary['sent']} skipped={summary['skipped']} "
+              f"failed={summary['failed']} channels={','.join(summary['channels']) or 'none'}")
     return summary
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Alertas de CVEs por Slack y/o webhook genérico (dedupe en alerts_sent).",
+        description="CVE alerts via Slack and/or a generic webhook (dedupe in alerts_sent).",
     )
     parser.add_argument("--dry-run", action="store_true",
-                        help="Evalúa e imprime. No POSTea ni escribe alerts_sent.")
+                        help="Evaluates and prints. Does not POST or write to alerts_sent.")
     parser.add_argument("--once", action="store_true",
-                        help="Una sola pasada y sale (comportamiento por defecto).")
+                        help="A single pass, then exits (default behavior).")
     parser.add_argument("--skip-slack", action="store_true", help="No usa SLACK_WEBHOOK_URL.")
     parser.add_argument("--skip-webhook", action="store_true", help="No usa ALERT_WEBHOOK_URL.")
     parser.add_argument("--humo-tone", type=float, default=HUMO_TONE_THRESHOLD,
-                        help=f"tone_score mínimo para la regla humo (default {HUMO_TONE_THRESHOLD}).")
+                        help=f"minimum tone_score for the humo rule (default {HUMO_TONE_THRESHOLD}).")
     parser.add_argument("--humo-reality", type=float, default=HUMO_REALITY_THRESHOLD,
-                        help=f"reality máximo para la regla humo (default {HUMO_REALITY_THRESHOLD}).")
-    parser.add_argument("--db-path", default=None, help="Schema de test. Producción: DATABASE_URL.")
+                        help=f"maximum reality for the humo rule (default {HUMO_REALITY_THRESHOLD}).")
+    parser.add_argument("--db-path", default=None, help="Test schema. Production: DATABASE_URL.")
     return parser
 
 
@@ -361,7 +361,7 @@ def main(argv=None) -> int:
         humo_tone=args.humo_tone,
         humo_reality=args.humo_reality,
     )
-    # Un canal caído no rompe la corrida, pero se refleja en el exit code.
+    # A dead channel does not break the run, but it shows up in the exit code.
     return 1 if summary["failed"] else 0
 
 
@@ -370,7 +370,7 @@ def main(argv=None) -> int:
 # --------------------------------------------------------------------------
 def _details_text(alert: Alert) -> str:
     lines = [f"*Hype* {alert.hype:.1f} · *Reality* {alert.reality:.1f} · "
-             f"*{alert.category or 'sin categoría'}*"]
+             f"*{alert.category or 'uncategorized'}*"]
     if alert.description:
         lines.append(alert.description.strip()[:400])
     senales = []

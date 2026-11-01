@@ -1,5 +1,5 @@
-"""Tests del alert agent: reglas, dedupe por alerts_sent, dry-run y canales.
-Sin red: la session HTTP es un fake inyectado."""
+"""Alert agent tests: rules, dedupe via alerts_sent, dry-run and channels.
+No network: the HTTP session is an injected fake."""
 from pathlib import Path
 
 import pytest
@@ -23,7 +23,7 @@ class FakeResponse:
 
 
 class FakeSession:
-    """Registra los POST y devuelve el status configurado. Nunca sale a la red."""
+    """Records POSTs and returns the configured status. Never touches the network."""
 
     def __init__(self, status_code=200):
         self.status_code = status_code
@@ -54,8 +54,8 @@ def conn(db_file):
 
 def _add_score(conn, cve_id, *, hype, reality, category, tone=None, media=0,
                in_kev=0, epss=None, poc=0, branding=0, brand_name=None,
-               description="Descripción de prueba"):
-    """CVE + enrichment + score vigente en una sola fila lógica."""
+               description="Test description"):
+    """CVE + enrichment + current score as a single logical row."""
     conn.execute(
         "INSERT INTO cves (cve_id, published, description, cvss_score) VALUES (?, ?, ?, ?)",
         (cve_id, "2026-01-06T12:30:00.000Z", description, 9.8),
@@ -83,16 +83,16 @@ def _sent_rows(conn, cve_id=None):
 
 
 def _no_env(**overrides):
-    """Entorno vacío: ningún canal activo por accidente del entorno real."""
+    """Empty environment: no channel active by accident from the real environment."""
     env = {}
     env.update(overrides)
     return env
 
 
 # --------------------------------------------------------------------------
-# Reglas
+# Rules
 # --------------------------------------------------------------------------
-def test_overhyped_dispara_y_quiet_no(conn, db_file):
+def test_overhyped_fires_and_quiet_does_not(conn, db_file):
     _add_score(conn, OVERHYPED, hype=8.0, reality=3.0, category="Overhyped", tone=3.0)
     _add_score(conn, QUIET, hype=4.0, reality=2.0, category="Quiet", tone=2.0)
     session = FakeSession()
@@ -108,10 +108,10 @@ def test_overhyped_dispara_y_quiet_no(conn, db_file):
     assert _sent_rows(conn)[0]["rule"] == "overhyped"
 
 
-def test_reglas_humo_sleeper_y_earned(conn, db_file):
-    # Quiet en categoría pero tone 8 con reality 4.5 -> humo mediático.
+def test_humo_sleeper_and_earned_rules(conn, db_file):
+    # Quiet in category but tone 8 with reality 4.5 -> media hype.
     _add_score(conn, HUMO, hype=6.0, reality=4.5, category="Quiet", tone=8.0)
-    # Sleeper: reality alta, hype bajo.
+    # Sleeper: high reality, low hype.
     _add_score(conn, SLEEPER, hype=4.0, reality=7.0, category="Sleeper", tone=2.0)
     _add_score(conn, EARNED, hype=7.0, reality=7.0, category="Earned the hype", tone=5.0)
     session = FakeSession()
@@ -127,7 +127,7 @@ def test_reglas_humo_sleeper_y_earned(conn, db_file):
     assert len(session.calls) == 3
 
 
-def test_sin_scores_no_hay_nada_para_alertar(conn, db_file):
+def test_no_scores_means_nothing_to_alert(conn, db_file):
     session = FakeSession()
 
     summary = agent.run(db_path=db_file, session=session, env=_no_env(),
@@ -141,7 +141,7 @@ def test_sin_scores_no_hay_nada_para_alertar(conn, db_file):
 # --------------------------------------------------------------------------
 # Dedupe
 # --------------------------------------------------------------------------
-def test_segunda_corrida_no_reenvia(conn, db_file):
+def test_second_run_does_not_resend(conn, db_file):
     _add_score(conn, OVERHYPED, hype=8.0, reality=3.0, category="Overhyped", tone=3.0)
     first, second = FakeSession(), FakeSession()
 
@@ -157,7 +157,7 @@ def test_segunda_corrida_no_reenvia(conn, db_file):
     assert len(_sent_rows(conn)) == 1
 
 
-def test_unique_impide_duplicar_la_misma_alerta(conn):
+def test_unique_prevents_duplicate_alert(conn):
     _add_score(conn, OVERHYPED, hype=8.0, reality=3.0, category="Overhyped", tone=3.0)
     alert = agent.evaluate(conn)[0]
 
@@ -170,30 +170,30 @@ def test_unique_impide_duplicar_la_misma_alerta(conn):
 
 
 # --------------------------------------------------------------------------
-# Canales
+# Channels
 # --------------------------------------------------------------------------
-def test_dry_run_no_postea_ni_inserta(conn, db_file, capsys):
+def test_dry_run_does_not_post_or_insert(conn, db_file, capsys):
     _add_score(conn, OVERHYPED, hype=8.0, reality=3.0, category="Overhyped", tone=3.0)
     session = FakeSession()
 
     summary = agent.run(db_path=db_file, session=session, env=_no_env(),
                         slack_url=SLACK_URL, webhook_url=WEBHOOK_URL, dry_run=True)
 
-    assert session.calls == []          # nada sale a la red
-    assert _sent_rows(conn) == []       # nada se escribe
-    assert summary["pending"] == 2      # una por canal
+    assert session.calls == []          # nothing goes out to the network
+    assert _sent_rows(conn) == []       # nothing is written
+    assert summary["pending"] == 2      # one per channel
     assert summary["sent"] == 0
-    salida = capsys.readouterr().out
-    assert "[dry-run]" in salida
-    assert OVERHYPED in salida
+    output = capsys.readouterr().out
+    assert "[dry-run]" in output
+    assert OVERHYPED in output
 
-    # El dry-run no quema la alerta: la corrida real después sí envía.
+    # The dry-run does not burn the alert: the real run afterwards does send it.
     post = FakeSession()
     assert agent.run(db_path=db_file, session=post, env=_no_env(),
                      slack_url=SLACK_URL)["sent"] == 1
 
 
-def test_slack_y_webhook_usan_urls_distintas(conn, db_file):
+def test_slack_and_webhook_use_different_urls(conn, db_file):
     _add_score(conn, OVERHYPED, hype=8.0, reality=3.0, category="Overhyped", tone=3.0)
     session = FakeSession()
 
@@ -206,7 +206,7 @@ def test_slack_y_webhook_usan_urls_distintas(conn, db_file):
     slack_call = next(call for call in session.calls if call["url"] == SLACK_URL)
     webhook_call = next(call for call in session.calls if call["url"] == WEBHOOK_URL)
 
-    # Slack: text + blocks. Webhook: JSON plano del evento.
+    # Slack: text + blocks. Webhook: flat JSON of the event.
     assert "blocks" in slack_call["json"]
     assert webhook_call["json"]["event"] == "vulnradar.alert"
     assert webhook_call["json"]["cve_id"] == OVERHYPED
@@ -216,13 +216,13 @@ def test_slack_y_webhook_usan_urls_distintas(conn, db_file):
     canales = {(row["cve_id"], row["channel"]) for row in _sent_rows(conn)}
     assert canales == {(OVERHYPED, "slack"), (OVERHYPED, "webhook")}
 
-    # Firma de cliente: User-Agent propio y timeout de 15s en cada POST.
+    # Client signature: own User-Agent and a 15s timeout on every POST.
     for call in session.calls:
         assert call["headers"]["User-Agent"] == agent.USER_AGENT
         assert call["timeout"] == agent.TIMEOUT_SECONDS
 
 
-def test_canal_sin_url_se_omite(conn, db_file):
+def test_channel_without_url_is_skipped(conn, db_file):
     _add_score(conn, OVERHYPED, hype=8.0, reality=3.0, category="Overhyped", tone=3.0)
     session = FakeSession()
 
@@ -234,7 +234,7 @@ def test_canal_sin_url_se_omite(conn, db_file):
     assert [row["channel"] for row in _sent_rows(conn)] == ["slack"]
 
 
-def test_env_define_las_urls_de_los_canales(conn, db_file):
+def test_env_defines_channel_urls(conn, db_file):
     _add_score(conn, OVERHYPED, hype=8.0, reality=3.0, category="Overhyped", tone=3.0)
     session = FakeSession()
 
@@ -246,7 +246,7 @@ def test_env_define_las_urls_de_los_canales(conn, db_file):
     assert sorted(session.urls) == sorted([SLACK_URL, WEBHOOK_URL])
 
 
-def test_skip_slack_deja_solo_el_webhook(conn, db_file):
+def test_skip_slack_leaves_only_the_webhook(conn, db_file):
     _add_score(conn, OVERHYPED, hype=8.0, reality=3.0, category="Overhyped", tone=3.0)
     session = FakeSession()
 
@@ -259,19 +259,19 @@ def test_skip_slack_deja_solo_el_webhook(conn, db_file):
 
 
 # --------------------------------------------------------------------------
-# Fallos de POST
+# POST failures
 # --------------------------------------------------------------------------
-def test_post_500_no_marca_y_el_retry_si_envia(conn, db_file):
+def test_post_500_does_not_mark_and_retry_does_send(conn, db_file):
     _add_score(conn, OVERHYPED, hype=8.0, reality=3.0, category="Overhyped", tone=3.0)
-    caido, sano = FakeSession(status_code=500), FakeSession(status_code=200)
+    down, sano = FakeSession(status_code=500), FakeSession(status_code=200)
 
-    summary_caido = agent.run(db_path=db_file, session=caido, env=_no_env(),
+    summary_caido = agent.run(db_path=db_file, session=down, env=_no_env(),
                               slack_url=SLACK_URL)
 
     assert summary_caido["failed"] == 1
     assert summary_caido["sent"] == 0
-    assert len(caido.calls) == 1
-    assert _sent_rows(conn) == []  # sin fila: la alerta sigue pendiente
+    assert len(down.calls) == 1
+    assert _sent_rows(conn) == []  # no row: the alert stays pending
 
     summary_retry = agent.run(db_path=db_file, session=sano, env=_no_env(),
                               slack_url=SLACK_URL)
@@ -281,7 +281,7 @@ def test_post_500_no_marca_y_el_retry_si_envia(conn, db_file):
     assert len(_sent_rows(conn)) == 1
 
 
-def test_excepcion_de_red_no_marca_la_alerta(conn, db_file):
+def test_network_exception_does_not_mark_alert(conn, db_file):
     _add_score(conn, OVERHYPED, hype=8.0, reality=3.0, category="Overhyped", tone=3.0)
 
     class BoomSession:
@@ -304,7 +304,7 @@ def test_excepcion_de_red_no_marca_la_alerta(conn, db_file):
 # --------------------------------------------------------------------------
 # Schema / init
 # --------------------------------------------------------------------------
-def test_init_db_crea_alerts_sent(tmp_path):
+def test_init_db_creates_alerts_sent(tmp_path):
     path = init_db(tmp_path / "nueva.db")
 
     conn = get_db(path)
@@ -319,14 +319,14 @@ def test_init_db_crea_alerts_sent(tmp_path):
 
     assert tabla is True
     assert columnas == {"id", "cve_id", "channel", "rule", "payload_hash", "sent_at"}
-    assert indices  # el UNIQUE(cve_id, channel, rule) crea su índice automático
+    assert indices  # the UNIQUE(cve_id, channel, rule) creates its automatic index
 
-    # Idempotente: inicializar de nuevo no rompe nada.
+    # Idempotent: initializing again breaks nothing.
     init_db(path)
 
 
-def test_alerts_sent_exige_cve_existente(conn):
-    """FK activo: no se registra una alerta de un CVE que no está en la base."""
+def test_alerts_sent_requires_existing_cve(conn):
+    """Active FK: an alert is not recorded for a CVE that is not in the database."""
     with pytest.raises(Exception) as excinfo:
         conn.execute(
             "INSERT INTO alerts_sent (cve_id, channel, rule) VALUES (?, ?, ?)",

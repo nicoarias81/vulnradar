@@ -1,4 +1,4 @@
-"""Tres pantallas del spec: overview, ficha CVE, agentes. Devuelven HTML completo."""
+"""Three screens from the spec: overview, CVE card, agents. They return full HTML."""
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
@@ -44,31 +44,31 @@ from dashboard.theme import AGENT_COLORS, SEVERITY_COLORS
 
 PAGE_SIZE = 6
 
-# Filas visibles de "Pay attention to" en la portada: llena la columna derecha
-# sin empujar el fold. El resto se ve con el filtro de acción.
+# Visible "Pay attention to" rows on the home page: fills the right column
+# without pushing the fold. The rest shows up through the action filter.
 ACTIONABLE_LIMIT = 6
 
-# Rango por defecto de la portada y del scatter de agentes. Debe ser el mismo
-# en ambos para que compartan la entrada de caché.
+# Default range for the home page and the agents scatter. It must be the same
+# in both so they share the cache entry.
 DEFAULT_RANGE_DAYS = 30
 
 
 def parse_dt(valor):
-    """Fecha tolerante: ISO (NVD, Postgres) o RFC 822 (lo que publica el RSS)."""
+    """Tolerant date: ISO (NVD, Postgres) or RFC 822 (what the RSS publishes)."""
     texto = str(valor or "").strip()
     if not texto or texto in ("—", "None"):
         return None
     try:
         momento = datetime.fromisoformat(texto.replace("Z", "+00:00"))
     except ValueError:
-        # Las menciones guardan la fecha tal como la publica el feed
-        # ("Fri, 16 Oct 2026 07:00:00 GMT"), no en ISO: sin este fallback
-        # toda la lista salía sin fecha.
+        # Mentions store the date exactly as the feed publishes it
+        # ("Fri, 16 Oct 2026 07:00:00 GMT"), not as ISO: without this fallback
+        # the whole list came out undated.
         try:
             momento = parsedate_to_datetime(texto)
         except (TypeError, ValueError):
             return None
-    # Mezcla de naive (ISO sin zona) y aware (Postgres): sin esto no se pueden ordenar.
+    # Mix of naive (ISO without a zone) and aware (Postgres): without this they cannot be sorted.
     return momento if momento.tzinfo else momento.replace(tzinfo=timezone.utc)
 
 
@@ -91,7 +91,7 @@ def _qp(qp: dict, key: str, default: str = "") -> str:
 
 
 def _sig_badges(item) -> str:
-    """Señales de explotación de un CVE como badges cortos (KEV / PoC / EPSS)."""
+    """Exploitation signals for a CVE as short badges (KEV / PoC / EPSS)."""
     sigs = []
     if item.get("in_kev"):
         fecha = str(item.get("kev_date") or "")[:10]
@@ -107,7 +107,7 @@ def _sig_badges(item) -> str:
 
 
 def _actionable_rows_html(rows) -> str:
-    """Filas de "Pay attention to": la señal manda, la fecha sólo acompaña."""
+    """"Pay attention to" rows: the signal leads, the date just tags along."""
     out = []
     for item in rows or []:
         sev = str(item.get("cvss_severity") or "—").upper()
@@ -201,14 +201,14 @@ def overview(qp: dict | None = None) -> str:
         series = load_daily_averages(
             conn, since=since, until=until, category=cat, severity=sev, product=prod,
         )
-        # Dentro del bloque: después del close() la conexión ya no sirve y la
-        # consulta fallaba en silencio, dejando el gráfico sin destacados.
+        # Inside the block: after close() the connection is useless and the
+        # query failed silently, leaving the chart without highlights.
         highlights = load_highlights(
             conn, since=since, until=until, category=cat, severity=sev,
             product=prod, limit=3,
         )
-        # Accionables: evidencia de explotación en el mismo rango y filtros.
-        # Va dentro del try porque después del close() la conexión no sirve.
+        # Actionable CVEs: exploitation evidence in the same range and filters.
+        # It goes inside the try because after close() the connection is useless.
         actionable_rows_data = load_actionables(
             conn, since=since, until=until, category=cat, severity=sev,
             query=query, product=prod, limit=ACTIONABLE_LIMIT,
@@ -239,12 +239,12 @@ def overview(qp: dict | None = None) -> str:
             "</tr>"
         )
 
-    # 760x520 sobre el ancho real de la card: el scatter llena el alto de la
-    # columna en vez de dejar un hueco antes de la timeline.
+    # 760x520 over the card real width: the scatter fills the column
+    # height instead of leaving a gap before the timeline.
     scatter_div = (scatter_svg(scatter_rows, width=760, height=640) if scatter_rows
                    else '<p class="empty">No CVE matches the current filters.</p>')
-    # Al pie del scatter: 760 de ancho para que las fechas queden legibles al
-    # escalar el SVG a la columna.
+    # At the bottom of the scatter: 760 wide so the dates stay legible when
+    # the SVG is scaled to the column.
     timeline_div = timeline_svg(series, width=760, height=78, compact=True)
     actionable_table = _actionable_rows_html(actionable_rows_data)
 
@@ -317,8 +317,8 @@ def detail(qp: dict | None = None) -> str:
 
     fechas = [d for d in (_dt(m.get("published")) for m in mentions) if d]
 
-    # CVE recién publicado: reality bajo puede ser falta de datos, no falta de
-    # riesgo. Sin este aviso, un 2/10 se lee como "no es para tanto".
+    # Newly published CVE: a low reality can be missing data, not missing
+    # risk. Without this warning, a 2/10 reads as "not that bad".
     publicado = _dt(row.get("published"))
     dias_publicado = (datetime.now(timezone.utc) - publicado).days if publicado else None
     caveat = ""
@@ -329,7 +329,7 @@ def detail(qp: dict | None = None) -> str:
             "data yet, not that the flaw is mild."
         )
 
-    # Hitos con fecha real, en orden cronológico; los datos sin fecha van al final.
+    # Milestones with a real date, in chronological order; undated data goes last.
     hitos = [
         (_dt(row.get("published")), "Published"),
         (_dt(row.get("kev_date")), "Added to the CISA KEV catalog"),
@@ -369,16 +369,16 @@ def detail(qp: dict | None = None) -> str:
 
     if mentions:
         visibles = "".join(_mencion_html(m) for m in mentions[:5])
-        resto = "".join(_mencion_html(m) for m in mentions[5:])
+        remaining = "".join(_mencion_html(m) for m in mentions[5:])
         men_html = visibles + (
             f'<details class="expand"><summary>See all {len(mentions)} mentions</summary>'
-            f'{resto}</details>' if resto else ""
+            f'{remaining}</details>' if remaining else ""
         )
     else:
         men_html = '<p class="muted">No mentions yet.</p>'
 
     if poc_repos:
-        filas = "".join(
+        rows_html = "".join(
             "<tr>"
             f'<td><a class="link" href="{escape(r.get("url") or "")}" target="_blank" '
             f'rel="noopener">{escape(r.get("repo") or "")}</a></td>'
@@ -394,7 +394,7 @@ def detail(qp: dict | None = None) -> str:
             '<p class="muted" style="margin-top:0">PoC repositories</p>'
             f'<details class="expand"><summary>See {len(poc_repos)} repos with metrics</summary>'
             '<table class="mini"><thead><tr><th>Repository</th><th>Stars</th><th>Forks</th>'
-            f'<th>Language</th><th>Updated</th></tr></thead><tbody>{filas}</tbody></table>'
+            f'<th>Language</th><th>Updated</th></tr></thead><tbody>{rows_html}</tbody></table>'
             "</details>"
         )
     else:
@@ -426,7 +426,7 @@ def detail(qp: dict | None = None) -> str:
 
 
 def _timeline_html(series: list) -> str:
-    """Serie hype/reality del CVE. Con un solo punto no hay evolución que ver."""
+    """Hype/reality series for the CVE. With a single point there is no evolution to see."""
     if not series:
         return ""
     if len(series) == 1:

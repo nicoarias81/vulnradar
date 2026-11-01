@@ -1,9 +1,9 @@
-"""El seed de demo cubre las 4 categorías y es idempotente."""
+"""The demo seed covers all 4 categories and is idempotent."""
 from scripts.seed_demo import DEMOS, seed
 from core.db import get_db, init_db
 
 
-def test_seed_demo_cubre_las_cuatro_categorias(tmp_path):
+def test_seed_demo_covers_the_four_categories(tmp_path):
     path = tmp_path / "demo.db"
     init_db(path)
     assert seed(path) == len(DEMOS)

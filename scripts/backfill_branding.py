@@ -1,15 +1,15 @@
-"""Backfill de brand_name (apodo) para los CVEs que tienen menciones en prensa.
+"""Backfill of brand_name (nickname) for the CVEs that have press mentions.
 
-Hasta ahora el paso de branding corría 50 CVEs por ciclo y sólo por LLM, así que
-`enrichments.brand_name` quedaba vacío en toda la base y el buscador no podía
-resolver "Log4Shell". Este script aplica el heurístico (nombres conocidos,
-CamelCase y "dubbed X") sobre los titulares ya guardados: sin red, sin LLM y
-sin tocar tone_score/KEV/EPSS.
+Until now the branding step ran 50 CVEs per cycle and only through the LLM, so
+`enrichments.brand_name` stayed empty across the whole DB and the search box could not
+resolve "Log4Shell". This script applies the heuristic (known names,
+CamelCase and "dubbed X") over the headlines already stored: no network, no LLM and
+no touching tone_score/KEV/EPSS.
 
     python scripts/backfill_branding.py --dry-run
     python scripts/backfill_branding.py
 
-Idempotente: sólo escribe cuando encuentra un apodo que la fila no tiene.
+Idempotent: it only writes when it finds a nickname the row does not have.
 """
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ LLM_BATCH = 8
 
 
 def top_without_brand(conn, limit: int) -> list:
-    """CVEs con más hype que todavía no tienen apodo (para preguntarle al LLM)."""
+    """CVEs with the most hype that still have no nickname (to ask the LLM)."""
     rows = conn.execute("""
         SELECT s.cve_id AS cve_id, c.description AS description
         FROM scores s
@@ -47,10 +47,10 @@ def top_without_brand(conn, limit: int) -> list:
 
 
 def llm_backfill(conn, limit: int, batch_size: int = LLM_BATCH) -> dict:
-    """Pide al LLM el apodo de marketing de los CVEs más visibles.
+    """Asks the LLM for the marketing nickname of the most visible CVEs.
 
-    Sólo escribe brand_name cuando la respuesta viene del LLM: el heurístico
-    sobre una descripción NVD levanta CamelCase de productos (Chrome, Windows).
+    It only writes brand_name when the answer comes from the LLM: the heuristic
+    over an NVD description picks up product CamelCase (Chrome, Windows).
     """
     targets = top_without_brand(conn, limit)
     named = written = 0
@@ -71,7 +71,7 @@ def llm_backfill(conn, limit: int, batch_size: int = LLM_BATCH) -> dict:
 
 
 def latest_titles(conn) -> dict:
-    """Titular más reciente por CVE (el que tiene más chance de traer el apodo)."""
+    """Most recent headline per CVE (the one most likely to carry the nickname)."""
     rows = conn.execute("""
         SELECT cve_id, title
         FROM media_mentions
@@ -103,17 +103,17 @@ def main(dry_run: bool = False, llm_limit: int = 0) -> dict:
             branding, brand = heuristic_branding(title)
             if not branding or not brand:
                 continue
-            # El heurístico también levanta CamelCase de productos y grupos
-            # (TeamViewer, GitLab, ShinyHunters): para el buscador sólo sirven
-            # apodos de marketing, así que se aceptan los de la lista curada.
+            # The heuristic also picks up product and group CamelCase
+            # (TeamViewer, GitLab, ShinyHunters): the search box only takes
+            # marketing nicknames, so only the ones in the curated list are accepted.
             if brand not in KNOWN_BRANDS:
                 continue
             if existing.get(cve_id) == brand:
                 continue
             found.append((brand, cve_id))
 
-        print(f"titulares: {len(titles)} | apodos detectados: {len(found)} | "
-              f"ya tenían: {len(existing)}")
+        print(f"headlines: {len(titles)} | brand names detected: {len(found)} | "
+              f"already had one: {len(existing)}")
         if dry_run:
             for brand, cve_id in found[:20]:
                 print(f"  {cve_id} -> {brand}")
@@ -135,7 +135,7 @@ def main(dry_run: bool = False, llm_limit: int = 0) -> dict:
         conn.commit()
         print(f"escritos: {written}")
         if llm_limit and not dry_run:
-            print(f"LLM: apodos para los {llm_limit} CVEs con mas hype ...", flush=True)
+            print(f"LLM: brand names for the {llm_limit} most hyped CVEs ...", flush=True)
             print("llm:", llm_backfill(conn, llm_limit), flush=True)
         return {"candidates": len(found), "written": written}
     finally:

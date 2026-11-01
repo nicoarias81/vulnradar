@@ -1,8 +1,8 @@
 """
-Carga un set chico de CVEs de demostración (todas las categorías).
+Loads a small set of demo CVEs (every category).
 
-No clona CVE List V5. Idempotente: reescribe sólo los CVE-2026-9xxx de demo.
-Uso: python scripts/seed_demo.py
+It does not clone CVE List V5. Idempotent: it only rewrites the CVE-2026-9xxx demo rows.
+Usage: python scripts/seed_demo.py
 """
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ DEMO_PREFIX = "CVE-2026-9"
 DEMOS = [
     {
         "cve_id": "CVE-2026-9001",
-        "description": "RCE en un CMS popular. La prensa lo bautizó GhostShell y lo comparó con Log4Shell.",
+        "description": "RCE in a popular CMS. The press dubbed it GhostShell and compared it to Log4Shell.",
         "cvss_score": 9.8,
         "cvss_severity": "CRITICAL",
         "in_kev": 0,
@@ -43,7 +43,7 @@ DEMOS = [
     },
     {
         "cve_id": "CVE-2026-9002",
-        "description": "Auth bypass en un VPN corporativo. CISA lo metió al KEV; hay explotación en la calle y ransomware.",
+        "description": "Auth bypass in a corporate VPN. CISA added it to KEV; it is exploited in the wild and used by ransomware.",
         "cvss_score": 9.8,
         "cvss_severity": "CRITICAL",
         "in_kev": 1,
@@ -63,7 +63,7 @@ DEMOS = [
     },
     {
         "cve_id": "CVE-2026-9003",
-        "description": "RCE en un servicio de archivos usado en interná. En KEV, casi sin cobertura mediática.",
+        "description": "RCE in an internally used file-sharing service. In KEV, with almost no media coverage.",
         "cvss_score": 9.1,
         "cvss_severity": "CRITICAL",
         "in_kev": 1,
@@ -80,7 +80,7 @@ DEMOS = [
     },
     {
         "cve_id": "CVE-2026-9004",
-        "description": "XSS reflejado en un plugin de blog. Advisory rutinario, parche el mismo día.",
+        "description": "Reflected XSS in a blog plugin. Routine advisory, patched the same day.",
         "cvss_score": 6.1,
         "cvss_severity": "MEDIUM",
         "in_kev": 0,
@@ -97,7 +97,7 @@ DEMOS = [
     },
     {
         "cve_id": "CVE-2026-9005",
-        "description": "Deserialización en una librería Java de logging. Titulares de apocalipsis, KEV todavía no.",
+        "description": "Deserialization in a Java logging library. Apocalyptic headlines, not in KEV yet.",
         "cvss_score": 10.0,
         "cvss_severity": "CRITICAL",
         "in_kev": 0,
@@ -114,7 +114,7 @@ DEMOS = [
     },
     {
         "cve_id": "CVE-2026-9006",
-        "description": "Escape de sandbox en un hipervisor. KEV + wild + mucha prensa técnica.",
+        "description": "Sandbox escape in a hypervisor. KEV + wild + plenty of technical press.",
         "cvss_score": 8.8,
         "cvss_severity": "HIGH",
         "in_kev": 1,
@@ -131,7 +131,7 @@ DEMOS = [
     },
     {
         "cve_id": "CVE-2026-9007",
-        "description": "Heap overflow en un parser de imágenes de cámaras IP. En KEV, un solo post técnico.",
+        "description": "Heap overflow in an IP camera image parser. In KEV, a single technical post.",
         "cvss_score": 8.1,
         "cvss_severity": "HIGH",
         "in_kev": 1,
@@ -148,7 +148,7 @@ DEMOS = [
     },
     {
         "cve_id": "CVE-2026-9008",
-        "description": "Open redirect en un IdP interno. CVSS bajo, sin PoC público.",
+        "description": "Open redirect in an internal IdP. Low CVSS, no public PoC.",
         "cvss_score": 4.3,
         "cvss_severity": "MEDIUM",
         "in_kev": 0,
@@ -208,10 +208,10 @@ UPSERT_SCORE = """
 
 
 def _published(item: dict) -> str:
-    """Fecha de publicación relativa a hoy.
+    """Publication date relative to today.
 
-    Las fechas fijas dejaban la demo fuera del rango por defecto del dashboard
-    (mes en curso) y la página aparecía vacía aunque hubiera datos.
+    Fixed dates left the demo outside the dashboard default range
+    (current month) and the page came out empty even though there was data.
     """
     if "days_ago" in item:
         return (datetime.now() - timedelta(days=item["days_ago"])).strftime("%Y-%m-%dT%H:%M:%S")

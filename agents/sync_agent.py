@@ -1,9 +1,9 @@
 """
-Sync Agent — Sincroniza CVE List V5
-Uso: python agents/sync_agent.py [--full] [--cve-list-path RUTA] [--db-path RUTA]
+Sync Agent — syncs CVE List V5
+Usage: python agents/sync_agent.py [--full] [--cve-list-path PATH] [--db-path PATH]
 
-Sin --full hace sync incremental: compara el HEAD del mirror git con el
-watermark guardado y procesa sólo los cves/**/*.json añadidos o modificados.
+Without --full it runs an incremental sync: it compares the git mirror HEAD
+with the stored watermark and processes only the cves/**/*.json added or modified.
 """
 import argparse
 import json
@@ -13,7 +13,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-# `python agents/foo.py` pone agents/ en sys.path, no la raíz del repo.
+# `python agents/foo.py` puts agents/ on sys.path, not the repo root.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from core.db import get_db, init_db, resolve_path
@@ -22,8 +22,8 @@ from core.normalizer import normalize_cve_list_v5
 CVE_LIST_PATH = resolve_path(os.getenv("CVE_LIST_PATH", ""), "data/cvelistV5")
 REPO_URL = "https://github.com/CVEProject/cvelistV5.git"
 
-# El mirror real tiene cves/delta.json y cves/deltaLog.json en la raíz de cves/:
-# sólo los subdirectorios de año contienen CVE List V5 por CVE.
+# The real mirror has cves/delta.json and cves/deltaLog.json at the cves/ root:
+# only the year subdirectories hold CVE List V5 per CVE.
 CVES_SUBDIR = "cves"
 CVE_FILE_SUFFIX = ".json"
 
@@ -31,8 +31,8 @@ COMMIT_EVERY = 1000
 HEAD_KEY = "cvelist_head"
 SYNCED_AT_KEY = "cvelist_synced_at"
 
-# UPSERT en lugar de REPLACE: REPLACE borraría la fila de cves y rompería
-# el FK de enrichments/scores.
+# UPSERT instead of REPLACE: REPLACE would delete the cves row and break the
+# enrichments/scores FK.
 UPSERT_SQL = """
     INSERT INTO cves (cve_id, published, last_modified, description,
                       cvss_score, cvss_vector, cvss_severity, raw_json)
@@ -51,7 +51,7 @@ UPSERT_SQL = """
 
 
 # --------------------------------------------------------------------------
-# Estado del sync (watermark)
+# Sync state (watermark)
 # --------------------------------------------------------------------------
 def get_state(conn, key: str, default=None):
     row = conn.execute("SELECT value FROM sync_state WHERE key = ?", (key,)).fetchone()
@@ -71,15 +71,15 @@ def set_state(conn, key: str, value: str) -> None:
 
 
 # --------------------------------------------------------------------------
-# I/O de git (aislado para poder mockearlo en tests)
+# git I/O (isolated so tests can mock it)
 # --------------------------------------------------------------------------
 def clone_or_pull(cve_list_path: Path) -> dict:
     """
-    Clona el mirror la primera vez y después hace fetch + merge ff-only.
+    Clones the mirror the first time and then does fetch + ff-only merge.
 
-    Devuelve old_head / new_head y, si el diff se pudo calcular ANTES del
-    merge, delta_files. En un clone shallow el commit viejo puede desaparecer
-    después del merge: por eso el diff va antes.
+    Returns old_head / new_head and, when the diff could be computed BEFORE the
+    merge, delta_files. In a shallow clone the old commit can disappear after
+    the merge: that is why the diff runs first.
     """
     if not cve_list_path.exists():
         print(f"Clonando CVE List V5 en {cve_list_path}...")
@@ -106,9 +106,9 @@ def clone_or_pull(cve_list_path: Path) -> dict:
     except subprocess.CalledProcessError as exc:
         print(f"Warning: could not diff {short_sha(old)}..{short_sha(remote)} ({exc}).")
 
-    # --ff-only si se puede; si origin reescribió historia (forced update /
-    # unrelated histories) alineamos el mirror al tip remoto. El diff ya se
-    # calculó contra FETCH_HEAD; si no se pudo, sync() cae a full.
+    # --ff-only when possible; if origin rewrote history (forced update /
+    # unrelated histories) we align the mirror to the remote tip. The diff was
+    # already computed against FETCH_HEAD; if that failed, sync() falls back to full.
     try:
         subprocess.run(
             ["git", "-C", str(cve_list_path), "merge", "--ff-only", "FETCH_HEAD"],
@@ -116,7 +116,7 @@ def clone_or_pull(cve_list_path: Path) -> dict:
         )
     except subprocess.CalledProcessError as exc:
         print(
-            f"Aviso: merge --ff-only falló ({exc}); origin reescribió historia. "
+            f"Warning: merge --ff-only failed ({exc}); origin rewrote history. "
             "reset --hard FETCH_HEAD."
         )
         subprocess.run(
@@ -152,9 +152,9 @@ def git_head(cve_list_path: Path) -> str:
 
 def git_diff_cve_files(cve_list_path: Path, old_sha: str, new_sha: str) -> list:
     """
-    Archivos cves/**/*.json añadidos o modificados entre dos commits.
-    Lanza CalledProcessError si old_sha no existe en el mirror (re-clone, GC).
-    Los borrados se ignoran a propósito: no se borran filas locales.
+    cves/**/*.json files added or modified between two commits.
+    Raises CalledProcessError when old_sha is gone from the mirror (re-clone, GC).
+    Deletions are ignored on purpose: local rows are never deleted.
     """
     result = subprocess.run(
         [
@@ -170,7 +170,7 @@ def git_diff_cve_files(cve_list_path: Path, old_sha: str, new_sha: str) -> list:
 
 
 def filter_cve_paths(relative_paths) -> list:
-    """Deja sólo rutas cves/**/*.json relativas al mirror (ignora README, .github, etc.)."""
+    """Keeps only cves/**/*.json paths relative to the mirror (ignores README, .github, etc.)."""
     return [rel for rel in relative_paths if is_cve_file_path(rel)]
 
 
@@ -178,12 +178,12 @@ def is_cve_file_path(relative_path: str) -> bool:
     rel = relative_path.strip().replace("\\", "/")
     if not rel.startswith(f"{CVES_SUBDIR}/") or not rel.endswith(CVE_FILE_SUFFIX):
         return False
-    # cves/delta.json quedaría justo un nivel bajo cves/: no es un CVE.
+    # cves/delta.json would sit exactly one level below cves/: it is not a CVE.
     return "/" in rel[len(CVES_SUBDIR) + 1:]
 
 
 def iter_all_cve_files(cve_list_path: Path):
-    """Recorrido completo del mirror: un JSON por CVE en los subdirectorios de año."""
+    """Full walk of the mirror: one JSON per CVE under the year subdirectories."""
     cves_dir = Path(cve_list_path) / CVES_SUBDIR
     if not cves_dir.is_dir():
         return
@@ -193,10 +193,10 @@ def iter_all_cve_files(cve_list_path: Path):
 
 
 # --------------------------------------------------------------------------
-# Procesamiento
+# Processing
 # --------------------------------------------------------------------------
 def process_cve_file(path: Path, conn) -> bool:
-    """Normaliza un JSON de CVE List V5 y lo upsertea. False si se descarta."""
+    """Normalizes a CVE List V5 JSON and upserts it. False when it is discarded."""
     try:
         data = json.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -213,29 +213,29 @@ def process_cve_file(path: Path, conn) -> bool:
 
 def plan_files(cve_list_path: Path, old_head, new_head: str, full: bool):
     """
-    Decide qué archivos procesar. Devuelve (modo, archivos, motivo).
-    modo = "full" | "incremental".
+    Decides which files to process. Returns (mode, files, reason).
+    mode = "full" | "incremental".
     """
     if full:
         return "full", list(iter_all_cve_files(cve_list_path)), "--full"
 
     if not old_head:
-        return "full", list(iter_all_cve_files(cve_list_path)), "sin watermark"
+        return "full", list(iter_all_cve_files(cve_list_path)), "no watermark"
 
     if old_head == new_head:
-        # Pull sin commits nuevos: nada que procesar, el watermark no cambia.
-        return "incremental", [], "HEAD sin cambios"
+        # Pull with no new commits: nothing to process, the watermark stays put.
+        return "incremental", [], "HEAD unchanged"
 
     try:
-        return "incremental", git_diff_cve_files(cve_list_path, old_head, new_head), "delta git"
+        return "incremental", git_diff_cve_files(cve_list_path, old_head, new_head), "git delta"
     except subprocess.CalledProcessError as exc:
-        # El commit viejo ya no está (mirror re-clonado o historia reescrita).
-        print(f"Aviso: delta imposible contra {short_sha(old_head)} ({exc}); se sincroniza todo.")
-        return "full", list(iter_all_cve_files(cve_list_path)), "delta no disponible"
+        # The old commit is gone (mirror re-cloned or history rewritten).
+        print(f"Warning: delta impossible against {short_sha(old_head)} ({exc}); falling back to a full sync.")
+        return "full", list(iter_all_cve_files(cve_list_path)), "delta unavailable"
 
 
 def process_files(files, conn) -> dict:
-    """Upsertea cada archivo, commiteando cada COMMIT_EVERY para acotar la transacción."""
+    """Upserts each file, committing every COMMIT_EVERY to bound the transaction."""
     processed = 0
     skipped = 0
     for index, path in enumerate(files, start=1):
@@ -245,15 +245,15 @@ def process_files(files, conn) -> dict:
             skipped += 1
         if index % COMMIT_EVERY == 0:
             conn.commit()
-            print(f"Procesados {processed} CVEs ({index} archivos)...")
+            print(f"Processed {processed} CVEs ({index} files)...")
     conn.commit()
     return {"files": len(files), "processed": processed, "skipped": skipped}
 
 
 def sync(full: bool = False, cve_list_path=None, db_path=None) -> dict:
     """
-    Sincroniza CVE List V5 contra la DB.
-    Devuelve stats: mode, reason, old_head, new_head, files, processed, skipped.
+    Syncs CVE List V5 against the DB.
+    Returns stats: mode, reason, old_head, new_head, files, processed, skipped.
     """
     mirror = Path(cve_list_path) if cve_list_path is not None else CVE_LIST_PATH
     target_db = Path(db_path) if db_path is not None else None
@@ -264,12 +264,12 @@ def sync(full: bool = False, cve_list_path=None, db_path=None) -> dict:
         pull_delta = pull.get("delta_files")
         pull_old = pull.get("old_head")
     else:
-        # Tests y stubs viejos pueden devolver "pull"/"clone".
+        # Tests and old stubs may return "pull"/"clone".
         new_head = git_head(mirror)
         pull_delta = None
         pull_old = None
 
-    # init_db es idempotente y garantiza sync_state en bases creadas antes de Fase 2.
+    # init_db is idempotent and guarantees sync_state on databases created before Phase 2.
     init_db(target_db)
     conn = get_db(target_db)
     try:
@@ -281,14 +281,14 @@ def sync(full: bool = False, cve_list_path=None, db_path=None) -> dict:
             and pull_old
             and pull_delta is not None
         ):
-            mode, files, reason = "incremental", pull_delta, "sin watermark, delta del pull"
+            mode, files, reason = "incremental", pull_delta, "no watermark, delta from pull"
         elif not full and not old_head and n_cves:
-            # Restart del worker con DB ya ingerida: no re-escanear 300k JSON.
-            mode, files, reason = "incremental", [], "sin watermark, DB ya poblada"
+            # Worker restart with the DB already ingested: do not rescan 300k JSON files.
+            mode, files, reason = "incremental", [], "no watermark, DB already populated"
         else:
             mode, files, reason = plan_files(mirror, old_head, new_head, full)
         print(
-            f"Modo: {mode} ({reason}) | HEAD {short_sha(old_head or pull_old)} -> {short_sha(new_head)}"
+            f"Mode: {mode} ({reason}) | HEAD {short_sha(old_head or pull_old)} -> {short_sha(new_head)}"
         )
 
         stats = process_files(files, conn)
@@ -299,8 +299,8 @@ def sync(full: bool = False, cve_list_path=None, db_path=None) -> dict:
         conn.close()
 
     print(
-        f"Sync {mode} completado. Archivos: {stats['files']} | "
-        f"upserts: {stats['processed']} | omitidos: {stats['skipped']}."
+        f"Sync {mode} done. Files: {stats['files']} | "
+        f"upserts: {stats['processed']} | skipped: {stats['skipped']}."
     )
     return {
         "mode": mode,
@@ -313,22 +313,22 @@ def sync(full: bool = False, cve_list_path=None, db_path=None) -> dict:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Sincroniza CVE List V5 (incremental por defecto).",
+        description="Syncs CVE List V5 (incremental by default).",
     )
     parser.add_argument(
         "--full",
         action="store_true",
-        help="recorre todos los JSON del mirror ignorando el watermark",
+        help="walk every JSON file in the mirror, ignoring the watermark",
     )
     parser.add_argument(
         "--cve-list-path",
         default=None,
-        help=f"ruta del mirror (default: $CVE_LIST_PATH o {CVE_LIST_PATH})",
+        help=f"mirror path (default: $CVE_LIST_PATH or {CVE_LIST_PATH})",
     )
     parser.add_argument(
         "--db-path",
         default=None,
-        help="clave de aislamiento de schema (tests). Producción: DATABASE_URL",
+        help="schema isolation key (tests). Production: DATABASE_URL",
     )
     return parser
 

@@ -1,9 +1,9 @@
 """
-Carga y filtrado de scores para el dashboard.
+Score loading and filtering for the dashboard.
 
-Módulo puro (psycopg + stdlib, sin Streamlit ni pandas): la UI se testea con
-pytest sin levantar el runtime de Streamlit. Las queries de la home capan en
-SQL (COUNT, LIMIT/OFFSET, GROUP BY): no se materializan decenas de miles de filas.
+Pure module (psycopg + stdlib, no Streamlit or pandas): the UI is tested with
+pytest without booting the Streamlit runtime. The home queries cap in
+SQL (COUNT, LIMIT/OFFSET, GROUP BY): tens of thousands of rows are never materialized.
 """
 import re
 
@@ -21,10 +21,10 @@ SCORE_COLUMNS = (
 SCATTER_LIMIT = 400
 VIEW_ALL_LIMIT = 100
 
-# Día de publicación (ISO) o, si falta, el del score. TEXT + TIMESTAMPTZ.
-# La fecha que manda es la de publicación del CVE. El fallback a la fecha de
-# cálculo metía en "recientes" a CVEs sin fecha (stubs de Exploit-DB/GHSA)
-# porque su día pasaba a ser hoy; sin fecha, un CVE no es reciente.
+# Publication day (ISO) or, if missing, the score day. TEXT + TIMESTAMPTZ.
+# The date that rules is the CVE publication date. Falling back to the
+# calculation date pushed undated CVEs into "recent" (Exploit-DB/GHSA stubs)
+# because their day became today; without a date, a CVE is not recent.
 _DAY_EXPR = "left(c.published, 10)"
 
 SELECT_SCORES_BASE = """
@@ -54,15 +54,15 @@ def _filters(since=None, until=None, category=None, severity=None, query=None, p
         clauses.append("upper(c.cvss_severity) = ?")
         params.append(str(severity).upper())
     if product and product not in ("All products",):
-        # ILIKE: el selector deja escribir el nombre a mano, no sólo elegirlo.
+        # ILIKE: the selector lets you type the name by hand, not just pick it.
         clauses.append("c.product ILIKE ?")
         params.append(str(product))
     if query:
         text = str(query).strip()
         if text:
             like = f"%{text}%"
-            # Cada vía usa su propio índice (trigram para id/apodo/producto, GIN
-            # full-text para descripción). Un OR suelto forzaba seq scan: 20 s.
+            # Each path uses its own index (trigram for id/nickname/product, GIN
+            # full-text for description). A loose OR forced a seq scan: 20 s.
             clauses.append("""s.cve_id IN (
             SELECT cve_id FROM cves WHERE cve_id ILIKE ?
             UNION
@@ -82,9 +82,9 @@ CVE_SHAPE = re.compile(r"^\d{4}-\d{4,}$")
 
 
 def find_cve_id(conn, query: str):
-    """CVE id exacto para un texto: acepta `CVE-2021-44228`, `2021-44228` o el
-    apodo (`Log4Shell`). Si el texto deja un único candidato por descripción,
-    también lo devuelve. None si no hay coincidencia única."""
+    """Exact CVE id for a text: accepts `CVE-2021-44228`, `2021-44228` or the
+    nickname (`Log4Shell`). If the text leaves a single candidate by description,
+    it returns that one too. None when there is no unique match."""
     text = (query or "").strip()
     if not text:
         return None
@@ -118,9 +118,9 @@ def _where(clauses: list[str]) -> str:
 
 def _order_sql(order: str) -> str:
     if order in ("published", "recent", "date"):
-        # Más reciente primero por fecha de publicación real. NULLS LAST y el
-        # desempate por cve_id: sin eso, todas las filas calculadas en el mismo
-        # ciclo empatan y el orden alfabético sube CVEs de 2023 al tope.
+        # Newest first by real publication date. NULLS LAST and the
+        # cve_id tiebreak: without that, every row calculated in the same
+        # cycle ties and alphabetical order pulls 2023 CVEs to the top.
         return "    ORDER BY c.published DESC NULLS LAST, s.cve_id\n"
     if order == "hype":
         return (
@@ -152,7 +152,7 @@ def _fetch_dicts(cursor) -> list:
 
 
 def load_alert_counts(conn, cve_ids=None) -> dict:
-    """Cantidad de alertas enviadas por CVE. Sin tabla, ningún CVE está alertado."""
+    """Number of alerts sent per CVE. Without the table, no CVE is alerted."""
     if not has_table(conn, "alerts_sent"):
         return {}
     if cve_ids is not None:
@@ -183,15 +183,15 @@ def count_scores(conn, since=None, until=None, category=None, severity=None, que
     return int(row[0] if row and row[0] is not None else 0)
 
 
-# Criterio de "accionable": evidencia de explotación, no gravedad. Un CVE entra
-# si CISA lo vio explotado, si EPSS lo pone en el 30% más probable del día, o si
-# ya hay un PoC público. El CVSS no participa: 9.8 sin explotación no se acciona.
+# "Actionable" criterion: exploitation evidence, not severity. A CVE gets in
+# if CISA saw it exploited, if EPSS puts it in the day's top 30% most likely, or if
+# a public PoC already exists. CVSS does not take part: 9.8 without exploitation is not actionable.
 ACTIONABLE_WHERE = (
     "(COALESCE(e.in_kev, 0) <> 0 OR COALESCE(e.epss, 0) >= 0.70 "
     "OR COALESCE(e.poc_count, 0) > 0)"
 )
-# Orden por evidencia, no por fecha: KEV primero, después probabilidad de
-# exploit y PoC. `reality` desempata dentro de cada escalón.
+# Order by evidence, not by date: KEV first, then exploit
+# probability and PoC. `reality` breaks ties within each tier.
 ACTIONABLE_ORDER = (
     "    ORDER BY (COALESCE(e.in_kev, 0) <> 0) DESC,\n"
     "             COALESCE(e.epss, 0) DESC,\n"
@@ -202,7 +202,7 @@ ACTIONABLE_ORDER = (
 
 def load_actionables(conn, since=None, until=None, category=None, severity=None,
                      query=None, product=None, limit: int = 6) -> list:
-    """CVEs del rango que tienen evidencia de explotación (ver ACTIONABLE_WHERE)."""
+    """CVEs in the range that have exploitation evidence (see ACTIONABLE_WHERE)."""
     clauses, params = _filters(since, until, category, severity, query, product)
     clauses.append(ACTIONABLE_WHERE)
     sql = SELECT_SCORES_BASE + _where(clauses) + ACTIONABLE_ORDER + "    LIMIT ?\n"
@@ -212,7 +212,7 @@ def load_actionables(conn, since=None, until=None, category=None, severity=None,
 
 def count_actionables(conn, since=None, until=None, category=None, severity=None,
                       query=None, product=None) -> int:
-    """Cuántos CVEs del rango cumplen el criterio de accionable."""
+    """How many CVEs in the range meet the actionable criterion."""
     clauses, params = _filters(since, until, category, severity, query, product)
     clauses.append(ACTIONABLE_WHERE)
     sql = (
@@ -226,10 +226,10 @@ def count_actionables(conn, since=None, until=None, category=None, severity=None
 
 
 def load_products(conn, since=None, until=None, limit: int = 40) -> list:
-    """Productos con más CVEs del rango: opciones iniciales del selector.
+    """Products with the most CVEs in the range: initial selector options.
 
-    Orden alfabético: el desplegable sirve para buscar por nombre, no para
-    mostrar un ranking por volumen.
+    Alphabetical order: the dropdown is for searching by name, not for
+    showing a ranking by volume.
     """
     clauses, params = _filters(since, until)
     clauses = clauses + ["c.product IS NOT NULL", "btrim(c.product) <> ''"]
@@ -244,10 +244,10 @@ def load_products(conn, since=None, until=None, limit: int = 40) -> list:
 
 
 def search_products(conn, query: str = "", limit: int = 20) -> list:
-    """Productos que contienen `query`, ordenados alfabéticamente.
+    """Products that contain `query`, ordered alphabetically.
 
-    Alimenta el autocompletado del filtro: con 60k productos distintos no se
-    puede mandar la lista entera al navegador, así que se busca en el servidor.
+    Feeds the filter autocomplete: with 60k distinct products you cannot
+    send the whole list to the browser, so the search happens on the server.
     """
     clauses = ["c.product IS NOT NULL", "btrim(c.product) <> ''"]
     params: list = []
@@ -278,10 +278,10 @@ def load_scores(
     product=None,
 ) -> list:
     """
-    Scores vigentes con su CVE y su enrichment.
+    Current scores with their CVE and enrichment.
 
-    Base vacía -> lista vacía. `limit`/`offset` capan en SQL (home: tabla y scatter).
-    `query` filtra por CVE id, apodo (brand_name), producto o descripción.
+    Empty DB -> empty list. `limit`/`offset` cap in SQL (home: table and scatter).
+    `query` filters by CVE id, nickname (brand_name), product or description.
     """
     clauses, params = _filters(since, until, category, severity, query, product)
     sql = SELECT_SCORES_BASE + _where(clauses) + _order_sql(order)
@@ -293,7 +293,7 @@ def load_scores(
 
 
 def load_score(conn, cve_id: str):
-    """Una ficha CVE. None si no hay score."""
+    """A single CVE card. None if there is no score."""
     sql = SELECT_SCORES_BASE + "    WHERE s.cve_id = ?\n"
     cursor = conn.execute(sql, (cve_id,))
     rows = _attach_alerts(conn, _fetch_dicts(cursor))
@@ -301,10 +301,10 @@ def load_score(conn, cve_id: str):
 
 
 def load_score_history(conn, cve_id: str, limit: int = 60) -> list:
-    """Evolución del score de un CVE, de viejo a nuevo.
+    """Score evolution for a CVE, oldest to newest.
 
-    `scores` guarda sólo el vigente (UNIQUE(cve_id)), así que la serie sale de
-    score_history: una fila por cambio real de hype o reality.
+    `scores` keeps only the current row (UNIQUE(cve_id)), so the series comes from
+    score_history: one row per real change in hype or reality.
     """
     sql = (
         "SELECT captured_at, hype, reality, category FROM score_history "
@@ -316,7 +316,7 @@ def load_score_history(conn, cve_id: str, limit: int = 60) -> list:
         hype = row["hype"]
         reality = row["reality"]
         series.append({
-            # Fecha y hora: varias capturas caen el mismo día y se pisarían.
+            # Date and time: several snapshots land on the same day and would overwrite each other.
             "date": str(row["captured_at"])[:16].replace("T", " "),
             "hype": round(float(hype), 2) if hype is not None else None,
             "reality": round(float(reality), 2) if reality is not None else None,
@@ -332,7 +332,7 @@ def load_latest_score(conn):
 
 def load_daily_averages(conn, since=None, until=None, category=None, severity=None,
                         product=None) -> list:
-    """Promedio de hype/reality por día, agregado en SQL."""
+    """Average hype/reality per day, aggregated in SQL."""
     clauses, params = _filters(since, until, category, severity, None, product)
     sql = (
         f"SELECT {_DAY_EXPR} AS date, "
@@ -359,10 +359,10 @@ def load_daily_averages(conn, since=None, until=None, category=None, severity=No
 
 def load_highlights(conn, since=None, until=None, category=None, severity=None,
                     product=None, limit: int = 3) -> list:
-    """Los CVEs más ruidosos del período: el gráfico los etiqueta y los enlaza.
+    """The noisiest CVEs of the period: the chart labels and links them.
 
-    No alcanza con el top de cada día: el promedio diario siempre es bajo y
-    destacaría CVEs irrelevantes. Esto va por hype absoluto.
+    Top per day is not enough: the daily average is always low and would
+    highlight irrelevant CVEs. This goes by absolute hype.
     """
     clauses, params = _filters(since, until, category, severity, None, product)
     sql = (
@@ -373,9 +373,9 @@ def load_highlights(conn, since=None, until=None, category=None, severity=None,
         + "\nORDER BY s.hype DESC NULLS LAST, s.calculated_at DESC LIMIT ?"
     )
     try:
-        filas = conn.execute(sql, list(params) + [max(1, int(limit))]).fetchall()
+        rows = conn.execute(sql, list(params) + [max(1, int(limit))]).fetchall()
     except Exception:
-        return []  # sin destacados el gráfico sigue sirviendo
+        return []  # without highlights the chart still works
     return [
         {
             "cve_id": f["cve_id"],
@@ -384,7 +384,7 @@ def load_highlights(conn, since=None, until=None, category=None, severity=None,
             "date": str(f["day"])[:10],
             "brand_name": f["brand_name"] or "",
         }
-        for f in filas
+        for f in rows
     ]
 
 
@@ -400,16 +400,16 @@ def _attach_top_cves(conn, series, clauses, params) -> list:
         + ") t ORDER BY day, hype DESC"
     )
     try:
-        filas = conn.execute(sql, params).fetchall()
+        rows = conn.execute(sql, params).fetchall()
     except Exception:
-        return series  # sin el top el gráfico sigue sirviendo
+        return series  # without the top the chart still works
     por_dia = {
         str(f["day"])[:10]: {
             "cve_id": f["cve_id"],
             "hype": round(float(f["hype"]), 2) if f["hype"] is not None else None,
             "brand_name": f["brand_name"] or "",
         }
-        for f in filas
+        for f in rows
     }
     for item in series:
         item["top_cve"] = por_dia.get(item["date"])
@@ -426,12 +426,12 @@ def filter_scores(
     until=None,
 ) -> list:
     """
-    Filtro puro sobre las filas de `load_scores`.
+    Pure filter over the `load_scores` rows.
 
-    `categories` vacío o None = sin filtro de categoría. Los mínimos son
-    opcionales: 0/None no filtran. Un hype/reality NULL no pasa un mínimo > 0.
-    `severities` compara cvss_severity en mayúsculas. Fechas sobre `published`
-    (si falta, `calculated_at`); sin fecha la fila no pasa un rango activo.
+    Empty or None `categories` = no category filter. The minimums are
+    optional: 0/None do not filter. A NULL hype/reality does not pass a minimum > 0.
+    `severities` compares cvss_severity uppercased. Dates use `published`
+    (if missing, `calculated_at`); without a date the row fails an active range.
     """
     wanted = {category for category in (categories or []) if category}
     wanted_sev = {str(item).upper() for item in (severities or []) if item}
@@ -462,7 +462,7 @@ def filter_scores(
 
 
 def daily_averages(rows) -> list:
-    """Promedio de hype/reality por día de publicación (o calculated_at)."""
+    """Average hype/reality per publication day (or calculated_at)."""
     buckets: dict[str, list] = {}
     for row in rows:
         day = _as_date(row.get("published") or row.get("calculated_at"))
@@ -486,7 +486,7 @@ def daily_averages(rows) -> list:
 
 
 def load_pocs(conn, cve_id: str, limit: int = 40) -> list:
-    """Repos de PoC con métricas para la ficha del CVE."""
+    """PoC repos with metrics for the CVE card."""
     if not has_table(conn, "pocs"):
         return []
     cursor = conn.execute(
@@ -518,7 +518,7 @@ def load_mentions(conn, cve_id: str) -> list:
 
 
 def load_agent_stats(conn) -> dict:
-    """Números reales de la DB para el panel de agentes (sin telemetría live)."""
+    """Real numbers from the DB for the agents panel (no live telemetry)."""
     def count(sql, default=0):
         try:
             row = conn.execute(sql).fetchone()
@@ -573,7 +573,7 @@ def load_recent_events(conn, limit: int = 15) -> list:
 
 
 def load_last_agent_status(conn) -> dict:
-    """Último evento por agente (sync/enrich/score/alert)."""
+    """Last event per agent (sync/enrich/score/alert)."""
     if not has_table(conn, "agent_events"):
         return {}
     out = {}
@@ -599,15 +599,15 @@ def load_last_agent_status(conn) -> dict:
 
 
 def hype_components(row) -> list:
-    """Barras 0-10 alineadas a la fórmula de hype (no inventa redes/Google)."""
+    """0-10 bars aligned with the hype formula (it does not invent social/Google data)."""
     from core.normalizer import media_score, poc_score
 
     media = media_score(int(row.get("media_count") or 0))
     pocs = poc_score(int(row.get("poc_count") or 0))
     return [
         {"key": "cvss", "label": "CVSS", "value": float(row.get("cvss_score") or 0)},
-        {"key": "media", "label": "Cobertura en medios", "value": media},
-        {"key": "tone", "label": "Tono / titular", "value": float(row.get("tone_score") or 0)},
+        {"key": "media", "label": "Media coverage", "value": media},
+        {"key": "tone", "label": "Tone / headline", "value": float(row.get("tone_score") or 0)},
         {"key": "branding", "label": "Branding", "value": 10.0 if row.get("branding") else 0.0},
         {"key": "pocs", "label": "PoCs en GitHub", "value": pocs},
     ]

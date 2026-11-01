@@ -1,1 +1,1 @@
-# Paquete de scripts de operación (seed, dashboard).
+# Operations scripts package (seed, dashboard).

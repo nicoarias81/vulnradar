@@ -1,1 +1,1 @@
-"""Agentes de ingestión, enriquecimiento y scoring."""
+"""Agents for ingestion, enrichment and scoring."""

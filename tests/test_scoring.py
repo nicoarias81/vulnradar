@@ -1,4 +1,4 @@
-"""Tests de las fórmulas v3 — pesos y umbrales son inmutables."""
+"""Tests for the v3 formulas — weights and thresholds are immutable."""
 import pytest
 
 from core.scoring import (
@@ -9,7 +9,7 @@ from core.scoring import (
     score_cve,
 )
 
-# (nombre, signals, hype esperado, reality esperado, categoría esperada)
+# (name, signals, expected hype, expected reality, expected category)
 SCORING_CASES = [
     (
         "kev_only",
@@ -19,14 +19,14 @@ SCORING_CASES = [
         "Quiet",
     ),
     (
-        "epss_alto",
+        "high_epss",
         {"epss": 0.9},
         0.0,
         2.25,  # 0.25*(0.9*10)
         "Quiet",
     ),
     (
-        "wild_mas_ransomware",
+        "wild_plus_ransomware",
         {"wild_confirmation": True, "ransomware_use": True},
         0.0,
         1.5,  # 0.10*10 + 0.05*10
@@ -36,7 +36,7 @@ SCORING_CASES = [
         "overhyped",
         {"cvss": 9.8, "media_score": 10.0, "branding": True, "tone_score": 9.5, "poc_score": 10.0},
         9.86,
-        1.5,  # el PoC ahora cuenta como realidad (0.15*10), no sólo como hype
+        1.5,  # the PoC now counts as reality (0.15*10), not only as hype
         "Overhyped",
     ),
     (
@@ -55,12 +55,12 @@ SCORING_CASES = [
         "Earned the hype",
     ),
     (
-        # Un CVE en KEV con EPSS 90% tiene exploits públicos en la práctica:
-        # sin el PoC daría 5.8 y quedaría "Quiet", que es el error que este
-        # cambio corrige.
+        # A CVE in KEV with 90% EPSS has public exploits in practice:
+        # without the PoC it would score 5.8 and land in "Quiet", which is the bug
+        # this change fixes.
         "sleeper",
         {"cvss": 9.8, "in_kev": True, "epss": 0.9, "poc_score": 5.0},
-        2.71,  # 0.20*9.8 + 0.15*5 (sin media)
+        2.71,  # 0.20*9.8 + 0.15*5 (no media)
         7.0,  # 0.40*10 + 0.25*9 + 0.15*5
         "Sleeper",
     ),
@@ -73,7 +73,7 @@ SCORING_CASES = [
     ),
     (
         "cap_epss",
-        {"epss": 2.5},  # 25 puntos EPSS -> cap 10
+        {"epss": 2.5},  # 25 EPSS points -> cap 10
         0.0,
         2.5,
         "Quiet",
@@ -86,14 +86,14 @@ SCORING_CASES = [
         "Overhyped",
     ),
     (
-        "defaults_vacios",
+        "empty_defaults",
         {},
         0.0,
-        0.0,  # sin señales no hay piso artificial
+        0.0,  # without signals there is no artificial floor
         "Quiet",
     ),
     (
-        "ease_explicita",
+        "explicit_ease",
         {"in_kev": True, "exploit_ease": 10},
         0.0,
         4.5,  # 0.40*10 + 0.05*10
@@ -126,7 +126,7 @@ def test_score_cve(name, signals, expected_hype, expected_reality, expected_cate
         ({"poc_score": 5.0}, 0.75),
     ],
 )
-def test_hype_pesos_individuales(signals, expected_hype):
+def test_hype_individual_weights(signals, expected_hype):
     assert calculate_hype(signals) == pytest.approx(expected_hype, abs=1e-9)
 
 
@@ -143,7 +143,7 @@ def test_hype_pesos_individuales(signals, expected_hype):
         ({"exploit_ease": 0.0}, 0.0),
     ],
 )
-def test_reality_pesos_individuales(signals, expected_reality):
+def test_reality_individual_weights(signals, expected_reality):
     assert calculate_reality(signals) == pytest.approx(expected_reality, abs=1e-9)
 
 
@@ -153,23 +153,23 @@ def test_reality_pesos_individuales(signals, expected_reality):
         (None, 0.0),
         ("", 0.0),
         ("CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", 10.0),  # trivial
-        ("CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H", 4.0),   # carrera
-        ("CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H", 5.0),   # acceso local
-        ("CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:C/C:H/I:H/A:H", 6.0),   # pide admin
-        ("CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H", 7.0),   # víctima abre algo
-        ("CVSS:3.1/AV:N/AC:H/PR:H/UI:R/S:U/C:H/I:H/A:H", 4.0),   # AC:H manda
+        ("CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H", 4.0),   # race window
+        ("CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H", 5.0),   # local access
+        ("CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:C/C:H/I:H/A:H", 6.0),   # requires admin
+        ("CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H", 7.0),   # victim opens something
+        ("CVSS:3.1/AV:N/AC:H/PR:H/UI:R/S:U/C:H/I:H/A:H", 4.0),   # AC:H wins
     ],
 )
 def test_exploit_ease(vector, expected):
     assert exploit_ease(vector) == pytest.approx(expected, abs=1e-9)
 
 
-def test_cve_kernel_con_poc_no_es_ruido():
-    """Regresión CVE-2026-98432: kernel UAF remoto con 5 PoC y sin KEV.
+def test_kernel_cve_with_poc_is_not_noise():
+    """Regression CVE-2026-98432: remote kernel UAF with 5 PoCs and no KEV.
 
-    Antes daba 0.26: sólo el EPSS aportaba y el resto era el default de una
-    complejidad que nunca se guardaba. Debe reflejar el exploit público y la
-    facilidad del vector, y seguir por debajo de 5 (no hay explotación ITW).
+    It used to score 0.26: only EPSS contributed and the rest was the default of
+    a complexity that was never stored. It must reflect the public exploit and
+    the vector ease, and stay below 5 (there is no ITW exploitation).
     """
     signals = {
         "cvss": 9.8,
@@ -191,13 +191,13 @@ def test_cve_kernel_con_poc_no_es_ruido():
     "hype,reality,expected",
     [
         (7.0, 4.99, "Overhyped"),
-        (7.0, 5.0, "Quiet"),            # reality<5 es estricto
+        (7.0, 5.0, "Quiet"),            # reality<5 is strict
         (6.99, 5.99, "Quiet"),
-        (6.0, 6.0, "Earned the hype"),  # ambos umbrales inclusivos
+        (6.0, 6.0, "Earned the hype"),  # both thresholds inclusive
         (4.99, 6.0, "Sleeper"),
-        (5.0, 8.0, "Quiet"),            # Sleeper exige hype<5
+        (5.0, 8.0, "Quiet"),            # Sleeper requires hype<5
         (0.0, 0.0, "Quiet"),
     ],
 )
-def test_categorias_bordes(hype, reality, expected):
+def test_category_boundaries(hype, reality, expected):
     assert get_category(hype, reality) == expected

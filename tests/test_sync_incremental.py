@@ -1,9 +1,9 @@
 """
-Tests del sync incremental de CVE List V5. Sin red: el mirror es un repo git
-real armado en tmp_path y `clone_or_pull` se reemplaza por un stub.
+CVE List V5 incremental sync tests. No network: the mirror is a real git repo
+built in tmp_path and `clone_or_pull` is replaced by a stub.
 
-Watermark = SHA de HEAD del mirror (no dateUpdated: un CVE se puede republicar
-sin mover su fecha).
+Watermark = mirror HEAD SHA (not dateUpdated: a CVE can be republished
+without moving its date).
 """
 import json
 import subprocess
@@ -15,7 +15,7 @@ from agents import sync_agent
 from core.db import get_db, init_db
 
 FIXTURES = Path(__file__).parent / "fixtures" / "cvelistV5"
-MARK = "2000-01-01 00:00:00"  # synced_at centinela: si cambia, la fila se reescribió
+MARK = "2000-01-01 00:00:00"  # sentinel synced_at: if it changes, the row was rewritten
 
 
 # --------------------------------------------------------------------------
@@ -35,15 +35,15 @@ def _commit_all(repo: Path, message: str) -> None:
     _git(repo, "commit", "-qm", message)
 
 
-def _payload(cve_id: str, description: str = "Payload de prueba de sync.") -> str:
-    """CVE List V5 mínimo derivado del fixture de Fase 1."""
+def _payload(cve_id: str, description: str = "Test sync payload.") -> str:
+    """Minimal CVE List V5 derived from the Phase 1 fixture."""
     data = json.loads((FIXTURES / "CVE-2026-0001.json").read_text(encoding="utf-8"))
     data["cveMetadata"]["cveId"] = cve_id
     data["containers"]["cna"]["descriptions"] = [{"lang": "en", "value": description}]
     return json.dumps(data, ensure_ascii=False, indent=2)
 
 
-def _write_cve(repo: Path, cve_id: str, description: str = "Payload de prueba de sync.") -> Path:
+def _write_cve(repo: Path, cve_id: str, description: str = "Test sync payload.") -> Path:
     path = repo / "cves" / "2026" / f"{cve_id}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(_payload(cve_id, description), encoding="utf-8")
@@ -91,7 +91,7 @@ def _run(mirror: Path, db_path: Path, full: bool = False) -> dict:
 # --------------------------------------------------------------------------
 @pytest.fixture
 def mirror(tmp_path) -> Path:
-    """Mini repo git que imita el mirror de CVE List V5."""
+    """Mini git repo that mimics the CVE List V5 mirror."""
     repo = tmp_path / "cvelistV5"
     repo.mkdir()
     _git(repo, "init", "-q", "-b", "main")
@@ -111,13 +111,13 @@ def db_path(tmp_path) -> Path:
 
 @pytest.fixture
 def no_pull(monkeypatch):
-    """El mirror del test ya existe y no tiene remoto: no hay nada que clonar/pullear."""
+    """The test mirror already exists and has no remote: nothing to clone or pull."""
     monkeypatch.setattr(sync_agent, "clone_or_pull", lambda path: "pull")
 
 
 @pytest.fixture
 def processed(monkeypatch):
-    """Registra qué archivos llegan a process_cve_file sin cambiar su comportamiento."""
+    """Records which files reach process_cve_file without changing its behavior."""
     seen = []
     original = sync_agent.process_cve_file
 
@@ -132,7 +132,7 @@ def processed(monkeypatch):
 # --------------------------------------------------------------------------
 # Tests
 # --------------------------------------------------------------------------
-def test_init_db_crea_sync_state_y_es_idempotente(db_path):
+def test_init_db_creates_sync_state_and_is_idempotent(db_path):
     init_db(db_path)
     init_db(db_path)
 
@@ -151,7 +151,7 @@ def test_init_db_crea_sync_state_y_es_idempotente(db_path):
         conn.close()
 
 
-def test_primera_corrida_sin_watermark_procesa_todo(mirror, db_path, no_pull):
+def test_first_run_without_watermark_processes_everything(mirror, db_path, no_pull):
     _write_cve(mirror, "CVE-2026-0001")
     _write_cve(mirror, "CVE-2026-0002")
     _commit_all(mirror, "dos cves")
@@ -159,7 +159,7 @@ def test_primera_corrida_sin_watermark_procesa_todo(mirror, db_path, no_pull):
     stats = _run(mirror, db_path)
 
     assert stats["mode"] == "full"
-    assert stats["reason"] == "sin watermark"
+    assert stats["reason"] == "no watermark"
     assert stats["files"] == 2
     assert stats["processed"] == 2
     assert _cve_ids(db_path) == {"CVE-2026-0001", "CVE-2026-0002"}
@@ -172,7 +172,7 @@ def test_primera_corrida_sin_watermark_procesa_todo(mirror, db_path, no_pull):
         conn.close()
 
 
-def test_segunda_corrida_sin_cambios_en_git_procesa_cero(mirror, db_path, no_pull, processed):
+def test_second_run_without_git_changes_processes_zero(mirror, db_path, no_pull, processed):
     _write_cve(mirror, "CVE-2026-0001")
     _commit_all(mirror, "un cve")
     first = _run(mirror, db_path)
@@ -182,43 +182,43 @@ def test_segunda_corrida_sin_cambios_en_git_procesa_cero(mirror, db_path, no_pul
     second = _run(mirror, db_path)
 
     assert second["mode"] == "incremental"
-    assert second["reason"] == "HEAD sin cambios"
+    assert second["reason"] == "HEAD unchanged"
     assert second["files"] == 0
     assert second["processed"] == 0
     assert processed == []
-    assert second["new_head"] == first["new_head"]  # watermark estable
+    assert second["new_head"] == first["new_head"]  # stable watermark
     assert _synced_at(db_path, "CVE-2026-0001") == MARK
 
 
-def test_incremental_procesa_solo_el_delta_y_no_reescribe_los_viejos(
+def test_incremental_processes_only_the_delta_and_does_not_rewrite_old_ones(
     mirror, db_path, no_pull, processed
 ):
-    _write_cve(mirror, "CVE-2026-0001", "Descripción original.")
-    _write_cve(mirror, "CVE-2026-0002", "Descripción original.")
+    _write_cve(mirror, "CVE-2026-0001", "Original description.")
+    _write_cve(mirror, "CVE-2026-0002", "Original description.")
     _commit_all(mirror, "dos cves")
     _run(mirror, db_path)
     _mark_synced(db_path, "CVE-2026-0001", "CVE-2026-0002")
     processed.clear()
 
     _write_cve(mirror, "CVE-2026-0003", "CVE nuevo.")
-    _write_cve(mirror, "CVE-2026-0001", "Descripción republicada.")
+    _write_cve(mirror, "CVE-2026-0001", "Republished description.")
     _commit_all(mirror, "un cve nuevo y uno modificado")
 
     stats = _run(mirror, db_path)
 
     assert stats["mode"] == "incremental"
-    assert stats["reason"] == "delta git"
+    assert stats["reason"] == "git delta"
     assert stats["files"] == 2
     assert sorted(processed) == ["CVE-2026-0001.json", "CVE-2026-0003.json"]
     assert _cve_ids(db_path) == {"CVE-2026-0001", "CVE-2026-0002", "CVE-2026-0003"}
 
-    # El no tocado conserva su fila; el republicado se reescribió.
+    # The untouched one keeps its row; the republished one was rewritten.
     assert _synced_at(db_path, "CVE-2026-0002") == MARK
     assert _synced_at(db_path, "CVE-2026-0001") != MARK
     assert _synced_at(db_path, "CVE-2026-0003") != MARK
 
 
-def test_full_reescribe_todo_aunque_exista_watermark(mirror, db_path, no_pull, processed):
+def test_full_rewrites_everything_even_with_watermark(mirror, db_path, no_pull, processed):
     _write_cve(mirror, "CVE-2026-0001")
     _write_cve(mirror, "CVE-2026-0002")
     _commit_all(mirror, "dos cves")
@@ -236,7 +236,7 @@ def test_full_reescribe_todo_aunque_exista_watermark(mirror, db_path, no_pull, p
     assert _synced_at(db_path, "CVE-2026-0002") != MARK
 
 
-def test_delta_ignora_archivos_que_no_son_cves(mirror, db_path, no_pull, processed):
+def test_delta_ignores_files_that_are_not_cves(mirror, db_path, no_pull, processed):
     _write_cve(mirror, "CVE-2026-0001")
     (mirror / "cves" / "delta.json").write_text('{"count": 0}', encoding="utf-8")
     _commit_all(mirror, "un cve y el indice delta")
@@ -253,13 +253,13 @@ def test_delta_ignora_archivos_que_no_son_cves(mirror, db_path, no_pull, process
     assert stats["files"] == 0
     assert processed == []
 
-    # El recorrido completo tampoco debe mirar cves/delta.json.
+    # The full walk must not look at cves/delta.json either.
     full = _run(mirror, db_path, full=True)
     assert full["files"] == 1
     assert full["processed"] == 1
 
 
-def test_json_invalido_devuelve_false_y_el_resto_continua(mirror, db_path, no_pull):
+def test_invalid_json_returns_false_and_the_rest_continues(mirror, db_path, no_pull):
     path = mirror / "cves" / "2026" / "CVE-2026-9999.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("{ esto no es json", encoding="utf-8")
@@ -279,8 +279,8 @@ def test_json_invalido_devuelve_false_y_el_resto_continua(mirror, db_path, no_pu
         conn.close()
 
 
-def test_watermark_desconocido_cae_a_full_sin_explotar(mirror, db_path, no_pull):
-    """Si el mirror se re-clonó, el SHA guardado ya no existe: degradar a full."""
+def test_unknown_watermark_falls_back_to_full_without_exploding(mirror, db_path, no_pull):
+    """If the mirror was re-cloned, the stored SHA no longer exists: degrade to full."""
     _write_cve(mirror, "CVE-2026-0001")
     _commit_all(mirror, "un cve")
     _run(mirror, db_path)
@@ -295,12 +295,12 @@ def test_watermark_desconocido_cae_a_full_sin_explotar(mirror, db_path, no_pull)
     stats = _run(mirror, db_path)
 
     assert stats["mode"] == "full"
-    assert stats["reason"] == "delta no disponible"
+    assert stats["reason"] == "delta unavailable"
     assert stats["processed"] == 1
 
 
-def test_sin_watermark_con_db_poblada_no_recorre_todo(mirror, db_path, no_pull, processed):
-    """Reinicio del worker: la DB ya tiene CVEs, no hay que reingestar 300k JSON."""
+def test_without_watermark_and_populated_db_does_not_walk_everything(mirror, db_path, no_pull, processed):
+    """Worker restart: the DB already has CVEs, no need to re-ingest 300k JSON files."""
     _write_cve(mirror, "CVE-2026-0001")
     _commit_all(mirror, "un cve")
     _run(mirror, db_path)
@@ -316,7 +316,7 @@ def test_sin_watermark_con_db_poblada_no_recorre_todo(mirror, db_path, no_pull, 
     stats = _run(mirror, db_path)
 
     assert stats["mode"] == "incremental"
-    assert stats["reason"] == "sin watermark, DB ya poblada"
+    assert stats["reason"] == "no watermark, DB already populated"
     assert stats["files"] == 0
     assert processed == []
     conn = get_db(db_path)
@@ -326,7 +326,7 @@ def test_sin_watermark_con_db_poblada_no_recorre_todo(mirror, db_path, no_pull, 
         conn.close()
 
 
-def test_sin_watermark_usa_delta_del_pull(mirror, db_path, monkeypatch, processed):
+def test_without_watermark_uses_delta_from_the_pull(mirror, db_path, monkeypatch, processed):
     _write_cve(mirror, "CVE-2026-0001")
     _commit_all(mirror, "uno")
     extra = _write_cve(mirror, "CVE-2026-0002")
@@ -346,14 +346,14 @@ def test_sin_watermark_usa_delta_del_pull(mirror, db_path, monkeypatch, processe
     stats = _run(mirror, db_path)
 
     assert stats["mode"] == "incremental"
-    assert stats["reason"] == "sin watermark, delta del pull"
+    assert stats["reason"] == "no watermark, delta from pull"
     assert stats["processed"] == 1
     assert processed == ["CVE-2026-0002.json"]
     assert _cve_ids(db_path) == {"CVE-2026-0002"}
 
 
-def test_clone_or_pull_reset_si_origin_reescribe_historia(tmp_path):
-    """CVE List V5 a veces force-pushea main: el shallow clone queda unrelated."""
+def test_clone_or_pull_resets_if_origin_rewrites_history(tmp_path):
+    """CVE List V5 sometimes force-pushes main: the shallow clone becomes unrelated."""
     origin = tmp_path / "origin"
     origin.mkdir()
     _git(origin, "init", "-q", "-b", "main")
@@ -389,7 +389,7 @@ def test_clone_or_pull_reset_si_origin_reescribe_historia(tmp_path):
     assert (mirror / "cves" / "2026" / "CVE-2026-0002.json").exists()
 
 
-def test_cli_full_es_opt_in_y_el_default_es_incremental():
+def test_cli_full_is_opt_in_and_default_is_incremental():
     assert sync_agent.build_parser().parse_args([]).full is False
     assert sync_agent.build_parser().parse_args(["--full"]).full is True
     args = sync_agent.build_parser().parse_args(["--cve-list-path", "x", "--db-path", "y"])

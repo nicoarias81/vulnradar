@@ -1,4 +1,4 @@
-"""Prueba que init_db aguanta arranques simultáneos (dashboard+worker) sobre el mismo schema."""
+"""Checks that init_db survives simultaneous starts (dashboard+worker) over the same schema."""
 import multiprocessing as mp, os, sys, tempfile, pathlib, traceback
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
@@ -29,4 +29,4 @@ if __name__ == "__main__":
         fails = [x for x in res if x != "ok"]
         bad += len(fails)
         print(f"round {r}: {len(res)} procesos -> {len(fails)} fallos", fails[:2])
-    print("RESULTADO:", "sin carreras" if bad == 0 else f"{bad} fallos")
+    print("RESULT:", "no races" if bad == 0 else f"{bad} failures")

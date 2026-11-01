@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Ingress del túnel + DNS para vulnradar.munalabs.eu (sitio PÚBLICO, sin Access).
+"""Tunnel ingress + DNS for vulnradar.munalabs.eu (PUBLIC site, no Access).
 
-Corre EN el server, con las credenciales de /opt/cloudflare/credentials.env:
+Runs ON the server, with the credentials from /opt/cloudflare/credentials.env:
 
     ssh ... 'set -a; source /opt/cloudflare/credentials.env; set +a; python3 -' < deploy/cloudflare-vulnradar.py
 
-Idempotente: si el hostname ya está en el ingress o el registro DNS ya existe, no lo duplica.
-Sólo imprime etiquetas/estado, nunca tokens.
+Idempotent: if the hostname is already in the ingress or the DNS record already exists, it is not duplicated.
+Only prints labels/state, never tokens.
 """
 import json
 import os
@@ -27,7 +27,7 @@ DRY = "--dry-run" in sys.argv
 
 def call(method: str, path: str, body: dict | None = None) -> dict:
     if DRY and method != "GET":
-        print(f"dry-run: {method} {path} (no se envía)")
+        print(f"dry-run: {method} {path} (not sent)")
         return {}
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(API + path, data=data, method=method)
@@ -50,16 +50,16 @@ def ingress() -> None:
     rules = cfg.get("ingress") or []
 
     if any(r.get("hostname") == HOST for r in rules):
-        print(f"ingress: {HOST} ya presente")
+        print(f"ingress: {HOST} already present")
     else:
         new = {"hostname": HOST, "service": SERVICE}
-        # El catch-all (regla sin hostname) tiene que quedar último.
+        # The catch-all (rule without hostname) has to stay last.
         idx = next((i for i, r in enumerate(rules) if not r.get("hostname")), len(rules))
         rules.insert(idx, new)
         cfg["ingress"] = rules
         call("PUT", path, {"config": cfg})
-        verb = "se agregaría" if DRY else "agregado"
-        print(f"ingress: {HOST} -> {SERVICE} {verb} (catch-all al final)")
+        verb = "would be added" if DRY else "added"
+        print(f"ingress: {HOST} -> {SERVICE} {verb} (catch-all last)")
 
     rules = call("GET", path)["config"]["ingress"]
     order = [r.get("hostname") or "*catch-all*" for r in rules]
@@ -72,9 +72,9 @@ def dns() -> None:
     if found:
         rec = found[0]
         ok = rec["type"] == "CNAME" and rec["content"] == target and rec.get("proxied")
-        print(f"dns: existe {rec['type']} proxy={rec.get('proxied')} ok={ok}")
+        print(f"dns: exists {rec['type']} proxy={rec.get('proxied')} ok={ok}")
         if not ok:
-            print("dns: ATENCIÓN, el registro existente no es el CNAME proxied esperado; no se modifica")
+            print("dns: WARNING, the existing record is not the expected proxied CNAME; not modified")
         return
     call("POST", f"/zones/{ZONE}/dns_records", {
         "type": "CNAME",
@@ -84,16 +84,16 @@ def dns() -> None:
         "ttl": 1,
         "comment": "vulnradar (cloudflare tunnel)",
     })
-    print(f"dns: CNAME {HOST} -> {target} proxied {'se crearía' if DRY else 'creado'}")
+    print(f"dns: CNAME {HOST} -> {target} proxied {'would be created' if DRY else 'created'}")
 
 
 def access() -> None:
     apps = call("GET", f"/accounts/{ACCOUNT}/access/apps?name={HOST}")
     hits = [a["name"] for a in apps if HOST in (a.get("domain") or "")]
     if hits:
-        print(f"access: ATENCIÓN hay app(s) que cubren el dominio: {hits} (sitio público: borrar si bloquea)")
+        print(f"access: WARNING there are app(s) covering the domain: {hits} (public site: delete if it blocks)")
     else:
-        print("access: sin apps (correcto para sitio público)")
+        print("access: no apps (correct for a public site)")
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-# Fuentes abiertas
+# Open sources
 sources:
   cve_list:
     type: git
@@ -20,13 +20,13 @@ sources:
     - https://www.helpnetsecurity.com/feed/
     - https://therecord.media/feed
     - https://www.darkreading.com/rss.xml
-    # CVEs recién publicados con el ID y el producto en el titular
-    # ("CVE-2026-120075 - WP Activity Log <= 5.6.1 - ..."): es el único feed que
-    # le da al rerank un CVE explícito. nvd-rss-analyzed.xml murió (404) y el de
-    # CISA responde 403.
+    # Newly published CVEs with the ID and the product in the headline
+    # ("CVE-2026-120075 - WP Activity Log <= 5.6.1 - ..."): the only feed that
+    # hands the rerank an explicit CVE. nvd-rss-analyzed.xml died (404) and the
+    # CISA one answers 403.
     - https://cvefeed.io/rssfeed/latest.xml
-    # Blogs de vendors y research: traen el CVE en el titular y explican el
-    # mecanismo, que es lo que los feeds de prensa general no dan.
+    # Vendor and research blogs: they carry the CVE in the headline and explain
+    # the mechanism, which general press feeds do not give you.
     - https://blog.talosintelligence.com/rss/
     - https://www.zerodayinitiative.com/blog?format=rss
     - https://unit42.paloaltonetworks.com/feed/
@@ -46,10 +46,10 @@ sources:
     - https://isc.sans.edu/rssfeed_full.xml
     - https://www.sentinelone.com/labs/feed/
 
-  # Advisories que ya traen el CVE en el titular: no pasan por el modelo.
-  # El rerank cuesta una llamada por entrada y acá el regex del titular alcanza.
-  # Incluye catálogos grandes (MSRC lista todo Patch Tuesday): el tope por
-  # corrida toma el tramo reciente y el upsert descarta lo ya visto.
+  # Advisories that already carry the CVE in the headline: they skip the model.
+  # The rerank costs one call per entry and here the headline regex is enough.
+  # Includes large catalogues (MSRC lists every Patch Tuesday): the per-run cap
+  # takes the recent stretch and the upsert discards what has already been seen.
   rss_regex_only:
     - https://api.msrc.microsoft.com/update-guide/rss
     - https://sec.cloudapps.cisco.com/security/center/psirtrss20/CiscoSecurityAdvisory.xml
@@ -62,19 +62,19 @@ sources:
     - https://cert.europa.eu/publications/security-advisories-rss
     - https://www.exploit-db.com/rss.xml
 
-  # Cada entrada pasa por el LLM: descarta lo que no es una vulnerabilidad
-  # concreta, resuelve el CVE del texto y guarda el apodo del titular
-  # (Log4Shell) como brand_name. Apagalo si el LLM no está disponible.
+  # Every entry goes through the LLM: it discards anything that is not a
+  # concrete vulnerability, resolves the CVE from the text and stores the
+  # headline nickname (Log4Shell) as brand_name. Turn it off if the LLM is down.
   rerank_feeds: true
 
   github_search:
     enabled: true
-    # {cve_id} se reemplaza por el CVE completo; el enrich lo lanza así tal cual.
+    # {cve_id} is replaced with the full CVE; enrichment fires it exactly as is.
     query_template: "{cve_id} poc"
 
-  # Prensa para los CVEs que importan aunque no estén en los feeds de hoy:
-  # los de KEV, los que tienen PoCs y los recién publicados. Google News
-  # responde 503 desde el VPS, así que el ciclo cae a Hacker News (Algolia).
+  # Press coverage for the CVEs that matter even when they are not in today's
+  # feeds: KEV ones, ones with PoCs and freshly published ones. Google News
+  # answers 503 from the VPS, so the cycle falls back to Hacker News (Algolia).
   attention:
     enabled: true
     limit: 15

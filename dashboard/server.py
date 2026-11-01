@@ -1,4 +1,4 @@
-"""Servidor HTTP del dashboard VulnRadar (HTML estático generado, puerto 8501)."""
+"""VulnRadar dashboard HTTP server (generated static HTML, port 8501)."""
 from __future__ import annotations
 
 import json
@@ -21,9 +21,9 @@ SOC_PATHS = {"/soc", "/agentes", "/agents"}
 
 
 def _search_target(query: str):
-    """CVE exacto para el buscador (id o apodo): redirige a la ficha.
+    """Exact CVE for the search box (id or nickname): redirects to the card.
 
-    Sólo cubre coincidencias exactas; el resto se resuelve como filtro en la home.
+    It only covers exact matches; everything else resolves as a filter on the home page.
     """
     text = (query or "").strip()
     if not text:
@@ -39,9 +39,9 @@ def _search_target(query: str):
     finally:
         conn.close()
 
-# Cache de HTML ya renderizado: el primer request de cada URL paga el SQL, los
-# siguientes salen de memoria mientras dure el TTL (el worker reescribe cada 15
-# min). Las páginas que dependen de la cookie (/soc) nunca se cachean.
+# Cache of already rendered HTML: the first request per URL pays the SQL, the
+# following ones come from memory while the TTL lasts (the worker rewrites every 15
+# min). Pages that depend on the cookie (/soc) are never cached.
 _HTML_CACHE: dict[str, tuple[float, str]] = {}
 _HTML_TTL = 60.0
 _HTML_MAX_ENTRIES = 32
@@ -56,7 +56,7 @@ def cached_html(key: str, producer) -> str:
     if hit and now - hit[0] < _HTML_TTL:
         return hit[1]
     html = producer()
-    if len(html) <= _HTML_MAX_BYTES:  # `?all=1` puede generar MBs: no se cachea
+    if len(html) <= _HTML_MAX_BYTES:  # `?all=1` can generate MBs: it is not cached
         with _HTML_LOCK:
             if len(_HTML_CACHE) >= _HTML_MAX_ENTRIES:
                 _HTML_CACHE.clear()
@@ -124,16 +124,16 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._redirect("/soc", extra_headers=[("Set-Cookie", auth.cookie_header())])
             return
         if not auth.configured():
-            error = "Panel SOC no configurado: definí SOC_PASSWORD."
+            error = "SOC panel not configured: set SOC_PASSWORD."
         else:
-            error = "Usuario o contraseña inválidos."
+            error = "Invalid username or password."
         html = login_html(error=error)
         self._send(200, html.encode("utf-8"), "text/html; charset=utf-8")
 
     def _products(self, qp: dict) -> None:
-        """Autocompletado del filtro de producto.
+        """Product filter autocomplete.
 
-        Son 60k productos distintos: se manda sólo lo que matchea lo escrito.
+        There are 60k distinct products: only what matches the typed text is sent.
         """
         text = (qp.get("q") or "").strip()
         if len(text) < 2:
@@ -153,7 +153,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if auth.authorized(self.headers.get("Cookie")):
             return agents(qp)
         if not auth.configured():
-            return login_html(error="Panel SOC no configurado: definí SOC_PASSWORD.")
+            return login_html(error="SOC panel not configured: set SOC_PASSWORD.")
         return login_html()
 
     def _send(self, code: int, body: bytes, content_type: str) -> None:

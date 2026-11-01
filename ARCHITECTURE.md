@@ -1,20 +1,20 @@
-# Arquitectura — VulnRadar
+# Architecture — VulnRadar
 
-## Principios de diseño
+## Design principles
 
-1. **Capas desacopladas**: cada capa solo conoce el esquema normalizado.
-2. **Extensible**: nuevas fuentes o la capa de Contexto se agregan sin tocar el core.
-3. **Reproducible**: el scoring es determinista y auditable.
-4. **Agentes**: cada responsabilidad es un proceso independiente.
+1. **Decoupled layers**: each layer only knows the normalized schema.
+2. **Extensible**: new sources or the Context layer are added without touching the core.
+3. **Reproducible**: scoring is deterministic and auditable.
+4. **Agents**: each responsibility is an independent process.
 
-## Capas
+## Layers
 
-### 1. Ingestión
-- Sync Agent: git pull de CVE List V5 + delta
+### 1. Ingestion
+- Sync Agent: git pull of CVE List V5 + delta
 - Enrichment Agent: KEV, EPSS, RSS, GitHub PoCs
 
-### 2. Normalización
-Esquema interno único:
+### 2. Normalization
+Single internal schema:
 
 ```json
 {
@@ -33,36 +33,36 @@ Esquema interno único:
 ```
 
 ### 3. Scoring
-Aplica fórmulas v2. Genera Hype, Reality y categoría.
+Applies the v2 formulas. Produces Hype, Reality and category.
 
-### 4. Contexto de assets (opcional)
-- Inventario de assets
-- Criticidad por asset
-- Ajuste del score final
-- Mapeo CVE → assets afectados
+### 4. Asset context (optional)
+- Asset inventory
+- Criticality per asset
+- Adjustment of the final score
+- CVE → affected assets mapping
 
-### 5. Salida
-- API REST
+### 5. Output
+- REST API
 - Dashboard (Streamlit)
-- Alertas (Slack, webhook, email)
+- Alerts (Slack, webhook, email)
 
-### Worker autónomo
-`scripts/run_worker.py` (servicio `worker` en Compose) corre en loop:
-sync incremental → enrich → score → alert. Intervalo: `SYNC_INTERVAL_MINUTES`
-(default 15). Un paso que falla no cancela los siguientes. El dashboard de
-Agentes lee `agent_events`. No requiere comandos manuales.
+### Autonomous worker
+`scripts/run_worker.py` (the `worker` service in Compose) runs in a loop:
+incremental sync → enrich → score → alert. Interval: `SYNC_INTERVAL_MINUTES`
+(default 15). A step that fails does not cancel the following ones. The Agents
+dashboard reads `agent_events`. No manual commands required.
 
-## Flujo de datos
+## Data flow
 
 ```
 CVE List V5 ──┐
 CISA KEV     ──┤
-EPSS         ──┼→ Enrichment → PostgreSQL → Scoring → [Contexto] → Dashboard/Alerts
+EPSS         ──┼→ Enrichment → PostgreSQL → Scoring → [Context] → Dashboard/Alerts
 RSS + GitHub ──┘
 ```
 
-## Extensión futura
+## Future extensions
 
-- Nuevas fuentes: añadir un feeder en Enrichment Agent
-- Contexto de assets: implementar `core/context.py` y llamar después del scoring
-- Nuevos canales de alerta: añadir en Alert Agent
+- New sources: add a feeder in the Enrichment Agent
+- Asset context: implement `core/context.py` and call it after scoring
+- New alert channels: add them in the Alert Agent

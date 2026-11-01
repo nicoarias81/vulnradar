@@ -1,8 +1,8 @@
 #!/usr/bin/env python
-"""Recolecta atención (prensa) en local, sin tocar la base productiva.
+"""Collects attention (press) locally, without touching the production DB.
 
-Escribe un JSONL que después se importa con scripts/import_attention.py.
-Reanudable: los CVEs ya hechos quedan en el .done y no se repiten.
+It writes a JSONL that is later imported with scripts/import_attention.py.
+Resumable: CVEs already done stay in the .done file and are not repeated.
 
     python scripts/collect_attention_local.py --input targets.csv --limit 500
     python scripts/collect_attention_local.py --input targets.csv --workers 5
@@ -30,7 +30,7 @@ def fetch_mentions(cve_id, brand, session, limit=25, timeout=20):
     queries = [cve_id]
     if brand and brand.strip():
         queries.append(brand.strip())
-    vistas, salida = set(), []
+    seen, results = set(), []
     for query in queries:
         try:
             r = session.get(NEWS_URL.format(query=quote_plus(query)),
@@ -41,79 +41,79 @@ def fetch_mentions(cve_id, brand, session, limit=25, timeout=20):
         parsed = feedparser.parse(r.content)
         for entry in parsed.entries[:limit]:
             url = (entry.get("link") or "").strip()
-            if not url or url in vistas:
+            if not url or url in seen:
                 continue
-            vistas.add(url)
-            medio = entry.get("source")
-            if isinstance(medio, dict):
-                medio = medio.get("title") or ""
-            salida.append({
+            seen.add(url)
+            outlet = entry.get("source")
+            if isinstance(outlet, dict):
+                outlet = outlet.get("title") or ""
+            results.append({
                 "url": url,
                 "title": (entry.get("title") or "").strip(),
-                # Google News: el medio real está en <source>, no en el título del feed.
-                "source": (medio or "").strip() or "Google News",
+                # Google News: the real outlet is in <source>, not in the feed title.
+                "source": (outlet or "").strip() or "Google News",
                 "published": entry.get("published") or entry.get("updated"),
             })
-    return salida
+    return results
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--input", required=True, help="CSV de CVEs (cve_id, brand_name, ...)")
+    ap.add_argument("--input", required=True, help="CSV of CVEs (cve_id, brand_name, ...)")
     ap.add_argument("--out", default="attention.jsonl")
     ap.add_argument("--workers", type=int, default=4)
-    ap.add_argument("--limit", type=int, default=0, help="0 = todos los pendientes")
-    ap.add_argument("--delay", type=float, default=0.25, help="pausa por CVE en cada worker")
+    ap.add_argument("--limit", type=int, default=0, help="0 = all pending")
+    ap.add_argument("--delay", type=float, default=0.25, help="pause per CVE in each worker")
     args = ap.parse_args()
 
     out = Path(args.out)
     done_path = out.with_suffix(".done")
-    hechos = set(done_path.read_text(encoding="utf-8").split()) if done_path.exists() else set()
+    done_ids = set(done_path.read_text(encoding="utf-8").split()) if done_path.exists() else set()
 
-    filas = []
+    rows = []
     with open(args.input, newline="", encoding="utf-8") as fh:
         for row in csv.DictReader(fh):
-            if row["cve_id"] in hechos:
+            if row["cve_id"] in done_ids:
                 continue
-            filas.append(row)
-            if args.limit and len(filas) >= args.limit:
+            rows.append(row)
+            if args.limit and len(rows) >= args.limit:
                 break
 
-    if not filas:
-        print("nada pendiente en este CSV")
+    if not rows:
+        print("nothing pending in this CSV")
         return 0
 
-    print(f"a procesar: {len(filas)} (ya hechos: {len(hechos)})", flush=True)
-    sesion_local = threading.local()
+    print(f"to process: {len(rows)} (already done: {len(done_ids)})", flush=True)
+    local_session = threading.local()
 
-    def trabajo(row):
-        session = getattr(sesion_local, "s", None)
+    def task(row):
+        session = getattr(local_session, "s", None)
         if session is None:
-            session = sesion_local.s = requests.Session()
+            session = local_session.s = requests.Session()
         try:
-            menciones = fetch_mentions(row["cve_id"], row.get("brand_name"), session)
+            mentions = fetch_mentions(row["cve_id"], row.get("brand_name"), session)
         except Exception as exc:
             return {"cve_id": row["cve_id"], "error": f"{type(exc).__name__}: {exc}"[:120]}
         time.sleep(max(0.0, args.delay))
-        return {"cve_id": row["cve_id"], "menciones": menciones}
+        return {"cve_id": row["cve_id"], "menciones": mentions}
 
-    procesados = 0
-    con_prensa = 0
+    processed = 0
+    with_press = 0
     with out.open("a", encoding="utf-8") as fh, done_path.open("a", encoding="utf-8") as dfh:
         with ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:
-            for resultado in pool.map(trabajo, filas):
+            for result in pool.map(task, rows):
                 with _lock:
-                    fh.write(json.dumps(resultado, ensure_ascii=False) + "\n")
+                    fh.write(json.dumps(result, ensure_ascii=False) + "\n")
                     fh.flush()
-                    dfh.write(resultado["cve_id"] + "\n")
+                    dfh.write(result["cve_id"] + "\n")
                     dfh.flush()
-                    procesados += 1
-                    if resultado.get("menciones"):
-                        con_prensa += 1
-                    if procesados % 50 == 0:
-                        print(f"  {procesados}/{len(filas)} (con prensa: {con_prensa})", flush=True)
+                    processed += 1
+                    if result.get("menciones"):
+                        with_press += 1
+                    if processed % 50 == 0:
+                        print(f"  {processed}/{len(rows)} (with press: {with_press})", flush=True)
 
-    print(f"listo: {procesados} CVEs, {con_prensa} con prensa -> {out}")
+    print(f"done: {processed} CVEs, {with_press} with press -> {out}")
     return 0
 
 

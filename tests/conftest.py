@@ -1,5 +1,5 @@
-"""Bootstrap de sys.path: `from core...` / `from agents...` funcionan con
-pytest invocado desde cualquier directorio del repo."""
+"""sys.path bootstrap: `from core...` / `from agents...` work when
+pytest is invoked from any directory in the repo."""
 import sys
 from pathlib import Path
 

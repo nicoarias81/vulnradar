@@ -47,3 +47,4 @@ Thumbs.db
 # Si lo versionamos, cada deploy lo pisa y el bind mount del proxy queda
 # apuntando al inodo viejo.
 deploy/upstream.caddy
+.pytest_tmp_*/

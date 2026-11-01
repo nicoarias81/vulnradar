@@ -1,26 +1,26 @@
-# Extensión de Contexto
+# Context Extension
 
-Esta capa es opcional: se activa cuando hay un inventario de assets propio.
+This layer is optional: it is enabled when there is an asset inventory of your own.
 
-## Objetivo
+## Goal
 
-Ajustar el Reality de un CVE según la criticidad de los assets afectados.
+Adjust a CVE's Reality according to the criticality of the affected assets.
 
-## Modelo
+## Model
 
-1. Cargar inventario de assets (CSV, API, CMDB, ServiceNow, etc.)
-2. Cada asset tiene `criticality` (1.0 – 10.0)
-3. Mapear CVE → assets (por producto, CPE, o manual)
-4. Calcular:
+1. Load the asset inventory (CSV, API, CMDB, ServiceNow, etc.)
+2. Each asset has `criticality` (1.0 – 10.0)
+3. Map CVE → assets (by product, CPE, or manually)
+4. Compute:
    ```
-   Reality_ajustado = Reality_base * (criticality / 5.0)
+   Adjusted_Reality = Base_Reality * (criticality / 5.0)
    ```
-5. Generar alertas cuando `Reality_ajustado > umbral` y el asset es crítico
+5. Generate alerts when `Adjusted_Reality > threshold` and the asset is critical
 
-## Ejemplo de uso
+## Usage example
 
 ```python
-# Con un inventario cargado
+# With an inventory loaded
 from core.context import apply_asset_context
 
 base_scores = scoring_agent.run()
@@ -28,6 +28,6 @@ adjusted = apply_asset_context(base_scores, inventory)
 alert_agent.notify(adjusted)
 ```
 
-## Tabla de assets (ya incluida en schema.sql)
+## Assets table (already included in schema.sql)
 
-Ver `schema.sql` → tablas `assets` y `cve_assets`.
+See `schema.sql` → the `assets` and `cve_assets` tables.

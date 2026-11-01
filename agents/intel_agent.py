@@ -1,21 +1,21 @@
 """
-Intel Agent — explotación observada y PoC públicos, sin LLM.
+Intel Agent — observed exploitation and public PoCs, no LLM.
 
-Tres fuentes estructuradas, cada una escribe sólo sus columnas y es idempotente:
+Three structured sources, each one writes only its own columns and is idempotent:
 
-- Exploit-DB (CSV público, ~10 MB): CVE -> exploits. Alimenta ``poc_count``.
-  Reemplaza de hecho al search de GitHub, que sin token devuelve 403 y dejó
-  la señal en 20 CVEs sobre 398 mil.
-- CIRCL Vulnerability-Lookup: sightings de honeypots (Shadowserver), MISP y
-  KEV agregado. Alimenta ``wild_confirmation``, que sin esta fuente queda en 0
-  en toda la base por más que el score lo premie.
-- GitHub Security Advisories (API pública, 60 req/h): CVSS del advisory
-  cuando el CNA no lo declaró. Hoy falta en el 46% de los CVEs.
+- Exploit-DB (public CSV, ~10 MB): CVE -> exploits. Feeds ``poc_count``.
+  It effectively replaces the GitHub search, which without a token returns 403
+  and left the signal on 20 CVEs out of 398 thousand.
+- CIRCL Vulnerability-Lookup: honeypot sightings (Shadowserver), MISP and
+  aggregated KEV. Feeds ``wild_confirmation``, which without this source stays
+  at 0 across the whole database no matter how much the score rewards it.
+- GitHub Security Advisories (public API, 60 req/h): the advisory CVSS
+  when the CNA did not declare one. It is missing on 46% of the CVEs today.
 
-Uso:
+Usage:
     python -m agents.intel_agent --all
     python -m agents.intel_agent --sightings --days 7
-    python -m agents.intel_agent --exploitdb --csv /ruta/files_exploits.csv
+    python -m agents.intel_agent --exploitdb --csv /path/files_exploits.csv
 """
 import argparse
 import csv
@@ -38,7 +38,7 @@ USER_AGENT = "vulnradar/0.3 (+https://github.com/nicoarias81/vulnradar)"
 
 CVE_RE = re.compile(r"^CVE-\d{4}-\d{4,}$")
 INTEL_STATE_KEY = "intel_last_run"
-# Un sighting sólo prueba explotación si dice explícitamente que se explotó.
+# A sighting only proves exploitation when it says so explicitly.
 EXPLOITED_TYPES = {"exploited"}
 
 POC_COUNT_SQL = """
@@ -61,17 +61,17 @@ WILD_SQL = """
 
 
 def parse_exploitdb(csv_text: str) -> dict:
-    """``{cve: [edb_id, ...]}`` desde el CSV oficial de Exploit-DB.
+    """``{cve: [edb_id, ...]}`` built from the official Exploit-DB CSV.
 
-    La columna ``codes`` trae ``CVE-2021-44228;CVE-2021-45046`` además de IDs
-    OSVDB; se descarta todo lo que no sea un CVE bien formado.
+    The ``codes`` column carries ``CVE-2021-44228;CVE-2021-45046`` alongside
+    OSVDB ids; anything that is not a well-formed CVE is discarded.
     """
     por_cve: dict[str, list[int]] = {}
-    for fila in csv.DictReader(io.StringIO(csv_text)):
-        edb_id = (fila.get("id") or "").strip()
+    for row in csv.DictReader(io.StringIO(csv_text)):
+        edb_id = (row.get("id") or "").strip()
         if not edb_id.isdigit():
             continue
-        for codigo in (fila.get("codes") or "").split(";"):
+        for codigo in (row.get("codes") or "").split(";"):
             codigo = codigo.strip().upper()
             if CVE_RE.match(codigo):
                 por_cve.setdefault(codigo, []).append(int(edb_id))
@@ -80,9 +80,9 @@ def parse_exploitdb(csv_text: str) -> dict:
 
 def sync_exploitdb(conn, *, csv_text=None, session=None, url=EXPLOITDB_URL,
                    timeout=240) -> dict:
-    """Carga el catálogo de Exploit-DB y lo vuelca en ``poc_count``.
+    """Loads the Exploit-DB catalog and writes it into ``poc_count``.
 
-    Nunca reduce el contador: el search de GitHub puede haber visto más PoCs.
+    It never lowers the counter: the GitHub search may have seen more PoCs.
     """
     if csv_text is None:
         http = session or requests
@@ -95,8 +95,8 @@ def sync_exploitdb(conn, *, csv_text=None, session=None, url=EXPLOITDB_URL,
     if not with_ids:
         return {"cves": 0, "con_exploit": 0}
 
-    # Orden determinista: dos procesos que insertan el mismo conjunto en
-    # distinto orden se bloquean mutuamente y Postgres corta con deadlock.
+    # Deterministic order: two processes inserting the same set in a different
+    # order block each other and Postgres aborts with a deadlock.
     pares = sorted(with_ids.items())
     conn.executemany(
         "INSERT INTO cves (cve_id) VALUES (?) ON CONFLICT (cve_id) DO NOTHING",
@@ -118,15 +118,15 @@ def fetch_sightings_page(date_from, *, page=1, per_page=1000, session=None,
 
 def sync_sightings(conn, *, days=7, date_from=None, max_pages=400, session=None,
                    timeout=60, per_page=100) -> dict:
-    """Marca ``wild_confirmation`` para CVEs con sintoma de explotación real.
+    """Sets ``wild_confirmation`` for CVEs showing symptoms of real exploitation.
 
-    Pagina la API pública de CIRCL desde ``date_from`` (o hoy - ``days``) y se
-    queda sólo con los sightings de tipo ``exploited``: un ``seen`` es una
-    mención, no una prueba de que alguien lo haya explotado.
+    Pages the public CIRCL API from ``date_from`` (or today - ``days``) and
+    keeps only ``exploited`` sightings: a ``seen`` is a mention, not proof that
+    someone exploited it.
 
-    ``per_page`` va bajo a propósito: con 1000 la API devuelve ~23 MB por
-    página y la respuesta se corta (JSONDecodeError) en el server de prod.
-    Una página que falla se saltea en vez de tumbar la corrida entera.
+    ``per_page`` is low on purpose: at 1000 the API returns ~23 MB per page and
+    the response gets cut off (JSONDecodeError) on the prod server. A page that
+    fails is skipped instead of taking the whole run down.
     """
     if date_from is None:
         date_from = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
@@ -146,7 +146,7 @@ def sync_sightings(conn, *, days=7, date_from=None, max_pages=400, session=None,
                 payload = None
         if payload is None:
             fallidas += 1
-            # Un corte de red no debe costar la señal de todo el día.
+            # A network blip must not cost the whole day's signal.
             if fallidas >= 3:
                 break
             continue
@@ -187,7 +187,7 @@ def fetch_ghsa_page(*, page=1, per_page=100, session=None, timeout=60) -> list:
 
 
 def sync_ghsa(conn, *, pages=5, session=None, timeout=60) -> dict:
-    """Rellena ``cvss_score`` sólo donde el CNA no lo declaró."""
+    """Fills ``cvss_score`` only where the CNA did not declare one."""
     revisados = 0
     rellenados = 0
     for page in range(1, pages + 1):
@@ -198,8 +198,8 @@ def sync_ghsa(conn, *, pages=5, session=None, timeout=60) -> dict:
             severidad = advisory.get("severity") or ""
             if not CVE_RE.match(cve) or cvss is None:
                 continue
-            # RETURNING en vez de rowcount: psycopg no siempre lo reporta y el
-            # conteo terminaba en 0 con las filas igual actualizadas.
+            # RETURNING instead of rowcount: psycopg does not always report it
+            # and the count ended at 0 with the rows updated anyway.
             cur = conn.execute(
                 """UPDATE cves SET cvss_score = ?, cvss_severity = ?
                    WHERE cve_id = ? AND cvss_score IS NULL
@@ -211,10 +211,10 @@ def sync_ghsa(conn, *, pages=5, session=None, timeout=60) -> dict:
 
 
 def run_daily(conn, *, hours=24, force=False, days=None, ghsa_pages=5) -> dict:
-    """Corre las tres fuentes si pasó la ventana; si no, no hace nada.
+    """Runs the three sources when the window has elapsed; otherwise does nothing.
 
-    El worker cicla cada 15 minutos y el catálogo de Exploit-DB son 10 MB: bajar
-    y repaginar CIRCL en cada vuelta sería tirar red y cuota al piso.
+    The worker cycles every 15 minutes and the Exploit-DB catalog is 10 MB:
+    downloading it and re-paging CIRCL every turn would throw network away.
     """
     from agents.sync_agent import get_state, set_state
 
@@ -226,30 +226,30 @@ def run_daily(conn, *, hours=24, force=False, days=None, ghsa_pages=5) -> dict:
             if (ahora - previo) < timedelta(hours=hours):
                 return {"skipped": True, "last_run": ultimo}
         except ValueError:
-            pass  # un valor corrupto no debe bloquear la corrida
+            pass  # a corrupt value must not block the run
 
-    resumen = {
+    summary = {
         "exploitdb": sync_exploitdb(conn),
         "sightings": sync_sightings(conn, days=days or max(1, int(hours) // 24 + 1)),
         "ghsa": sync_ghsa(conn, pages=ghsa_pages),
     }
     set_state(conn, INTEL_STATE_KEY, ahora.isoformat(timespec="seconds"))
-    return resumen
+    return summary
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(description="Fuentes de intel estructuradas")
+    parser = argparse.ArgumentParser(description="Structured intel sources")
     parser.add_argument("--exploitdb", action="store_true", help="cargar Exploit-DB")
     parser.add_argument("--sightings", action="store_true", help="sightings de CIRCL")
     parser.add_argument("--ghsa", action="store_true", help="GitHub Advisories (CVSS)")
-    parser.add_argument("--all", action="store_true", help="las tres")
+    parser.add_argument("--all", action="store_true", help="all three")
     parser.add_argument("--days", type=int, default=7, help="ventana de sightings")
     parser.add_argument("--csv", help="CSV local de Exploit-DB (evita la descarga)")
-    parser.add_argument("--pages", type=int, default=5, help="páginas de GHSA")
+    parser.add_argument("--pages", type=int, default=5, help="GHSA pages")
     args = parser.parse_args(argv)
 
     if not (args.all or args.exploitdb or args.sightings or args.ghsa):
-        parser.error("elegí al menos una fuente (--all, --exploitdb, --sightings, --ghsa)")
+        parser.error("choose at least one source (--all, --exploitdb, --sightings, --ghsa)")
 
     init_db()
     conn = get_db()

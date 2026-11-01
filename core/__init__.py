@@ -1,1 +1,1 @@
-"""Core de VulnRadar: scoring, normalización, modelos y acceso a PostgreSQL."""
+"""VulnRadar core: scoring, normalization, models and PostgreSQL access."""

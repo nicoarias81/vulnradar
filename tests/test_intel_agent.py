@@ -1,4 +1,4 @@
-"""Intel Agent: parseo de Exploit-DB y escritura de señales sin red."""
+"""Intel Agent: Exploit-DB parsing and signal writes, no network."""
 from datetime import datetime, timezone
 
 from agents.intel_agent import (parse_exploitdb, run_daily, sync_exploitdb,
@@ -25,7 +25,7 @@ class _Resp:
 
 
 class _Sesion:
-    """Guarda las requests hechas y devuelve respuestas fijas."""
+    """Stores the requests made and returns fixed responses."""
 
     def __init__(self, respuestas):
         self.respuestas = list(respuestas)
@@ -42,14 +42,14 @@ def _db(tmp_path):
     return get_db(path)
 
 
-def test_parse_exploitdb_normaliza_y_descarta_no_cve():
+def test_parse_exploitdb_normalizes_and_drops_non_cve():
     mapa = parse_exploitdb(CSV)
     assert mapa["CVE-2021-44228"] == [50592, 50000]
     assert mapa["CVE-2020-0001"] == [50000]
     assert "OSVDB-1234" not in mapa
 
 
-def test_sync_exploitdb_no_baja_un_poc_count_mayor(tmp_path):
+def test_sync_exploitdb_does_not_lower_a_higher_poc_count(tmp_path):
     conn = _db(tmp_path)
     try:
         sync_exploitdb(conn, csv_text=CSV)
@@ -57,7 +57,7 @@ def test_sync_exploitdb_no_baja_un_poc_count_mayor(tmp_path):
             "SELECT poc_count FROM enrichments WHERE cve_id = 'CVE-2021-44228'"
         ).fetchone()[0] == 2
 
-        # El search de GitHub ya había visto 5: el catálogo no debe retroceder.
+        # The GitHub search had already seen 5: the catalog must not go backwards.
         conn.execute("UPDATE enrichments SET poc_count = 5 WHERE cve_id = 'CVE-2021-44228'")
         sync_exploitdb(conn, csv_text=CSV)
         assert conn.execute(
@@ -67,30 +67,30 @@ def test_sync_exploitdb_no_baja_un_poc_count_mayor(tmp_path):
         conn.close()
 
 
-def test_sync_sightings_solo_marca_explotados(tmp_path):
+def test_sync_sightings_only_marks_exploited(tmp_path):
     conn = _db(tmp_path)
     datos = {"metadata": {"count": 3}, "data": [
         {"type": "exploited", "vulnerability": "CVE-2024-3400"},
         {"type": "seen", "vulnerability": "CVE-2024-1111"},
         {"type": "seen", "vulnerability": "CVE-2024-2222"},
     ]}
-    sesion = _Sesion([_Resp(payload=datos)])
+    fake_session = _Sesion([_Resp(payload=datos)])
     try:
-        res = sync_sightings(conn, days=3, session=sesion)
+        res = sync_sightings(conn, days=3, session=fake_session)
         assert res["cves_explotados"] == 1
         assert conn.execute(
             "SELECT wild_confirmation FROM enrichments WHERE cve_id = 'CVE-2024-3400'"
         ).fetchone()[0] == 1
-        # Un 'seen' es una mención, no explotación observada.
+        # A 'seen' is a mention, not observed exploitation.
         assert conn.execute(
             "SELECT COUNT(*) FROM enrichments WHERE cve_id = 'CVE-2024-1111'"
         ).fetchone()[0] == 0
-        assert sesion.llamadas[0]["params"]["date_from"]
+        assert fake_session.llamadas[0]["params"]["date_from"]
     finally:
         conn.close()
 
 
-def test_sync_ghsa_rellena_cvss_solo_si_falta(tmp_path):
+def test_sync_ghsa_fills_cvss_only_when_missing(tmp_path):
     conn = _db(tmp_path)
     conn.execute("INSERT INTO cves (cve_id, cvss_score) VALUES ('CVE-2026-0001', NULL)")
     conn.execute("INSERT INTO cves (cve_id, cvss_score) VALUES ('CVE-2026-0002', 9.9)")
@@ -98,9 +98,9 @@ def test_sync_ghsa_rellena_cvss_solo_si_falta(tmp_path):
         {"cve_id": "CVE-2026-0001", "cvss": {"score": 7.5}, "severity": "high"},
         {"cve_id": "CVE-2026-0002", "cvss": {"score": 3.1}, "severity": "low"},
     ]
-    sesion = _Sesion([_Resp(payload=avisos)])
+    fake_session = _Sesion([_Resp(payload=avisos)])
     try:
-        res = sync_ghsa(conn, pages=1, session=sesion)
+        res = sync_ghsa(conn, pages=1, session=fake_session)
         assert res["cvss_rellenados"] == 1
         assert conn.execute(
             "SELECT cvss_score FROM cves WHERE cve_id = 'CVE-2026-0001'"
@@ -112,12 +112,12 @@ def test_sync_ghsa_rellena_cvss_solo_si_falta(tmp_path):
         conn.close()
 
 
-def test_run_daily_no_repite_si_paso_menos_de_la_ventana(tmp_path):
+def test_run_daily_does_not_repeat_inside_the_window(tmp_path):
     conn = _db(tmp_path)
     try:
         ahora = datetime.now(timezone.utc).isoformat(timespec="seconds")
         set_state(conn, "intel_last_run", ahora)
-        # Sin red: si no respeta la ventana, intentaría bajar el CSV y fallaría.
+        # No network: if it ignored the window it would try to download the CSV and fail.
         assert run_daily(conn, hours=24)["skipped"] is True
     finally:
         conn.close()

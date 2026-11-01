@@ -1,7 +1,7 @@
-"""Crea los índices de búsqueda con CONCURRENTLY (no bloquea al worker).
+"""Creates the search indexes with CONCURRENTLY (it does not block the worker).
 
-`init_db` no puede: corre dentro de una transacción y con lock_timeout, así que
-en producción los índices grandes se crean con este script una sola vez.
+`init_db` cannot: it runs inside a transaction and with a lock_timeout, so
+in production the large indexes are created with this script once.
 
     docker exec -i vulnradar-dashboard-1 python - < scripts/create_indexes.py
 """
@@ -33,7 +33,7 @@ INDEXES = [
 
 def main() -> None:
     conn = get_db()
-    conn._raw.autocommit = True  # CONCURRENTLY no puede correr en transacción
+    conn._raw.autocommit = True  # CONCURRENTLY cannot run inside a transaction
     try:
         conn.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
         for name, sql in INDEXES:

@@ -1,8 +1,8 @@
 """
-Worker autónomo: sync → enrich → intel → score → alert, en loop.
+Autonomous worker: sync → enrich → intel → score → alert, in a loop.
 
-No requiere comandos a mano. Intervalo: SYNC_INTERVAL_MINUTES (default 15).
-Uso:
+It needs no manual commands. Interval: SYNC_INTERVAL_MINUTES (default 15).
+Usage:
     python scripts/run_worker.py
     python scripts/run_worker.py --once
 """
@@ -67,7 +67,7 @@ def _step(agent: str, event_type: str, fn):
 
 
 def run_cycle() -> dict:
-    """Una pasada completa. Cada paso loguea; un fallo no cancela los siguientes."""
+    """A full pass. Each step logs; one failure does not cancel the next ones."""
     init_db()
     summary = {}
 
@@ -79,9 +79,9 @@ def run_cycle() -> dict:
     def do_enrich():
         from agents.enrichment_agent import run as enrich
 
-        # Cada ciclo carga PoCs de un lote acotado (la API de GitHub permite
-        # 30 búsquedas/min con token). Con la cola filtrando los ya cargados,
-        # 100 por ciclo cubre los CVEs con prensa en menos de un día.
+        # Each cycle loads PoCs from a bounded batch (the GitHub API allows
+        # 30 searches/min with a token). With the queue filtering out the loaded ones,
+        # 100 per cycle covers the CVEs with press in under a day.
         try:
             limit = int(os.getenv("POC_BATCH", "100"))
         except ValueError:
@@ -99,9 +99,9 @@ def run_cycle() -> dict:
 
         conn = get_db()
         try:
-            resumen = run_daily(conn, hours=int(os.getenv("INTEL_INTERVAL_HOURS", "24")))
+            cycle_summary = run_daily(conn, hours=int(os.getenv("INTEL_INTERVAL_HOURS", "24")))
             conn.commit()
-            return resumen
+            return cycle_summary
         finally:
             conn.close()
 
@@ -117,7 +117,7 @@ def run_cycle() -> dict:
     summary["alert"] = _step("alert", "ALERT", do_alert)
     failed = [name for name, value in summary.items() if value is None]
     if failed:
-        log_event("worker", "CYCLE", "falló: " + ",".join(failed), "ERROR")
+        log_event("worker", "CYCLE", "failed: " + ",".join(failed), "ERROR")
     else:
         log_event("worker", "CYCLE", "ciclo completo", "SUCCESS")
     return summary
@@ -143,7 +143,7 @@ def loop() -> int:
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(description="Worker autónomo VulnRadar")
+    parser = argparse.ArgumentParser(description="VulnRadar autonomous worker")
     parser.add_argument("--once", action="store_true", help="Un ciclo y sale (tests / debug)")
     args = parser.parse_args(argv)
     if args.once:

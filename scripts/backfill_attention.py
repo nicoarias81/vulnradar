@@ -1,9 +1,9 @@
 #!/usr/bin/env python
-"""Rellena la atención pública (prensa y PoCs) de los CVEs que importan.
+"""Fills in public attention (press and PoCs) for the CVEs that matter.
 
-Los feeds del ciclo sólo traen lo último publicado, así que un CVE con 700 PoCs
-y en KEV puede quedarse con media_count=0 y hype 1.8. Esto busca cada CVE en
-Google News, guarda las menciones y recalcula el scoring.
+The cycle feeds only bring the latest published items, so a CVE with 700 PoCs
+and in KEV can stay at media_count=0 and hype 1.8. This searches each CVE on
+Google News, stores the mentions and recalculates the scoring.
 
     python scripts/backfill_attention.py --limit 20
     python scripts/backfill_attention.py --cve CVE-2026-109619 --skip-pocs
@@ -30,12 +30,12 @@ from core.db import get_db, init_db
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--limit", type=int, default=20, help="cuántos CVEs procesar")
+    parser.add_argument("--limit", type=int, default=20, help="how many CVEs to process")
     parser.add_argument("--cve", action="append", default=None, help="CVE puntual")
     parser.add_argument("--skip-pocs", action="store_true", help="no consultar GitHub")
     parser.add_argument("--skip-score", action="store_true", help="no recalcular score")
     parser.add_argument("--tone", action="store_true",
-                        help="analizar tono y apodo de las menciones (usa el LLM)")
+                        help="analyze tone and brand name of the mentions (uses the LLM)")
     args = parser.parse_args()
 
     init_db()
@@ -59,34 +59,34 @@ def main() -> int:
             try:
                 load_pocs(conn, [cve_id])
             except Exception as exc:
-                print(f"  {cve_id}: pocs falló ({type(exc).__name__})")
+                print(f"  {cve_id}: pocs failed ({type(exc).__name__})")
         try:
             menciones = search_mentions(cve_id, brand, session=http)
             nuevas = upsert_media_mentions(conn, menciones)
         except Exception as exc:
-            print(f"  {cve_id}: prensa falló ({type(exc).__name__})")
+            print(f"  {cve_id}: press failed ({type(exc).__name__})")
             nuevas = {}
         conn.commit()
         agregadas = nuevas.get(cve_id, 0)
         total_menciones += agregadas
-        fila = conn.execute(
+        cve_row = conn.execute(
             "SELECT poc_count, media_count FROM enrichments WHERE cve_id = ?",
             (cve_id,),
         ).fetchone()
         print(f"  {cve_id}: +{agregadas} menciones "
-              f"(pocs={fila['poc_count']}, media={fila['media_count']})")
-        time.sleep(1)  # no gatillar el rate limit de la búsqueda
+              f"(pocs={cve_row['poc_count']}, media={cve_row['media_count']})")
+        time.sleep(1)  # do not trip the search rate limit
 
     if args.tone:
-        print("analizando tono y apodo...")
-        print(f"CVEs con tono nuevo: {load_tone(conn, limit=max(10, len(objetivos) * 2))}")
+        print("analyzing tone and nickname...")
+        print(f"CVEs with a new tone: {load_tone(conn, limit=max(10, len(objetivos) * 2))}")
         conn.commit()
 
     if not args.skip_score:
         print(f"recalculando scores ({total_menciones} menciones nuevas)...")
-        puntuados = score_cves(conn, [cve_id for cve_id, _ in objetivos])
-        conn.commit()  # sin esto el trabajo se descarta al cerrar la conexión
-        print(f"CVEs puntuados: {puntuados}")
+        scored = score_cves(conn, [cve_id for cve_id, _ in objetivos])
+        conn.commit()  # without this the work is dropped when the connection closes
+        print(f"CVEs scored: {scored}")
 
     return 0
 
