@@ -29,6 +29,9 @@ def assessment(row, mentions, *, asof=None):
         activity='An exploitation observation from a configured trusted reporter is present.'
     elif row.get('exploitdb_poc_count') or row.get('validated_poc_count'):
         activity='Public PoC evidence is present; no trusted exploitation observation is recorded in these inputs.'
+    elif row.get('poc_count'):
+        activity=('Public exploit repositories reference this CVE, but none is validated; '
+                  'no trusted exploitation observation is recorded in these inputs.')
     else:
         activity='No trusted exploitation observation is recorded in these inputs. This does not establish absence of exploitation.'
     vector=row.get('cvss_vector') or ''

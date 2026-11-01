@@ -16,6 +16,8 @@ from core.scoring import score_cve, calculate_hype, calculate_reality, exploit_e
     ({'epss':0.01,'media_score':10,'tone_score':9,'branding':True},9.75,0.05,'Overhyped'),
     ({'cvss':10,'poc_score':10,'epss':0},0,0,'Quiet'),
     ({'epss':0.9,'public_poc':True},0,5.5,'Watch'),
+    ({'epss':0.00457,'poc_count':6},0,0.52,'Quiet'),
+    ({'epss':0.00457,'poc_count':1},0,0.27,'Quiet'),
 ])
 def test_safety_scenarios(signals,hype,reality,category):
     result=score_cve(signals)

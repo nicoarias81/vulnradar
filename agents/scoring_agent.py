@@ -15,11 +15,11 @@ from core.scoring import score_cve, exploitation_state
 
 SCORE_BATCH_SIZE = 2000
 # Bump whenever formulas, normalization or category thresholds change.
-SCORING_VERSION = "v4.2-ordinal-tiers"
+SCORING_VERSION = "v4.3-graded-poc-evidence"
 INPUT_HASH_SQL = f"""md5(jsonb_build_array(
     '{SCORING_VERSION}', c.cvss_score, c.cvss_vector,
     e.in_kev, CASE WHEN left(e.epss_date,10) >= to_char(CURRENT_TIMESTAMP - INTERVAL '7 days','YYYY-MM-DD') AND left(e.epss_date,10) <= to_char(CURRENT_TIMESTAMP,'YYYY-MM-DD') THEN e.epss ELSE NULL END,
-    e.wild_confirmation, e.ransomware_use, e.exploitdb_poc_count, e.validated_poc_count,
+    e.wild_confirmation, e.ransomware_use, e.exploitdb_poc_count, e.validated_poc_count, e.poc_count,
     COALESCE(active_media.media_count,0),
     CASE WHEN active_media.media_count>0 THEN e.tone_score ELSE 0 END,
     CASE WHEN active_media.media_count>0 THEN e.branding ELSE 0 END,
