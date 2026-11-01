@@ -8,14 +8,18 @@ path). Then it marks the CVEs in attention_backfill and rescores.
 """
 
 import argparse
+import hashlib
 import json
+import re
 import sys
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from core.db import get_db
 
 STAGING = "CREATE TEMP TABLE stg_menciones (" \
-          "cve_id text, url text, title text, source text, published text) ON COMMIT DROP"
+          "cve_id text, url text, title text, source text, published text, " \
+          "kind text, story_key text, domain text) ON COMMIT DROP"
 
 NUEVAS_POR_CVE = """
     SELECT s.cve_id, count(*) FILTER (WHERE m.url IS NULL) AS nuevas
@@ -25,22 +29,40 @@ NUEVAS_POR_CVE = """
 """
 
 
-def importar(conn, rows):
-    """rows: list of dicts with cve_id/url/title/source/published."""
-    cur = conn.cursor()
-    cur.execute(STAGING)
-    cur.executemany(
-        "INSERT INTO stg_menciones (cve_id, url, title, source, published) "
-        "VALUES (?, ?, ?, ?, ?)",
-        [(f["cve_id"], f["url"], f.get("title"), f.get("source"),
-          f.get("published")) for f in rows],
-    )
-    cur.execute(NUEVAS_POR_CVE)
-    nuevas = {r[0]: r[1] for r in cur.fetchall()}
+def _mention_columns(row) -> tuple:
+    """kind/story_key/domain for a mention, matching what the enrichment path stores.
 
-    cur.execute("""
-        INSERT INTO media_mentions (cve_id, url, title, source, published)
-        SELECT DISTINCT ON (cve_id, url) cve_id, url, title, source, published
+    Without `kind='press'` the row is invisible to Media: the scoring only counts
+    press entries from the last 30 days.
+    """
+    url = row["url"] or ""
+    title = row.get("title") or ""
+    host = urlsplit(url).netloc.lower()
+    kind = "advisory" if host == "cvefeed.io" else "press"
+    story_key = hashlib.sha256(
+        re.sub(r"\W+", " ", (title or url).lower()).strip().encode("utf-8")
+    ).hexdigest()
+    return kind, story_key, host
+
+
+def importar(conn, rows):
+    """rows: list of dicts with cve_id/url/title/source/published.
+
+    Uses conn.execute/executemany (which translate `?`); a raw `conn.cursor()`
+    speaks pyformat and rejects the SQLite-style placeholders.
+    """
+    conn.execute(STAGING)
+    conn.executemany(
+        "INSERT INTO stg_menciones (cve_id, url, title, source, published, kind, story_key, domain) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [(f["cve_id"], f["url"], f.get("title"), f.get("source"),
+          f.get("published"), *_mention_columns(f)) for f in rows],
+    )
+    nuevas = {r[0]: r[1] for r in conn.execute(NUEVAS_POR_CVE).fetchall()}
+
+    cur = conn.execute("""
+        INSERT INTO media_mentions (cve_id, url, title, source, published, kind, story_key, domain)
+        SELECT DISTINCT ON (cve_id, url) cve_id, url, title, source, published, kind, story_key, domain
         FROM stg_menciones
         ON CONFLICT (cve_id, url) DO NOTHING
     """)
@@ -49,14 +71,13 @@ def importar(conn, rows):
     for cve_id, delta in nuevas.items():
         if not delta:
             continue
-        cur.execute("""
+        conn.execute("""
             INSERT INTO enrichments (cve_id, media_count) VALUES (?, ?)
             ON CONFLICT (cve_id) DO UPDATE SET
                 media_count = COALESCE(enrichments.media_count, 0) + excluded.media_count,
                 updated_at = CURRENT_TIMESTAMP
         """, (cve_id, delta))
     conn.commit()
-    cur.close()
     return insertadas, nuevas
 
 
@@ -105,9 +126,8 @@ def main():
         print(f"{total_leidas} read, {total_insert} inserted", flush=True)
 
     if cves_tocados:
-        cur = conn.cursor()
         if not args.no_marcar:
-            cur.executemany(
+            conn.executemany(
                 "INSERT INTO attention_backfill (cve_id) VALUES (?) "
                 "ON CONFLICT (cve_id) DO NOTHING",
                 [(c,) for c in cves_tocados],
@@ -119,7 +139,6 @@ def main():
                 chunk = sorted(cves_tocados)[i:i + 500]
                 score_cves(conn, chunk)
                 conn.commit()
-        cur.close()
 
     print(f"done: {total_leidas} mentions read, {total_insert} new, "
           f"{len(cves_tocados)} CVEs marked", flush=True)
