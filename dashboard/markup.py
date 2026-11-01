@@ -991,6 +991,7 @@ def detail_html(
     mention_count: int = 0,
     brand_name: str = "",
     timeline: str = "",
+    caveat: str = "",
 ) -> str:
     cat = category or "Quiet"
     based = (
@@ -1034,6 +1035,7 @@ def detail_html(
       </div>
       <div class="banner"><strong>{_icon("flame")} {escape(CATEGORY_ES.get(cat, cat))}</strong>
         <p class="muted" style="margin:6px 0 0">{escape(CATEGORY_DETAIL.get(cat, ""))}</p></div>
+      {f'<p class="muted" style="margin-top:10px">{escape(caveat)}</p>' if caveat else ""}
       {based}
     </div>
     <div>

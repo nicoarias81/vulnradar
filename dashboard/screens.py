@@ -305,6 +305,18 @@ def detail(qp: dict | None = None) -> str:
 
     fechas = [d for d in (_dt(m.get("published")) for m in mentions) if d]
 
+    # CVE recién publicado: reality bajo puede ser falta de datos, no falta de
+    # riesgo. Sin este aviso, un 2/10 se lee como "no es para tanto".
+    publicado = _dt(row.get("published"))
+    dias_publicado = (datetime.now(timezone.utc) - publicado).days if publicado else None
+    caveat = ""
+    if dias_publicado is not None and dias_publicado <= 30 and not kev:
+        caveat = (
+            f"Publicado hace {dias_publicado} días. La evidencia de explotación "
+            "suele tardar semanas en aparecer: un reality bajo puede significar "
+            "que todavía no hay datos, no que el fallo sea leve."
+        )
+
     # Hitos con fecha real, en orden cronológico; los datos sin fecha van al final.
     hitos = [
         (_dt(row.get("published")), "Publicado"),
@@ -397,6 +409,7 @@ def detail(qp: dict | None = None) -> str:
         mention_count=len(mentions),
         brand_name=str(row.get("brand_name") or "").strip(),
         timeline=_timeline_html(series),
+        caveat=caveat,
     )
 
 
@@ -478,7 +491,7 @@ def agents(_qp: dict | None = None) -> str:
     logs = events[:6] or []
     log_html = "".join(
         _log_row(item) for item in logs
-    ) or f'<p class="muted">INFO &nbsp; {stats["scores"]} scores · {overhyped} Overhyped</p>'
+    ) or f'<p class="muted">INFO &nbsp; {stats["scores"]} scores · {overhyped} sin evidencia de uso</p>'
     return agents_html(
         now=now, cards=cards, feed_rows="".join(feed),
         scatter_div=scatter_div, logs=log_html,

@@ -8,24 +8,31 @@ CATEGORY_COLORS = {
 }
 
 CATEGORY_BLURB = {
-    "Overhyped": "High hype, low impact",
-    "Sleeper": "Moderate hype, emerging impact",
-    "Earned the hype": "High hype, high impact",
-    "Quiet": "Low hype, low impact",
+    "Overhyped": "High hype, no evidence of exploitation",
+    "Sleeper": "Moderate hype, emerging evidence",
+    "Earned the hype": "High hype, confirmed exploitation",
+    "Quiet": "Low hype, no evidence of exploitation",
 }
 
 CATEGORY_ES = {
-    "Overhyped": "SOBREVALORADO",
+    "Overhyped": "SIN EVIDENCIA DE USO",
     "Earned the hype": "GANÓ EL HYPE",
     "Sleeper": "SLEEPER",
-    "Quiet": "SILENCIOSO",
+    "Quiet": "SIN SEÑALES",
 }
 
+# Reality mide evidencia de explotación, no gravedad. Decir "sobrevalorado"
+# invita a leer "no hace falta parchear", que es lo contrario de lo que dice
+# un reality bajo: significa que todavía nadie lo está usando, no que sea
+# inofensivo si lo usan.
 CATEGORY_DETAIL = {
-    "Overhyped": "La percepción pública excede la realidad técnica.",
+    "Overhyped": "Mucho ruido y poca evidencia de explotación hasta ahora. "
+                 "Reality mide uso real, no gravedad: un score bajo no significa "
+                 "que el fallo sea inofensivo si alguien lo explota.",
     "Earned the hype": "El impacto observado respalda el ruido mediático.",
-    "Sleeper": "El impacto crece más rápido que la atención pública.",
-    "Quiet": "Poco ruido y poco impacto observado.",
+    "Sleeper": "La evidencia de explotación crece más rápido que la atención pública.",
+    "Quiet": "Poco ruido y sin evidencia de explotación registrada hasta ahora. "
+             "Tampoco hay señal de que esté siendo usado.",
 }
 
 SEVERITY_COLORS = {

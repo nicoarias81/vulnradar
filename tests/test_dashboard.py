@@ -191,3 +191,34 @@ def test_load_recent_events_y_ultimo_status(conn):
     assert last["sync"]["status"] == "RUNNING"
     stats = load_agent_stats(conn)
     assert stats["agents"]["sync"]["status"] == "RUNNING"
+
+
+def test_la_categoria_no_juzga_gravedad():
+    """Un reality bajo es falta de evidencia de uso, no un fallo inofensivo.
+
+    "Sobrevalorado" se leía como "no hace falta parchear": la etiqueta ahora
+    dice qué se midió, y el aviso aclara que un CVE recién publicado todavía
+    no acumuló evidencia.
+    """
+    from dashboard.markup import detail_html
+
+    html = detail_html(
+        cve_id="CVE-2026-9999",
+        description="d",
+        badges="",
+        bars="",
+        hype=7.5,
+        reality=2.0,
+        category="Overhyped",
+        events="",
+        mentions="",
+        pocs_html="",
+        poc_count=0,
+        now="2026-11-01",
+        caveat="Publicado hace 3 días. La evidencia de explotación tarda semanas.",
+    )
+
+    assert "SIN EVIDENCIA DE USO" in html
+    assert "sobrevalorado" not in html.lower()
+    assert "no significa" in html
+    assert "Publicado hace 3 días" in html
