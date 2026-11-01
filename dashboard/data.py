@@ -7,6 +7,7 @@ SQL (COUNT, LIMIT/OFFSET, GROUP BY): tens of thousands of rows are never materia
 """
 import re
 import json
+from core.reference_cases import match_case
 
 from core.db import has_table
 
@@ -30,10 +31,10 @@ _DAY_EXPR = "left(c.published, 10)"
 
 SELECT_SCORES_BASE = """
     SELECT s.cve_id, s.hype, s.reality, s.category, s.calculated_at,
-           c.description, c.cvss_score, c.cvss_severity, c.published,
+           c.description, c.cvss_score, c.cvss_severity, c.cvss_vector, c.cvss_source, c.published,
            e.tone_score, e.media_count, e.in_kev, e.epss, e.poc_count,
            e.branding, e.brand_name, e.kev_date, e.wild_confirmation, e.exploitdb_poc_count, e.github_poc_count,
-           s.exploitation_state, s.completeness, s.algorithm_version, ev.input_snapshot
+           e.epss_date, e.validated_poc_count, s.exploitation_state, s.completeness, s.algorithm_version, ev.input_snapshot
     FROM scores s
     JOIN cves c ON c.cve_id = s.cve_id
     LEFT JOIN enrichments e ON e.cve_id = s.cve_id
@@ -62,6 +63,11 @@ def _filters(since=None, until=None, category=None, severity=None, query=None, p
         params.append(str(product))
     if query:
         text = str(query).strip()
+        reference = match_case(text)
+        if reference:
+            clauses.append('s.cve_id = ANY(?)')
+            params.append(reference['cves'])
+            return clauses, params
         if text:
             like = f"%{text}%"
             # Each path uses its own index (trigram for id/nickname/product, GIN
@@ -91,6 +97,12 @@ def find_cve_id(conn, query: str):
     text = (query or "").strip()
     if not text:
         return None
+    reference = match_case(text)
+    if reference:
+        if len(reference['cves'])!=1:
+            return None
+        row=conn.execute('SELECT cve_id FROM cves WHERE cve_id=?',(reference['cves'][0],)).fetchone()
+        return row[0] if row else None
     upper = text.upper()
     candidates = [upper]
     if CVE_SHAPE.match(upper):
@@ -206,13 +218,13 @@ ACTIONABLE_ORDER = (
 
 
 def load_actionables(conn, since=None, until=None, category=None, severity=None,
-                     query=None, product=None, limit: int = 6) -> list:
-    """CVEs in the range that have exploitation evidence (see ACTIONABLE_WHERE)."""
+                     query=None, product=None, limit: int = 6, offset: int = 0) -> list:
+    """Page of exploitation evidence across publication dates, with other filters."""
     # Exploitation queue is driven by evidence; publication age never hides it.
     clauses, params = _filters(None, None, category, severity, query, product)
     clauses.append(ACTIONABLE_WHERE)
-    sql = SELECT_SCORES_BASE + _where(clauses) + ACTIONABLE_ORDER + "    LIMIT ?\n"
-    cursor = conn.execute(sql, list(params) + [int(limit)])
+    sql = SELECT_SCORES_BASE + _where(clauses) + ACTIONABLE_ORDER + "    LIMIT ? OFFSET ?\n"
+    cursor = conn.execute(sql, list(params) + [max(0,int(limit)), max(0,int(offset))])
     return _attach_alerts(conn, _fetch_dicts(cursor))
 
 
@@ -337,9 +349,9 @@ def load_latest_score(conn):
 
 
 def load_daily_averages(conn, since=None, until=None, category=None, severity=None,
-                        product=None) -> list:
+                        product=None, query=None) -> list:
     """Average hype/reality per day, aggregated in SQL."""
-    clauses, params = _filters(since, until, category, severity, None, product)
+    clauses, params = _filters(since, until, category, severity, query, product)
     sql = (
         f"SELECT {_DAY_EXPR} AS date, "
         "AVG(s.hype) AS hype, AVG(s.reality) AS reality, COUNT(*) AS n "
@@ -364,13 +376,13 @@ def load_daily_averages(conn, since=None, until=None, category=None, severity=No
 
 
 def load_highlights(conn, since=None, until=None, category=None, severity=None,
-                    product=None, limit: int = 3) -> list:
+                    product=None, limit: int = 3, query=None) -> list:
     """The noisiest CVEs of the period: the chart labels and links them.
 
     Top per day is not enough: the daily average is always low and would
     highlight irrelevant CVEs. This goes by absolute hype.
     """
-    clauses, params = _filters(since, until, category, severity, None, product)
+    clauses, params = _filters(since, until, category, severity, query, product)
     sql = (
         f"SELECT s.cve_id, s.hype, s.reality, {_DAY_EXPR} AS day, e.brand_name "
         "FROM scores s JOIN cves c ON c.cve_id = s.cve_id "
@@ -513,7 +525,7 @@ def load_mentions(conn, cve_id: str) -> list:
         return []
     cursor = conn.execute(
         """
-        SELECT url, title, source, published
+        SELECT url, title, source, published, kind, domain, story_key
         FROM media_mentions
         WHERE cve_id = ?
         ORDER BY published DESC, created_at DESC

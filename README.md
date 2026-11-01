@@ -11,6 +11,9 @@
 
 **Demo:** https://vulnradar.munalabs.eu · **Repo:** https://github.com/nicoarias81/vulnradar
 
+The current product is a public, anonymous radar. User accounts, CMDB integration
+and personal product tracking are outside the current scope.
+
 Base open source version. An asset context layer (inventory + criticality) is
 planned; its tables and integration proposal are included, but the runtime
 extension is not implemented yet.
@@ -84,18 +87,46 @@ The `make sync` / `make enrich` / `make score` targets still exist for debugging
 
 ## Dashboard
 
+The public view includes [dated reference cases](docs/REFERENCE_CASES.md) for
+PHP2Shell and Linux kernel CVE-2026-98432. Details separate attention, technical
+conditions, observed activity and known scale. Public labels describe those
+observations rather than asserting that the media reaction was justified; stored
+category identifiers remain compatible.
+
 The **public** board is at http://localhost:8501: a **Hype vs Reality** scatter
 colored by category, a **Pay attention to** table, a table of recent CVEs, a
 compact Score evolution timeline and a detail card. It is served by
 `python scripts/run_dashboard.py` (or `make dashboard`) on port 8501.
 
-The home page fits on one screen without scrolling: on the left the scatter with
-the timeline as a strip at the bottom, on the right **Pay attention to** on top
-and **Recent CVEs** below. **Pay attention to** filters by *evidence of
+On wide screens the home uses a full-width filter row below the brand, with the scatter on the left and
+the timeline as a strip at the bottom. On the right, **Pay attention to** appears above
+and **CVEs in publication range** below. **Pay attention to** filters by *evidence of
 exploitation*, not by CVSS: a CVE enters with KEV, with EPSS ≥ 0.70 or with at
 least one public PoC, and the order is KEV → EPSS → PoC. Each row shows the
 signals as badges (KEV with the date it was added, PoC count, EPSS) and a Reality
-meter. The recent table remains chronological, newest first.
+meter. Its count is independent of the publication-range count: the operational
+queue covers all publication dates, while search/product/severity/category still
+apply. The chronological panels use the publication-date range and remain newest
+first. An empty publication period does not hide the attention queue or claim
+the database has no scores.
+
+There are 44 configured feeds, including primary notices from Ubuntu, Debian,
+CERT-FR and CERT/CC. Technical advisories are attributed and labelled separately
+from press and do not inflate Hype. See the [source registry](docs/SOURCES.md)
+for admission checks and the dated live-ingestion evidence. Specialist press now
+also includes The Register, Infosecurity Magazine, Security Affairs, CSO Online
+and Hispasec. Publisher-supplied article content is used to recover explicit CVE
+references missing from short RSS summaries; full articles are not republished.
+
+The attention queue has independent Previous/Next controls (`attention_page`,
+zero-based in the URL). Those links preserve the publication page and all filters;
+publication pagination preserves the attention page. Filter changes reset both.
+The featured reference-case shortcut bar is not shown on the home page.
+
+CVE details put scores, component bars and source documents first. History and
+public exploit evidence follow immediately; full descriptions, contextual notes,
+dated references and source-event timelines use collapsed disclosures. See
+[the layout checks](docs/UI_LAYOUT.md).
 
 The timeline stretches its axis on its own according to the period maximum. On
 the home page it runs in compact mode (no highlights or value axis, three
@@ -119,8 +150,7 @@ With an empty database the page does not break: the autonomous worker fills
 scores in the next cycle; with `SEED_DEMO=1` there are 8 sample CVEs. Loading and
 filtering live in `dashboard/data.py` and are tested with `pytest`. The home page
 does not materialize the history: `COUNT(*)` for the total and for the actionable
-items, a `LIMIT 400` scatter (prioritizing branding and hype), `LIMIT 6`
-actionable items ordered by evidence, a paginated table (`LIMIT/OFFSET`, 6 or 100
+items, a `LIMIT 400` scatter (prioritizing branding and hype), `LIMIT/OFFSET` attention pages of six items ordered by evidence, a paginated table (`LIMIT/OFFSET`, 6 or 100
 in View all) and a timeline with a daily `GROUP BY`.
 The SOC panel refreshes itself from the `agent_events` events.
 
@@ -354,7 +384,7 @@ See `docs/EXTENSION_CONTEXT.md`.
 | CVE List V5 | Main mirror | https://github.com/CVEProject/cvelistV5 |
 | CISA KEV | Strong Reality | https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json |
 | FIRST EPSS | Probability | https://epss.empiricalsecurity.com/epss_scores-current.csv.gz |
-| Security RSS | Media coverage | 25 feeds: THN, BleepingComputer, Talos, Unit 42, Project Zero, watchTowr, etc. |
+| Security RSS | Media coverage | 30 news/research/catalogue feeds: THN, BleepingComputer, The Register, Infosecurity Magazine, CSO, Hispasec, etc. |
 | Vendor/CERT advisories | Explicit CVE, no LLM | MSRC, Cisco PSIRT, ZDI, Palo Alto, Ivanti, Fortinet, CERT-FR, INCIBE, CERT-EU, Exploit-DB |
 | Hacker News (Algolia) | Press for CVEs outside the feeds | https://hn.algolia.com/api |
 | GitHub Search | PoCs | Public API |

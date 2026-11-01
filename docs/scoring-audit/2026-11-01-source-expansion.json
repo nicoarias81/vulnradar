@@ -1,0 +1,109 @@
+{
+  "captured_at_utc": "2026-11-01T14:13:52.298676+00:00",
+  "scope": "Local lab only; one-time admission probe and actual ingestion, not availability guarantee.",
+  "configured_feeds": 39,
+  "probe": [
+    {
+      "url": "https://ubuntu.com/security/notices/rss.xml",
+      "status": 200,
+      "resolved_url": "https://ubuntu.com/security/notices/rss.xml",
+      "entries": 10,
+      "cves": 26
+    },
+    {
+      "url": "https://www.debian.org/security/dsa-long",
+      "status": 200,
+      "resolved_url": "https://www.debian.org/security/dsa-long",
+      "entries": 30,
+      "cves": 12
+    },
+    {
+      "url": "https://access.redhat.com/security/data/metrics/rhsa.rss",
+      "status": 200,
+      "resolved_url": "https://security.access.redhat.com/data/metrics/rhsa.rss",
+      "entries": 77,
+      "cves": 0
+    },
+    {
+      "url": "https://www.cert.ssi.gouv.fr/avis/feed/",
+      "status": 200,
+      "resolved_url": "https://cert.cyber.gouv.fr/avis/feed/",
+      "entries": 40,
+      "cves": 3
+    },
+    {
+      "url": "https://www.kb.cert.org/vuls/atomfeed/",
+      "status": 200,
+      "resolved_url": "https://www.kb.cert.org/vuls/atomfeed/",
+      "entries": 15,
+      "cves": 30
+    },
+    {
+      "url": "https://www.jpcert.or.jp/english/at/atom.xml",
+      "status": 404,
+      "resolved_url": "https://www.jpcert.or.jp/english/at/atom.xml",
+      "error": "HTTPError"
+    },
+    {
+      "url": "https://jvn.jp/en/rss/jvn.rdf",
+      "status": 200,
+      "resolved_url": "https://jvn.jp/en/rss/jvn.rdf",
+      "entries": 20,
+      "cves": 0
+    }
+  ],
+  "intake": {
+    "new_mentions": 70,
+    "cves_with_new_mentions": 61,
+    "recalculated": 0,
+    "existing_hype_changed": 0,
+    "sources": [
+      {
+        "source": "feed:https://cert.cyber.gouv.fr/avis/feed/",
+        "status": "SUCCESS",
+        "details": {
+          "entries": 40,
+          "mentions": 3,
+          "kind": "advisory"
+        }
+      },
+      {
+        "source": "feed:https://ubuntu.com/security/notices/rss.xml",
+        "status": "SUCCESS",
+        "details": {
+          "entries": 10,
+          "mentions": 26,
+          "kind": "advisory"
+        }
+      },
+      {
+        "source": "feed:https://www.debian.org/security/dsa-long",
+        "status": "SUCCESS",
+        "details": {
+          "entries": 30,
+          "mentions": 12,
+          "kind": "advisory"
+        }
+      },
+      {
+        "source": "feed:https://www.kb.cert.org/vuls/atomfeed/",
+        "status": "SUCCESS",
+        "details": {
+          "entries": 15,
+          "mentions": 29,
+          "kind": "advisory"
+        }
+      }
+    ]
+  },
+  "validation": {
+    "full_suite_passed": 230,
+    "final_focused_suite_passed": 19,
+    "overview_checks": {
+      "sleeper_header": "1,765 matching",
+      "future_publication_period_header": "27,103 matching",
+      "future_period_keeps_attention": true,
+      "false_worker_empty_message": false
+    }
+  }
+}

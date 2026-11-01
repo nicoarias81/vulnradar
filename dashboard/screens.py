@@ -6,6 +6,7 @@ from email.utils import parsedate_to_datetime
 from html import escape
 
 from core.db import get_db
+from dashboard.assessment import assessment_html
 from dashboard.data import (
     SCATTER_LIMIT,
     VIEW_ALL_LIMIT,
@@ -101,8 +102,10 @@ def _sig_badges(item) -> str:
         sigs.append('<span class="s-kev">Observed exploitation</span>')
     pocs = int(item.get("poc_count") or 0)
     if pocs:
-        label = 'public PoC entries' if item.get('exploitdb_poc_count') else 'repo candidates'
-        sigs.append(f'<span class="s-poc">{pocs} {label}</span>')
+        curated=int(item.get('exploitdb_poc_count') or 0)
+        label=f'{curated} PoC' if curated else f'{pocs} candidates'
+        description='Public PoC entries from Exploit-DB' if curated else 'Unverified repository candidates'
+        sigs.append(f'<span class="s-poc" title="{description}">{label}</span>')
     epss = item.get("epss")
     if epss is not None and float(epss) >= 0.70:
         sigs.append(f'<span class="s-epss">EPSS {float(epss) * 100:.0f}%</span>')
@@ -152,6 +155,10 @@ def overview(qp: dict | None = None) -> str:
     except ValueError:
         page = 0
     page_size = PAGE_SIZE
+    try:
+        attention_page=max(0,int(_qp(qp,'attention_page') or 0))
+    except ValueError:
+        attention_page=0
 
     since = until = None
     if since_s:
@@ -173,52 +180,46 @@ def overview(qp: dict | None = None) -> str:
         total = count_scores(conn, since=since, until=until, category=cat, severity=sev,
                              query=query, product=prod)
         products = load_products(conn, since=since, until=until)
-        if not total:
-            empty = (
-                f'<p class="empty">No results for «{escape(query)}».</p>'
-                if query else
-                '<p class="empty">No scores yet. The autonomous worker computes them on its own.</p>'
-            )
-            return overview_html(
-                logo_html=logo(),
-                scatter_div=empty,
-                timeline_div="",
-                table_rows="",
-                total=0, page=0, page_size=page_size,
-                severity=severity, category=category, since=since_s, until=until_s,
-                show_all=show_all, query=query, product=product, products=products,
-            )
+        empty_message = 'No CVEs match these publication dates and filters.'
+        if not total and not count_scores(conn):
+            empty_message = 'No scores are available yet.'
         if show_all:
             page_size = VIEW_ALL_LIMIT
         max_page = max(0, (total - 1) // page_size) if total else 0
         page = min(max(0, page), max_page)
-        chunk = load_scores(
-            conn, since=since, until=until, category=cat, severity=sev,
-            limit=page_size, offset=page * page_size, order="published", query=query,
-            product=prod,
-        )
-        scatter_rows = load_scores(
-            conn, since=since, until=until, category=cat, severity=sev,
-            limit=SCATTER_LIMIT, order="hype", query=query, product=prod,
-        )
-        series = load_daily_averages(
-            conn, since=since, until=until, category=cat, severity=sev, product=prod,
-        )
-        # Inside the block: after close() the connection is useless and the
-        # query failed silently, leaving the chart without highlights.
-        highlights = load_highlights(
-            conn, since=since, until=until, category=cat, severity=sev,
-            product=prod, limit=3,
-        )
-        # Actionable CVEs: exploitation evidence in the same range and filters.
+        chunk, scatter_rows, series = [], [], []
+        if total:
+            chunk = load_scores(
+                conn, since=since, until=until, category=cat, severity=sev,
+                limit=page_size, offset=page * page_size, order="published", query=query,
+                product=prod,
+            )
+            scatter_rows = load_scores(
+                conn, since=since, until=until, category=cat, severity=sev,
+                limit=SCATTER_LIMIT, order="hype", query=query, product=prod,
+            )
+            series = load_daily_averages(
+                conn, since=since, until=until, category=cat, severity=sev, product=prod,
+                query=query,
+            )
+            # Inside the block: after close() the connection is useless and the
+            # query failed silently, leaving the chart without highlights.
+            highlights = load_highlights(
+                conn, since=since, until=until, category=cat, severity=sev,
+                product=prod, limit=3,
+                query=query,
+            )
+        # Operational queue: all publication dates, other selected filters apply.
         # It goes inside the try because after close() the connection is useless.
-        actionable_rows_data = load_actionables(
-            conn, since=since, until=until, category=cat, severity=sev,
-            query=query, product=prod, limit=ACTIONABLE_LIMIT,
-        )
         actionable_total = count_actionables(
             conn, since=since, until=until, category=cat, severity=sev,
             query=query, product=prod,
+        )
+        attention_page=min(attention_page,max(0,(actionable_total-1)//ACTIONABLE_LIMIT))
+        actionable_rows_data = load_actionables(
+            conn, since=since, until=until, category=cat, severity=sev,
+            query=query, product=prod, limit=ACTIONABLE_LIMIT,
+            offset=attention_page*ACTIONABLE_LIMIT,
         )
     finally:
         conn.close()
@@ -245,7 +246,7 @@ def overview(qp: dict | None = None) -> str:
     # 760x520 over the card real width: the scatter fills the column
     # height instead of leaving a gap before the timeline.
     scatter_div = (scatter_svg(scatter_rows, width=760, height=640) if scatter_rows
-                   else '<p class="empty">No CVE matches the current filters.</p>')
+                   else f'<p class="empty">{escape(empty_message)}</p>')
     # At the bottom of the scatter: 760 wide so the dates stay legible when
     # the SVG is scaled to the column.
     timeline_div = timeline_svg(series, width=760, height=78, compact=True)
@@ -255,9 +256,10 @@ def overview(qp: dict | None = None) -> str:
         logo_html=logo(),
         scatter_div=scatter_div,
         timeline_div=timeline_div,
-        table_rows="".join(table_rows),
+        table_rows="".join(table_rows) or f'<tr><td colspan="5" class="muted">{escape(empty_message)}</td></tr>',
         actionable_rows=actionable_table,
         actionable_total=actionable_total,
+        attention_page=attention_page, attention_page_size=ACTIONABLE_LIMIT,
         total=total, page=page, page_size=page_size,
         severity=severity, category=category, since=since_s, until=until_s,
         show_all=show_all, query=query, product=product, products=products,
@@ -319,7 +321,7 @@ def detail(qp: dict | None = None) -> str:
     def _sello(momento):
         return momento.strftime("%d %b %Y, %H:%M") if momento else ""
 
-    fechas = [d for d in (_dt(m.get("published")) for m in mentions) if d]
+    fechas = [d for d in (_dt(m.get("published")) for m in mentions if m.get('kind')=='press') if d]
 
     # Newly published CVE: a low reality can be missing data, not missing
     # risk. Without this warning, a 2/10 reads as "not that bad".
@@ -361,6 +363,7 @@ def detail(qp: dict | None = None) -> str:
 
     def _mencion_html(m, con_titulo=True):
         fuente = m.get("source") or "media"
+        kind_label = {'press':'Press', 'advisory':'Technical advisory'}.get(m.get('kind'), 'Source document')
         url = (m.get("url") or "").strip()
         fecha = _sello(_dt(m.get("published"))) or "no date"
         cabeza = (
@@ -368,18 +371,18 @@ def detail(qp: dict | None = None) -> str:
             if url else f"<b>{escape(fuente)}</b>"
         )
         titulo = escape(m.get("title") or "") if con_titulo else ""
-        detalle = escape(fecha) + (f" · {titulo}" if titulo else "")
+        detalle = escape(kind_label) + ' · ' + escape(fecha) + (f" · {titulo}" if titulo else "")
         return f'<div class="mention">{cabeza}<div class="muted">{detalle}</div></div>'
 
     if mentions:
         visibles = "".join(_mencion_html(m) for m in mentions[:5])
         remaining = "".join(_mencion_html(m) for m in mentions[5:])
         men_html = visibles + (
-            f'<details class="expand"><summary>See all {len(mentions)} mentions</summary>'
+            f'<details class="expand"><summary>See all {len(mentions)} source documents</summary>'
             f'{remaining}</details>' if remaining else ""
         )
     else:
-        men_html = '<p class="muted">No mentions yet.</p>'
+        men_html = '<p class="muted">No source documents yet.</p>'
 
     if poc_repos:
         rows_html = "".join(
@@ -430,6 +433,7 @@ def detail(qp: dict | None = None) -> str:
         brand_name=str(row.get("brand_name") or "").strip(),
         timeline=_timeline_html(series),
         caveat=caveat,
+        evidence_context=assessment_html(row,mentions),
     )
 
 

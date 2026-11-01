@@ -18,6 +18,7 @@ import gzip
 import io
 import json
 import hashlib
+from html import unescape
 import math
 import os
 import re
@@ -199,6 +200,11 @@ def parse_feed(content, source=None) -> list:
 
     entries = []
     for entry in parsed.entries:
+        # Atom/content:encoded can contain the CVEs absent from the lead summary.
+        # Retain identifiers only; do not persist or republish the article body.
+        body = ' '.join(str(part.get('value') or '') for part in (entry.get('content') or []) if isinstance(part, dict))
+        explicit_text = ' '.join(_strip_html(entry.get(k) or '') for k in ('title','summary','description')) + ' ' + str(entry.get('link') or '') + ' ' + _strip_html(body)
+        cve_ids = sorted({m.group(0).upper() for m in CVE_PATTERN.finditer(explicit_text)})
         # Google News RSS puts the real outlet in <source>: feed.title is the query.
         medio = entry.get("source")
         if isinstance(medio, dict):
@@ -210,19 +216,24 @@ def parse_feed(content, source=None) -> list:
             "published": _iso_date(entry),
             # The outlet name comes from the entry; feed and host are the fallback.
             "source": (medio or "").strip() or feed_title or source,
+            "cve_ids": cve_ids,
         })
     return entries
+
+
+def entry_cve_ids(entry):
+    text = ' '.join(str(entry.get(k) or '') for k in ('title','summary','url'))
+    ids = {m.group(0).upper() for m in CVE_PATTERN.finditer(text)}
+    ids.update(str(c).upper() for c in (entry.get('cve_ids') or []) if CVE_PATTERN.fullmatch(str(c)))
+    return ids
 
 
 def collect_mentions(entries) -> list:
     """Expands each entry into mentions (cve_id, url). One CVE per entry."""
     mentions = []
     for entry in entries:
-        haystack = " ".join(filter(None, [
-            entry.get("title"), entry.get("summary"), entry.get("url"),
-        ]))
         url = entry.get("url") or ""
-        for cve_id in sorted({match.group(0).upper() for match in CVE_PATTERN.finditer(haystack)}):
+        for cve_id in sorted(entry_cve_ids(entry)):
             mentions.append({
                 "cve_id": cve_id,
                 # With no usable link, the dedupe key is the CVE itself.
@@ -455,7 +466,8 @@ def build_rerank_prompt(entries) -> str:
     for index, entry in enumerate(entries, 1):
         title = (entry.get("title") or "").replace('"', "'")[:RERANK_TITLE_CHARS]
         summary = (entry.get("summary") or "").replace('"', "'")[:RERANK_SUMMARY_CHARS]
-        lines.append(f'{index}. title="{title}" summary="{summary}"')
+        explicit_ids = ','.join(sorted(entry_cve_ids(entry))[:20])
+        lines.append(f'{index}. title="{title}" summary="{summary}" explicit_cves="{explicit_ids}"')
     return RERANK_PROMPT.format(items="\n".join(lines))
 
 
@@ -498,7 +510,7 @@ def rerank_entries(entries, *, config=None, completer=None, batch_size=RERANK_BA
             if cve_id and not CVE_PATTERN.fullmatch(cve_id):
                 cve_id = None
             input_text = ' '.join(str(chunk[index-1].get(k) or '') for k in ('title','summary','url'))
-            if cve_id and cve_id not in {m.group(0).upper() for m in CVE_PATTERN.finditer(input_text)}:
+            if cve_id and cve_id not in entry_cve_ids(chunk[index-1]):
                 cve_id = None
             brand = str(item.get("brand_name") or "").strip() or None
             # A nickname with no CVE cannot be attached to any row.
@@ -515,6 +527,7 @@ def rerank_entries(entries, *, config=None, completer=None, batch_size=RERANK_BA
 
 
 RERANK_URL_TTL_DAYS = 45
+RERANK_EXTRACTOR_VERSION = 'rss-full-content-v2'
 
 
 def _reranked_urls(conn, entries) -> set:
@@ -525,9 +538,10 @@ def _reranked_urls(conn, entries) -> set:
     try:
         rows = conn.execute(
             "SELECT url FROM reranked_urls WHERE url = ANY(?) "
+            "AND extractor_version = ? "
             "AND reranked_at > CURRENT_TIMESTAMP - INTERVAL '%d days'"
             % RERANK_URL_TTL_DAYS,
-            (urls,),
+            (urls, RERANK_EXTRACTOR_VERSION),
         ).fetchall()
     except Exception:
         return set()  # DB without the table (old schema): reprocess, do not break
@@ -542,8 +556,9 @@ def _mark_reranked(conn, entries, reranked) -> None:
             if not url or not verdict:
                 continue
             conn.execute(
-                "INSERT INTO reranked_urls (url) VALUES (?) ON CONFLICT (url) DO NOTHING",
-                (url,),
+                "INSERT INTO reranked_urls (url,extractor_version) VALUES (?,?) "
+                "ON CONFLICT (url) DO UPDATE SET reranked_at=CURRENT_TIMESTAMP, extractor_version=excluded.extractor_version",
+                (url,RERANK_EXTRACTOR_VERSION),
             )
     except Exception:
         pass
@@ -559,7 +574,7 @@ def mentions_from_rerank(entries, reranked) -> list:
         if not cve_id:
             continue
         url = entry.get("url") or ""
-        explicit_ids = {m.group(0).upper() for m in CVE_PATTERN.finditer(' '.join(str(entry.get(k) or '') for k in ('title','summary','url')))}
+        explicit_ids = entry_cve_ids(entry)
         for linked_id in sorted(explicit_ids or {cve_id}):
             mentions.append({
             "cve_id": linked_id,
@@ -1197,7 +1212,9 @@ def _looks_like_brand(token: str) -> bool:
 
 
 def _strip_html(value) -> str:
-    return re.sub(r"<[^>]+>", " ", str(value or "")).strip()
+    text = re.sub(r'<(script|style)\b[^>]*>.*?</\1\s*>', ' ', str(value or ''), flags=re.I|re.S)
+    text = re.sub(r'<!--.*?-->', ' ', text, flags=re.S)
+    return ' '.join(unescape(re.sub(r'<[^>]+>', ' ', text)).split())
 
 
 def _iso_date(entry) -> str | None:

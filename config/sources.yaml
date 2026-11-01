@@ -14,6 +14,12 @@ sources:
     url: https://epss.empiricalsecurity.com/epss_scores-current.csv.gz
 
   rss:
+    # Specialist press: headline, publisher and explicit CVE mentions for Hype.
+    - https://www.theregister.com/security/headlines.atom
+    - https://www.infosecurity-magazine.com/rss/news/
+    - https://securityaffairs.com/feed
+    - https://www.csoonline.com/feed/
+    - https://unaaldia.hispasec.com/feed
     - https://feeds.feedburner.com/TheHackersNews
     - https://www.bleepingcomputer.com/feed/
     - https://www.securityweek.com/feed/
@@ -51,6 +57,11 @@ sources:
   # Includes large catalogues (MSRC lists every Patch Tuesday): the per-run cap
   # takes the recent stretch and the upsert discards what has already been seen.
   rss_regex_only:
+    # Primary technical advisories: these add context, not press coverage.
+    - https://ubuntu.com/security/notices/rss.xml
+    - https://www.debian.org/security/dsa-long
+    - https://cert.cyber.gouv.fr/avis/feed/
+    - https://www.kb.cert.org/vuls/atomfeed/
     - https://api.msrc.microsoft.com/update-guide/rss
     - https://sec.cloudapps.cisco.com/security/center/psirtrss20/CiscoSecurityAdvisory.xml
     - https://www.zerodayinitiative.com/rss/published/

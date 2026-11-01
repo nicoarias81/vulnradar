@@ -1,0 +1,86 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "php2shell",
+      "name": "PHP2Shell",
+      "aliases": ["php2shell", "php2shell rce"],
+      "cves": ["CVE-2026-109618", "CVE-2026-109619"],
+      "reviewed_on": "2026-11-01",
+      "notes": [
+        {
+          "available_on": "2026-10-21",
+          "kind": "attempts",
+          "title": "Attempts observed before disclosure",
+          "statement": "AWS reported attempts in MadPot dating to 17 October; whether those attempts would have succeeded on real systems was unclear.",
+          "scope": "AWS MadPot telemetry; not a count of production compromises.",
+          "source": "AWS Threat Intelligence",
+          "url": "https://aws.amazon.com/blogs/security/amazon-threat-intelligence-identifies-php2shell-exploitation-prior-to-public-disclosure-in-madpot/"
+        },
+        {
+          "available_on": "2026-10-25",
+          "kind": "retraction",
+          "title": "An earlier attribution was retracted",
+          "statement": "Unit 42 withdrew its 23 October attribution for an incident because initial access could not be tied to the specific PHP2Shell CVEs.",
+          "scope": "That incident attribution; not evidence that every PHP2Shell report was false.",
+          "source": "Unit 42",
+          "url": "https://unit42.paloaltonetworks.com/cve-2026-109618-cve-2026-109619/"
+        },
+        {
+          "available_on": "2026-10-26",
+          "kind": "catalog_confirmation",
+          "title": "Both CVEs entered CISA KEV",
+          "statement": "CISA added both identifiers to its Known Exploited Vulnerabilities catalog.",
+          "scope": "Evidence of known exploitation; the catalog does not provide a global victim count.",
+          "source": "CISA KEV",
+          "url": "https://github.com/cisagov/kev-data/blob/main/known_exploited_vulnerabilities.json"
+        },
+        {
+          "available_on": "2026-10-26",
+          "kind": "limited_telemetry",
+          "title": "Early telemetry did not show mass exploitation",
+          "statement": "CrowdSec's report for 21-25 October described blocked attempts and no publicly confirmed compromises known to its authors at that time.",
+          "scope": "A dated sensor sample and public knowledge at publication; not a global absence claim.",
+          "source": "CrowdSec",
+          "url": "https://www.crowdsec.net/vulntracking-report/cve-2026-109618-php2shell-no-mass-exploitation-yet"
+        },
+        {
+          "available_on": "2026-10-27",
+          "kind": "limited_telemetry",
+          "title": "Another sample had limited unsuccessful attempts",
+          "statement": "Wiz reported limited attempts with no completed exploit chain in the attempts it captured.",
+          "scope": "Wiz telemetry; this does not negate observations by other organizations.",
+          "source": "Wiz Research",
+          "url": "https://www.wiz.io/blog/php2shell-exploitation-so-far"
+        },
+        {
+          "available_on": "2026-10-29",
+          "kind": "confirmed_campaign",
+          "title": "Exploitation confirmed in a specific deployment context",
+          "statement": "Unit 42 confirmed exploitation against exposed PAN-OS management interfaces and independently verified the reported attacker tooling and results.",
+          "scope": "Exposed PAN-OS management interfaces; this is not a measurement of exploitation across all PHP installations.",
+          "source": "Unit 42",
+          "url": "https://unit42.paloaltonetworks.com/cve-2026-109618-cve-2026-109619/"
+        }
+      ]
+    },
+    {
+      "id": "linux-kernel-ipv4-rce",
+      "name": "Linux kernel IPv4 TCP RCE",
+      "aliases": ["linux kernel ipv4 tcp rce", "kernel ipv4 rce"],
+      "cves": ["CVE-2026-98432"],
+      "reviewed_on": "2026-11-01",
+      "notes": [
+        {
+          "available_on": "2026-10-31",
+          "kind": "technical_potential",
+          "title": "Conditional unauthenticated remote code execution",
+          "statement": "AWS describes an IPv4 TCP handshake memory issue that can allow unauthenticated remote code execution under specific conditions.",
+          "scope": "Technical capability and affected kernel conditions; the bulletin does not quantify exploitation prevalence. Publication was 30 October PDT, 31 October UTC.",
+          "source": "AWS Security Bulletin 2026-160",
+          "url": "https://aws.amazon.com/security/security-bulletins/2026-160-aws/"
+        }
+      ]
+    }
+  ]
+}

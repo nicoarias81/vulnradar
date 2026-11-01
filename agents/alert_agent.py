@@ -39,6 +39,7 @@ import requests
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from core.db import get_db, init_db
+from core.labels import category_display
 
 USER_AGENT = "vulnradar/0.4 (+https://github.com/nicoarias81/vulnradar)"
 TIMEOUT_SECONDS = 15
@@ -55,10 +56,10 @@ WEBHOOK_ENV = "ALERT_WEBHOOK_URL"
 RULE_LABELS = {
     'watch': 'Public PoC / high exploitation prediction',
     "confirmed_exploitation": "Confirmed exploitation",
-    "overhyped": "Overhyped",
-    "earned_the_hype": "Earned the hype",
-    "humo": "Unearned hype",
-    "sleeper": "Sleeper",
+    "overhyped": "High attention + lower observed evidence",
+    "earned_the_hype": "High attention + observed exploitation",
+    "humo": "Strong headline tone + lower threat index",
+    "sleeper": "Observed exploitation + lower recent attention",
 }
 
 # scores has UNIQUE(cve_id): no MAX(id) or history window needed, the CVE row
@@ -203,6 +204,7 @@ def build_webhook_payload(alert: Alert) -> dict:
         "cve_id": alert.cve_id,
         "rule": alert.rule,
         "category": alert.category,
+        "category_label": category_display(alert.category),
         "hype": alert.hype,
         "reality": alert.reality,
         "description": alert.description,
@@ -377,7 +379,7 @@ def main(argv=None) -> int:
 # --------------------------------------------------------------------------
 def _details_text(alert: Alert) -> str:
     lines = [f"*Hype* {alert.hype:.1f} · *Reality* {alert.reality:.1f} · "
-             f"*{alert.category or 'uncategorized'}*"]
+             f"*{category_display(alert.category)}*"]
     if alert.description:
         lines.append(alert.description.strip()[:400])
     senales = []

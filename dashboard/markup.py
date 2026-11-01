@@ -5,6 +5,7 @@ from datetime import datetime
 from html import escape
 import math
 from urllib.parse import urlencode
+from core.labels import category_display
 
 from dashboard.theme import (
     AGENT_COLORS,
@@ -59,7 +60,7 @@ a { color: inherit; }
 .page { max-width: 1440px; margin: 0 auto; padding: 8px 24px 28px; }
 .top {
   display: flex; align-items: center; justify-content: space-between;
-  gap: 16px; height: 64px; margin-bottom: 16px;
+  gap: 16px; min-height: 64px; height: auto; flex-wrap: wrap; margin-bottom: 16px;
 }
 .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; flex-shrink: 0; }
 .brandwrap { display: flex; align-items: center; gap: 14px; min-width: 0; }
@@ -101,7 +102,7 @@ a { color: inherit; }
   grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
   align-items: stretch;
 }
-.dash-row { grid-template-rows: 800px; }
+.dash-row { grid-template-rows: minmax(680px, calc(100vh - 190px)); }
 .row-333 { grid-template-columns: minmax(0, 30fr) minmax(0, 35fr) minmax(0, 35fr); }
 .row-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .card {
@@ -353,14 +354,84 @@ table.mini tr:hover td { background: rgba(255,255,255,.03); }
   background: var(--hype); color: #fff; font-weight: 700; cursor: pointer; font-size: 14px;
 }
 .login-error { color: var(--overhyped); font-size: 13px; margin: 0 0 12px; }
+/* Header controls use their own fluid grid: never compete with the brand. */
+.overview-top { display: grid; grid-template-columns: minmax(0,1fr); gap: 12px; padding: 8px 0; }
+.row > *, .card, .col-stack, .table-scroll { min-width: 0; }
+.overview-top .brandwrap { flex-wrap: wrap; gap: 8px 14px; }
+.filters { display: grid; width: 100%; margin-left: 0; gap: 12px;
+  grid-template-columns: minmax(160px,1.1fr) minmax(260px,1.4fr) minmax(120px,.8fr) minmax(140px,1fr) minmax(220px,1.5fr); }
+.filter, .filter select, .filter input[type="search"], .filter input[type="text"] { min-width: 0; width: 100%; }
+.filter select { text-overflow: ellipsis; }
+.range { min-width: 0; width: 100%; }
+.range input { flex: 1; min-width: 0; width: 100%; }
+.attention-pager { border-top: 1px solid var(--border); padding-top: 8px; margin-top: 8px; flex-shrink: 0; gap: 8px; flex-wrap: wrap; }
+.acc-card .acc-table td { padding: 6px; }
+.acc-card .sig span { line-height: 1.25; padding: 2px 5px; font-size: 10px; }
+.pager-controls { display: flex; gap: 6px; }
+#attention-queue { scroll-margin-top: 12px; }
+/* Detail: useful cards first; long prose is progressive disclosure. */
+.detail-page .top { margin-bottom: 8px; }
+.detail-page .live { white-space: normal; text-align: right; line-height: 1.5; }
+.detail-page .cve-title > div { min-width: 0; }
+.detail-page .cve-title h1 { font-size: 25px; }
+.cve-summary { max-width: 100ch; line-height: 1.5; margin-bottom: 4px; }
+.description-details { margin: 4px 0 10px; }
+.description-details > summary, .context-disclosure > summary { cursor: pointer; color: var(--text-muted); font-size: 12px; }
+.full-description { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: 13px; color: var(--text-muted); line-height: 1.6; }
+.detail-grid { display: grid; gap: 16px; grid-template-columns: minmax(0,1fr) minmax(0,1fr) minmax(0,1.1fr);
+  grid-template-areas: 'summary components sources' 'history history pocs'; align-items: stretch; }
+.detail-grid > .card { min-width: 0; }
+.detail-summary { grid-area: summary; }
+.detail-components { grid-area: components; }
+.detail-sources { grid-area: sources; }
+.detail-history { grid-area: history; }
+.detail-pocs { grid-area: pocs; }
+.detail-scroll { max-height: 244px; overflow: auto; overscroll-behavior: contain; padding-right: 6px; margin-top: 8px; }
+.detail-grid a.link { overflow-wrap: anywhere; }
+.detail-summary .score { font-size: 46px; }
+.detail-summary .score-row { margin: 16px 0; }
+.detail-summary .score-col { padding: 0 8px; }
+.detail-summary .banner { padding: 10px 12px; }
+.detail-summary .banner strong { font-size: 12px; letter-spacing: .03em; }
+.detail-summary .banner .muted { font-size: 12px; line-height: 1.5; }
+.detail-summary .foot-note { margin-top: 8px; font-size: 11px; }
+.detail-history { min-height: 190px; }
+.chart-scroll { overflow-x: auto; margin-top: 12px; }
+.chart-scroll .tl-svg { width: 100%; min-width: 520px; display: block; }
+.context-disclosure { margin-top: 16px; }
+.context-disclosure > summary { color: var(--text); font-weight: 600; font-size: 13px; }
+.context-disclosure > .card { border: 0; background: transparent; padding: 12px 0 0; margin-bottom: 0 !important; }
+.evidence-dimensions { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px 20px; }
+.evidence-dimensions dt { font-size: 12px; font-weight: 700; }
+.evidence-dimensions dd { margin: 4px 0 0; line-height: 1.5; }
 @media (max-width: 1100px) {
   .row-60, .row-333, .row-4 { grid-template-columns: 1fr; }
   .row-60, .dash-row { grid-template-rows: auto; }
-  .top { height: auto; flex-wrap: wrap; padding: 8px 0; }
-  .filters { flex-wrap: wrap; margin-left: 0; }
-  .scatter-body { grid-template-columns: 1fr; }
-  .table-card { max-height: 464px; }
+  .filters { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .filter-category { grid-column: span 2; }
+  .scatter-body { grid-template-columns: minmax(0,1fr) 190px; }
+  .table-card { max-height: 520px; }
+  .detail-grid { grid-template-columns: repeat(2,minmax(0,1fr)); grid-template-areas: 'summary components' 'history history' 'sources pocs'; }
 }
+@media (max-width: 700px) {
+  .page { padding: 8px 16px 24px; }
+  .filters { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .filter-search, .filter-dates, .filter-category { grid-column: span 2; }
+  .top { gap: 10px; }
+  .detail-page .live { font-size: 10px; text-align: left; }
+  .detail-page .cve-title { flex-direction: column; gap: 6px; }
+  .detail-page .cve-title h1 { font-size: 23px; overflow-wrap: anywhere; }
+  .detail-grid { grid-template-columns: minmax(0,1fr); grid-template-areas: 'summary' 'components' 'history' 'sources' 'pocs'; }
+  .evidence-dimensions { grid-template-columns: minmax(0,1fr); }
+  .scatter-body { grid-template-columns: minmax(0,1fr); }
+  .legend { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); padding-left: 0; }
+  .tl-strip .tl-head { flex-wrap: wrap; gap: 6px; }
+  .table-scroll { overflow-x: auto; }
+  .table { font-size: 12px; }
+  .badge { font-size: 10px; padding: 3px 6px; }
+  .footer { flex-wrap: wrap; }
+}
+
 """
 
 
@@ -545,7 +616,7 @@ def scatter_svg(rows, width: int = 520, height: int = 340, *, mode: str = "categ
             cy = _xy(hype, 0, 10, t, ph, invert=True)
         cve = escape(str(row.get("cve_id") or ""), quote=True)
         brand = escape(str(row.get("brand_name") or "").strip(), quote=True)
-        cat = escape(str(row.get("category") or ""), quote=True)
+        cat = escape(category_display(row.get("category")), quote=True)
         href = f"/cve?cve={cve}"
         dots.append(
             f'<a href="{href}" data-cve="{cve}" data-name="{brand}" '
@@ -837,7 +908,7 @@ def legend_html() -> str:
     for name, color in CATEGORY_COLORS.items():
         items.append(
             f'<div><span style="color:{color}">●</span> '
-            f'<b style="color:{color}">{escape(name)}</b>'
+            f'<b style="color:{color}">{escape(category_display(name))}</b>'
             f'<div class="muted">{escape(CATEGORY_BLURB[name])}</div></div>'
         )
     return '<div class="legend">' + "".join(items) + "</div>"
@@ -862,6 +933,8 @@ def overview_html(
     products=None,
     actionable_rows: str = "",
     actionable_total: int = 0,
+    attention_page: int = 0,
+    attention_page_size: int = 6,
 ) -> str:
     product_options = "".join(
         f'<option value="{escape(str(row["product"]))}">' for row in (products or [])
@@ -878,6 +951,8 @@ def overview_html(
         common["q"] = query
     if show_all:
         common["all"] = "1"
+    if attention_page:
+        common["attention_page"] = str(attention_page)
     prev = _qs("/", **common, page=str(page - 1)) if page > 0 else None
     nxt = _qs("/", **common, page=str(page + 1)) if page < max_page else None
     prev_el = f'<a class="nav" href="{prev}">‹</a>' if prev else '<span class="disabled">‹</span>'
@@ -891,17 +966,28 @@ def overview_html(
     )
     hidden_all = '<input type="hidden" name="all" value="1">' if show_all else ""
     pager_btns = f"<span>{prev_el} {nxt_el}</span>"
+    attention_common={k:v for k,v in common.items() if k!='attention_page'}
+    attention_common['page']=str(page)
+    attention_max=max(0,(actionable_total-1)//attention_page_size)
+    attention_prev=(_qs('/',**attention_common,attention_page=str(attention_page-1))+'#attention-queue') if attention_page>0 else None
+    attention_next=(_qs('/',**attention_common,attention_page=str(attention_page+1))+'#attention-queue') if attention_page<attention_max else None
+    attention_start=attention_page*attention_page_size+1 if actionable_total else 0
+    attention_end=min(actionable_total,(attention_page+1)*attention_page_size)
+    attention_prev_el=(f'<a class="nav" aria-label="Previous attention page" href="{escape(attention_prev)}">‹</a>'
+                       if attention_prev else '<span class="disabled" aria-hidden="true">‹</span>')
+    attention_next_el=(f'<a class="nav" aria-label="Next attention page" href="{escape(attention_next)}">›</a>'
+                       if attention_next else '<span class="disabled" aria-hidden="true">›</span>')
     body = f"""
 <div class="page">
-  <div class="top">
+  <div class="top overview-top">
     {logo_html}
     <form class="filters" id="filters" method="get" action="/">
       {hidden_all}
       <div class="filter filter-search"><label>Search</label>
         <input type="search" name="q" value="{escape(query)}"
-               placeholder="CVE-2021-44228 or Log4Shell" autocomplete="off">
+               placeholder="CVE ID, PHP2Shell or Log4Shell" autocomplete="off">
       </div>
-      <div class="filter"><label>Date Range</label>
+      <div class="filter filter-dates"><label>Publication dates</label>
         <div class="range">
           <input type="date" name="since" value="{escape(since)}">
           <span class="sep">–</span>
@@ -923,15 +1009,15 @@ def overview_html(
                value="{escape(product_value)}">
         <datalist id="product-list">{product_options}</datalist>
       </div>
-      <div class="filter"><label>Category</label>
+      <div class="filter filter-category"><label>Category</label>
         <select name="category">
           {_opt("All categories", "All categories", category)}
-          {_opt("Overhyped", "Overhyped", category)}
-          {_opt("Earned the hype", "Earned the hype", category)}
-          {_opt("Sleeper", "Sleeper", category)}
-          {_opt("Quiet", "Quiet", category)}
-          {_opt("Unknown", "Unknown", category)}
-          {_opt("Watch", "Watch", category)}
+          {_opt("Overhyped", category_display("Overhyped"), category)}
+          {_opt("Earned the hype", category_display("Earned the hype"), category)}
+          {_opt("Sleeper", category_display("Sleeper"), category)}
+          {_opt("Quiet", category_display("Quiet"), category)}
+          {_opt("Unknown", category_display("Unknown"), category)}
+          {_opt("Watch", category_display("Watch"), category)}
         </select>
       </div>
     </form>
@@ -939,30 +1025,35 @@ def overview_html(
   <div class="row row-60 dash-row">
     <div class="card scatter-card">
       <p class="h3">Hype vs Reality {INFO_SVG}</p>
-      <p class="muted">Comparing perceived hype (social / media / chatter) against observed impact</p>
+      <p class="muted">Public attention compared with exploitation evidence and prediction; global impact is not quantified</p>
       <div class="scatter-body">{scatter_div}{legend_html()}</div>
       <div class="tl-strip">
-        <div class="tl-head"><span class="h3">Score evolution {INFO_SVG}</span>
+        <div class="tl-head"><span class="h3">Current scores by publication date {INFO_SVG}</span>
           <span class="mini"><span><i class="h"></i>Hype</span><span><i class="r"></i>Reality</span></span>
           <span class="rng">{escape(since)} → {escape(until)}</span></div>
         {timeline_div}
       </div>
     </div>
     <div class="col-stack">
-      <div class="card table-card acc-card">
+      <div class="card table-card acc-card" id="attention-queue">
         <div class="acc-head">
           <p class="h3">Pay attention to {INFO_SVG}</p>
-          <span class="acc-count">{actionable_total} of {total:,}</span>
+          <span class="acc-count">{actionable_total:,} matching</span>
         </div>
-        <p class="acc-crit">Enters with KEV, EPSS ≥ 0.70 or a public PoC — ordered by evidence</p>
+        <p class="acc-crit">All publication dates; search, product, severity and category filters apply. Confirmed exploitation, fresh EPSS ≥ 0.70 or curated public PoC.</p>
         <div class="table-scroll">
           <table class="table acc-table"><thead><tr>
             <th>CVE ID</th><th>Severity</th><th>Signals</th><th>Reality</th>
           </tr></thead><tbody>{actionable_rows}</tbody></table>
         </div>
+        <nav class="pager attention-pager" aria-label="Pay attention to pagination">
+          <span>{attention_start:,}–{attention_end:,} of {actionable_total:,}</span>
+          <span>Page {attention_page+1 if actionable_total else 0:,} / {attention_max+1 if actionable_total else 0:,}</span>
+          <span class="pager-controls">{attention_prev_el} {attention_next_el}</span>
+        </nav>
       </div>
       <div class="card table-card">
-        <p class="h3">Recent CVEs</p>
+        <p class="h3">CVEs in publication range</p>
         <div class="table-scroll">
         <table class="table"><thead><tr>
           <th>CVE ID</th><th>Severity</th><th>Score</th><th>Category</th><th>Published</th>
@@ -1001,80 +1092,74 @@ def detail_html(
     brand_name: str = "",
     timeline: str = "",
     caveat: str = "",
+    evidence_context: str = "",
 ) -> str:
     cat = category or "Quiet"
     based = (
-        f'<div class="foot-note">{INFO_SVG} Based on {mention_count} media mentions and public data to date.</div>'
+        f'<div class="foot-note">{INFO_SVG} Sources: {mention_count} documents and public datasets.</div>'
         if mention_count else
         f'<div class="foot-note">{INFO_SVG} Based on public data to date.</div>'
     )
+    description_text=' '.join((description or 'No description.').split())
+    preview=description_text[:280]+('…' if len(description_text)>280 else '')
+    expanded_description=(f'<details class="description-details"><summary>Read full description</summary>'
+                          f'<div class="full-description">{escape(description or "")}</div></details>') if len(description_text)>280 else ''
     body = f"""
-<div class="page">
+<div class="page detail-page">
   <div class="top">
     {logo("Data against noise.")}
-    <div class="live">Actualizado: {escape(now)}</div>
+    <div class="live">Page generated: {escape(now)}</div>
   </div>
   <a class="back" href="/" id="back-dash">← Dashboard</a>
   <div class="cve-title">
     <div>
       <h1>{escape(cve_id)}</h1>
       {f'<p class="brand-hero">{escape(brand_name)}</p>' if brand_name else ""}
-      <p class="muted">{escape(description or "No description.")}</p>
+      <p class="muted cve-summary">{escape(preview)}</p>
+      {expanded_description}
     </div>
     <div class="badges">{badges}</div>
   </div>
-  <div class="row row-333">
-    <div class="card">
-      <p class="h3 accent">{_icon("flame")} Hype components</p>
-      {bars}
-      <div class="hype-total"><span>{_icon("flame")} HYPE TOTAL</span>
-        <b>{int(round(hype * 10))}/100</b></div>
-    </div>
-    <div class="card">
-      <p class="h3 accent">{_icon("flame")} Hype analysis</p>
+  <div class="detail-grid">
+    <section class="card detail-summary" id="cve-summary">
+      <h2 class="h3 accent">Attention and evidence</h2>
       <div class="score-row">
-        <div class="score-col">
-          <div class="muted">{_icon("flame")} HYPE SCORE</div>
-          <div class="score hype">{hype:.1f}<small>/10</small></div>
-        </div>
-        <div class="score-col">
-          <div class="muted">{_icon("shield")} REALITY SCORE</div>
-          <div class="score reality">{reality:.1f}<small>/10</small></div>
-        </div>
+        <div class="score-col"><div class="muted">HYPE SCORE</div><div class="score hype">{hype:.1f}<small>/10</small></div></div>
+        <div class="score-col"><div class="muted">REALITY SCORE</div><div class="score reality">{reality:.1f}<small>/10</small></div></div>
       </div>
-      <div class="banner"><strong>{_icon("flame")} {escape(CATEGORY_LABEL.get(cat, cat))}</strong>
-        <p class="muted" style="margin:6px 0 0">{escape(CATEGORY_DETAIL.get(cat, ""))}</p></div>
-      {f'<p class="muted" style="margin-top:10px">{escape(caveat)}</p>' if caveat else ""}
+      <div class="banner"><strong>{escape(CATEGORY_LABEL.get(cat,cat))}</strong>
+        <p class="muted" style="margin:6px 0 0">{escape(CATEGORY_DETAIL.get(cat,""))}</p></div>
       {based}
-    </div>
-    <div>
-      <div class="card" style="margin-bottom:16px">
-        <p class="h3">Event timeline</p>
-        <div class="tl">{events}</div>
-      </div>
-      <div class="card" style="margin-bottom:16px">
-        <p class="h3">Media mentions</p>
-        {mentions}
-      </div>
-      <div class="card">
-        <p class="h3">PoCs on GitHub</p>
-        {pocs_html}
-      </div>
-    </div>
+    </section>
+    <section class="card detail-components" id="hype-components">
+      <h2 class="h3 accent">Hype components</h2>
+      {bars}
+      <div class="hype-total"><span>HYPE TOTAL</span><b>{int(round(hype*10))}/100</b></div>
+    </section>
+    <section class="card detail-sources" id="source-documents">
+      <h2 class="h3">Sources and documents</h2>
+      <div class="detail-scroll">{mentions}</div>
+    </section>
+    <section class="card detail-history" id="score-history">
+      <h2 class="h3">Score evolution {INFO_SVG}</h2>
+      <p class="muted"><span class="hype">● Hype</span> &nbsp; <span class="reality">● Reality</span></p>
+      <div class="chart-scroll">{timeline or '<p class="muted">No changes recorded yet: the series starts with the next recalculation.</p>'}</div>
+    </section>
+    <section class="card detail-pocs" id="public-exploits">
+      <h2 class="h3">Public exploit evidence</h2>
+      <div class="detail-scroll">{pocs_html}</div>
+    </section>
   </div>
-  <div class="card" style="margin-top:16px">
-    <p class="h3">Score evolution {INFO_SVG}</p>
-    <p class="muted" style="margin-top:0">
-      <span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#FF6B00"></span> Hype
-      &nbsp;&nbsp;
-      <span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#22C55E"></span> Reality
-    </p>
-    {timeline or '<p class="muted">No changes recorded yet: the series starts with the next recalculation.</p>'}
-  </div>
-  <div class="footer">
-    <span>Source: CVE List V5 · CISA KEV · FIRST EPSS · GitHub · RSS</span>
-    <span>VulnRadar</span>
-  </div>
+  <details class="card context-disclosure" id="evidence-context-panel">
+    <summary>Evidence context and dated references</summary>
+    {f'<p class="muted" style="margin-top:12px">{escape(caveat)}</p>' if caveat else ''}
+    {evidence_context}
+  </details>
+  <details class="card context-disclosure" id="source-event-timeline">
+    <summary>Source event timeline</summary>
+    <div class="tl">{events}</div>
+  </details>
+  <div class="footer"><span>Source: CVE List V5 · CISA KEV · FIRST EPSS · GitHub · RSS</span><span>VulnRadar</span></div>
 </div>
 """
     return document(body)

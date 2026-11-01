@@ -76,7 +76,7 @@ no sustituyen una evaluación humana de precisión y atribución.
   presente en `CIRCL_TRUSTED_AUTHORS` puede activar confirmación. La lista vacía
   no declara confiables todos los reportes públicos. El lab limita la muestra
   de CIRCL y registra truncamiento/error; no afirma cobertura completa.
-- RSS consume las dos listas configuradas (35 feeds), clasifica advisories y
+- RSS consume las dos listas configuradas (44 feeds), clasifica advisories y
   conserva varios CVE explícitos por entrada. Las búsquedas adicionales rotan
   mediante deadlines; un top fijo no monopoliza indefinidamente la cola.
 - Un registro REJECTED no se importa como CVE normal; una actualización que

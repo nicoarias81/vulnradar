@@ -1,4 +1,5 @@
 """Look & feel: UI tokens and components."""
+from core.labels import category_display
 
 CATEGORY_COLORS = {
     'Watch': '#F59E0B',
@@ -13,7 +14,7 @@ CATEGORY_BLURB = {
     'Watch': 'Public PoC or high predicted exploitation; prioritize review',
     "Unknown": "Insufficient fresh evidence to classify",
     "Overhyped": "High attention, lower observed threat index",
-    "Sleeper": "Moderate hype, emerging evidence",
+    "Sleeper": "Observed exploitation, lower recent attention",
     "Earned the hype": "High hype, confirmed exploitation",
     "Quiet": "Below category thresholds; review exploitation signals",
 }
@@ -22,8 +23,8 @@ CATEGORY_LABEL = {
     'Watch': 'PUBLIC POC / HIGH PREDICTION',
     "Unknown": "INSUFFICIENT DATA",
     "Overhyped": "ATTENTION EXCEEDS THREAT INDEX",
-    "Earned the hype": "EARNED THE HYPE",
-    "Sleeper": "SLEEPER",
+    "Earned the hype": "HIGH ATTENTION + OBSERVED EXPLOITATION",
+    "Sleeper": "OBSERVED EXPLOITATION + LOWER RECENT ATTENTION",
     "Quiet": "BELOW THRESHOLDS",
 }
 
@@ -37,8 +38,8 @@ CATEGORY_DETAIL = {
     "Overhyped": "Lots of noise and little evidence of exploitation so far. "
                  "Reality measures real-world use, not severity: a low score does not "
                  "mean the flaw is harmless if someone exploits it.",
-    "Earned the hype": "Observed impact backs the media noise.",
-    "Sleeper": "Evidence of exploitation is growing faster than public attention.",
+    "Earned the hype": "High recent attention and recorded exploitation coexist. This does not establish widespread compromise or justify every media claim.",
+    "Sleeper": "Recorded exploitation coexists with lower observed recent attention. This is not a claim about global prevalence.",
     "Quiet": "Scores remain below the category thresholds. Review KEV, EPSS and PoC evidence; "
              "this category does not imply that the vulnerability is safe.",
 }
@@ -315,4 +316,4 @@ def category_badge(name: str) -> str:
     }.get(name, "hm-cat-quiet")
     from html import escape
 
-    return f'<span class="hm-badge {klass}">{escape(name)}</span>'
+    return f'<span class="hm-badge {klass}">{escape(category_display(name))}</span>'

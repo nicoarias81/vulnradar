@@ -1,0 +1,23 @@
+{
+  "captured_at_utc": "2026-11-01T15:04:18.010204+00:00",
+  "scope": "Local lab; public unauthenticated HTTP smoke. No scoring-input or numeric-formula changes.",
+  "full_suite_passed": 248,
+  "checks": [
+    {
+      "page": "php2shell",
+      "dated_notes": true,
+      "neutral_label": true,
+      "scale_unknown": true
+    },
+    {
+      "page": "kernel-ipv4",
+      "conditional_capability": true,
+      "no_inferred_prevalence": true
+    },
+    {
+      "page": "named-case-search",
+      "both_cves": true,
+      "cohort_plot_label": true
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "captured_at_utc": "2026-11-01T15:35:42.744301+00:00",
+  "full_suite_passed": 257,
+  "browser_checks": {
+    "viewport_widths": [
+      1440,
+      1024,
+      390
+    ],
+    "horizontal_overflow": false,
+    "brand_filter_overlap": false,
+    "featured_reference_links_removed": true,
+    "attention_next_page_range": "7-12 of 27103",
+    "attention_next_page_ids": [
+      "CVE-2017-5638",
+      "CVE-2018-13379",
+      "CVE-2023-27350",
+      "CVE-2015-1635",
+      "CVE-2019-11510",
+      "CVE-2021-26084"
+    ],
+    "php_detail_desktop": {
+      "width": 1440,
+      "height": 900,
+      "primary_cards_top": 263,
+      "history_bottom": 890,
+      "context_initially_open": false
+    }
+  },
+  "screenshots": [
+    "data/ui-checks/home-layout.jpg",
+    "data/ui-checks/cve-layout.jpg"
+  ],
+  "scope": "Local UI and navigation validation. No formula or source-input changes."
+}

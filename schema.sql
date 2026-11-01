@@ -106,6 +106,7 @@ CREATE TABLE IF NOT EXISTS reranked_urls (
     url TEXT PRIMARY KEY,
     reranked_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
+ALTER TABLE reranked_urls ADD COLUMN IF NOT EXISTS extractor_version TEXT;
 
 -- PoC repos with their metrics: the CVE detail page shows them expandable.
 CREATE TABLE IF NOT EXISTS pocs (

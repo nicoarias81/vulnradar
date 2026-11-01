@@ -1,0 +1,213 @@
+{
+  "captured_at_utc": "2026-11-01T14:28:46.574706+00:00",
+  "scope": "Public anonymous radar; local-lab press coverage. No accounts, CMDB, personal tracking or LLM calls.",
+  "configured_feeds": 44,
+  "rss_feeds": 30,
+  "advisory_feeds": 14,
+  "tests_passed": 239,
+  "probe_before_reader_fix": [
+    {
+      "url": "https://www.theregister.com/security/headlines.atom",
+      "status": 200,
+      "resolved_url": "https://api.theregister.com/api/v1/article?orderBy=published&site_id=2&remapper=rss&query=tag:security",
+      "entries": 50,
+      "linked_cves": 0,
+      "mentions": 0,
+      "body_cves": 14,
+      "full_content_entries": 50
+    },
+    {
+      "url": "https://www.infosecurity-magazine.com/rss/news/",
+      "status": 200,
+      "resolved_url": "https://www.infosecurity-magazine.com/rss/news/",
+      "entries": 250,
+      "linked_cves": 5,
+      "mentions": 5,
+      "body_cves": 5,
+      "full_content_entries": 0
+    },
+    {
+      "url": "https://www.cybersecuritydive.com/feeds/news/",
+      "status": 200,
+      "resolved_url": "https://www.cybersecuritydive.com/feeds/news/",
+      "entries": 10,
+      "linked_cves": 0,
+      "mentions": 0,
+      "body_cves": 0,
+      "full_content_entries": 0
+    },
+    {
+      "url": "https://cybernews.com/feed/",
+      "status": 200,
+      "resolved_url": "https://cybernews.com/feed/news/",
+      "entries": 50,
+      "linked_cves": 0,
+      "mentions": 0,
+      "body_cves": 0,
+      "full_content_entries": 0
+    },
+    {
+      "url": "https://securityaffairs.com/feed",
+      "status": 200,
+      "resolved_url": "https://securityaffairs.com/feed",
+      "entries": 10,
+      "linked_cves": 2,
+      "mentions": 2,
+      "body_cves": 14,
+      "full_content_entries": 10
+    },
+    {
+      "url": "https://www.csoonline.com/feed/",
+      "status": 200,
+      "resolved_url": "https://www.csoonline.com/feed/",
+      "entries": 20,
+      "linked_cves": 6,
+      "mentions": 8,
+      "body_cves": 11,
+      "full_content_entries": 0
+    },
+    {
+      "url": "https://unaaldia.hispasec.com/feed",
+      "status": 200,
+      "resolved_url": "https://unaaldia.hispasec.com/feed/",
+      "entries": 10,
+      "linked_cves": 3,
+      "mentions": 3,
+      "body_cves": 27,
+      "full_content_entries": 10
+    },
+    {
+      "url": "https://www.scworld.com/feed/",
+      "status": 200,
+      "resolved_url": "https://www.scworld.com/",
+      "entries": 0,
+      "linked_cves": 0,
+      "mentions": 0,
+      "body_cves": 0,
+      "full_content_entries": 0
+    }
+  ],
+  "intake_after_reader_fix": {
+    "scope": "Local lab; public press feeds; explicit references only; deterministic heuristic tone, no LLM calls.",
+    "added_mentions": 78,
+    "cves_with_new_mentions": 49,
+    "rescored": 46,
+    "tone_samples": 2000,
+    "existing_hype_changed": 43,
+    "existing_reality_changed": 0,
+    "sources": [
+      {
+        "source": "feed:https://securityaffairs.com/feed",
+        "status": "SUCCESS",
+        "details": {
+          "entries": 10,
+          "mentions": 11,
+          "kind": "press"
+        }
+      },
+      {
+        "source": "feed:https://unaaldia.hispasec.com/feed",
+        "status": "SUCCESS",
+        "details": {
+          "entries": 10,
+          "mentions": 24,
+          "kind": "press"
+        }
+      },
+      {
+        "source": "feed:https://www.csoonline.com/feed/",
+        "status": "SUCCESS",
+        "details": {
+          "entries": 20,
+          "mentions": 8,
+          "kind": "press"
+        }
+      },
+      {
+        "source": "feed:https://www.infosecurity-magazine.com/rss/news/",
+        "status": "SUCCESS",
+        "details": {
+          "entries": 250,
+          "mentions": 5,
+          "kind": "press"
+        }
+      },
+      {
+        "source": "feed:https://www.theregister.com/security/headlines.atom",
+        "status": "SUCCESS",
+        "details": {
+          "entries": 50,
+          "mentions": 30,
+          "kind": "press"
+        }
+      }
+    ],
+    "examples": [
+      {
+        "cve_id": "CVE-2025-41450",
+        "hype": 1.05,
+        "reality": 0.05,
+        "category": "Quiet"
+      },
+      {
+        "cve_id": "CVE-2025-41451",
+        "hype": 1.05,
+        "reality": 0.22,
+        "category": "Quiet"
+      },
+      {
+        "cve_id": "CVE-2025-41452",
+        "hype": 1.05,
+        "reality": 0.05,
+        "category": "Quiet"
+      },
+      {
+        "cve_id": "CVE-2026-101767",
+        "hype": 1.65,
+        "reality": 0.03,
+        "category": "Quiet"
+      },
+      {
+        "cve_id": "CVE-2026-104935",
+        "hype": 2.35,
+        "reality": 7.87,
+        "category": "Sleeper"
+      },
+      {
+        "cve_id": "CVE-2026-105481",
+        "hype": 1.05,
+        "reality": 0.02,
+        "category": "Quiet"
+      },
+      {
+        "cve_id": "CVE-2026-105482",
+        "hype": 1.05,
+        "reality": 0.02,
+        "category": "Quiet"
+      },
+      {
+        "cve_id": "CVE-2026-105483",
+        "hype": 1.05,
+        "reality": 0.02,
+        "category": "Quiet"
+      },
+      {
+        "cve_id": "CVE-2026-106069",
+        "hype": 1.05,
+        "reality": 0.02,
+        "category": "Quiet"
+      },
+      {
+        "cve_id": "CVE-2026-106070",
+        "hype": 1.05,
+        "reality": 0.02,
+        "category": "Quiet"
+      }
+    ]
+  },
+  "limitations": [
+    "CVE mentions are explicit references, not necessarily the primary subject of a story.",
+    "The headline-tone fallback is heuristic and is not validated equally across languages.",
+    "Coverage and repetition do not by themselves establish exaggeration."
+  ]
+}
