@@ -245,7 +245,7 @@ def post_alert(session, url, payload, *, channel, cve_id) -> bool:
 
     status = getattr(response, "status_code", 0)
     if status >= 400 or status == 0:
-        print(f"{channel} {cve_id}: HTTP {status}. No se marca como enviada.")
+        print(f"{channel} {cve_id}: HTTP {status}. Not marked as sent.")
         return False
     return True
 
@@ -297,7 +297,7 @@ def run(*, dry_run=False, skip_slack=False, skip_webhook=False, db_path=None,
         summary["alerts"] = len(alerts)
 
         if not channels:
-            print("Sin canales configurados: definí SLACK_WEBHOOK_URL o ALERT_WEBHOOK_URL.")
+            print("No channels configured: set SLACK_WEBHOOK_URL or ALERT_WEBHOOK_URL.")
 
         for alert in alerts:
             for channel, url in channels:

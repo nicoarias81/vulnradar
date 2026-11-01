@@ -256,7 +256,7 @@ def _smoke() -> int:
         models = list_models(config=cfg)
         print("models=" + ",".join(models[:20]))
         if models and cfg.model not in models:
-            print(f"aviso: {cfg.model!r} no está en /models; el proxy puede aliasarlo igual.")
+            print(f"warning: {cfg.model!r} is not in /models; the proxy may alias it anyway.")
     except Exception as exc:
         print(f"aviso: no pude listar /models ({exc})")
     text = complete("Reply with exactly OK.", system="You are a ping probe. No extra text.")

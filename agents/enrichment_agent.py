@@ -126,7 +126,7 @@ def upsert_epss(conn, rows) -> int:
 def load_kev(conn) -> int:
     last_error = None
     for url in (KEV_URL, KEV_MIRROR_URL):
-        print(f"Descargando CISA KEV desde {url}...")
+        print(f"Downloading CISA KEV from {url}...")
         try:
             response = requests.get(url, timeout=60)
             if response.status_code != 200:
@@ -141,20 +141,20 @@ def load_kev(conn) -> int:
             continue
         count = upsert_kev(conn, vulns)
         conn.commit()
-        print(f"KEV cargado: {count} CVEs (catalogo {data.get('catalogVersion', '?')}).")
+        print(f"KEV loaded: {count} CVEs (catalog {data.get('catalogVersion', '?')}).")
         return count
     raise RuntimeError(f"KEV: ninguna fuente respondió ({last_error})")
 
 
 def load_epss(conn) -> int:
-    print("Descargando EPSS...")
+    print("Downloading EPSS...")
     response = requests.get(EPSS_URL, timeout=60)
     with gzip.open(io.BytesIO(response.content), "rt", encoding="utf-8") as stream:
         # EPSS antepone metadatos ("#model_version:...,score_date:...") antes del header real.
         rows = (line for line in stream if line.strip() and not line.startswith("#"))
         count = upsert_epss(conn, csv.DictReader(rows))
     conn.commit()
-    print(f"EPSS cargado: {count} CVEs.")
+    print(f"EPSS loaded: {count} CVEs.")
     return count
 
 
@@ -837,7 +837,7 @@ def analyze_tone_batch(items, *, completer=None, config=None, session=None) -> l
             if cve_id:
                 answered[cve_id] = entry
     except Exception as exc:
-        print(f"LLM: {exc}. Uso heurística.")
+        print(f"LLM: {exc}. Falling back to the heuristic.")
 
     results = []
     for item in batch:

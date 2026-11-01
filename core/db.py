@@ -255,13 +255,13 @@ def init_db(path: Path | str | None = None):
                 fallidas = conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
                 conn.commit()
                 for falla in fallidas:
-                    print(f"Aviso: sentencia del esquema omitida ({falla})")
+                    print(f"Warning: schema statement skipped ({falla})")
             finally:
                 conn.execute("SELECT pg_advisory_unlock(hashtext(?))", (lock_key,))
                 conn.commit()
         except Exception as exc:
             conn.rollback()
-            print(f"Aviso: no se pudo aplicar el esquema ({type(exc).__name__}: {exc}). Se sigue con el actual.")
+            print(f"Warning: could not apply the schema ({type(exc).__name__}: {exc}). Continuing with the current one.")
     finally:
         conn.close()
     return isolation

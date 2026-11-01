@@ -58,20 +58,20 @@ set_upstream() { # $1=slot
     sleep 2
   fi
   "${COMPOSE[@]}" exec -T "$PROXY_SVC" caddy reload --config /etc/caddy/Caddyfile >/dev/null 2>&1 \
-    || { echo "reload del proxy falló"; return 1; }
+    || { echo "proxy reload failed"; return 1; }
 }
 
 case "${1:-status}" in
   up)
     "${COMPOSE[@]}" up -d --build postgres dashboard-a "$PROXY_SVC"
-    wait_health "$(slot_url a)" "$HEALTH_TIMEOUT" || { echo "slot a no levantó"; exit 1; }
+    wait_health "$(slot_url a)" "$HEALTH_TIMEOUT" || { echo "slot a did not come up"; exit 1; }
     echo a > "$STATE_FILE"
     set_upstream a
-    echo "activo: a · público: ${PROXY_PORT} · postgres local"
+    echo "active: a · public: ${PROXY_PORT} · local postgres"
     ;;
   deploy)
     cur=$(active); cand=$(other)
-    echo "activo=$cur · construyendo candidato=$cand"
+    echo "active=$cur · building candidate=$cand"
     "${COMPOSE[@]}" build "dashboard-$cand"
     "${COMPOSE[@]}" up -d --no-deps "dashboard-$cand"
     if wait_health "$(slot_url "$cand")" "$HEALTH_TIMEOUT"; then
@@ -79,26 +79,26 @@ case "${1:-status}" in
       # El proxy ya apunta al candidato: confirmar desde el puerto público.
       if [[ $(public_health) == 200 ]]; then
         echo "$cand" > "$STATE_FILE"
-        echo "promovido: $cand · tráfico movido · $cur queda arriba para rollback"
+        echo "promoted: $cand · traffic moved · $cur stays up for rollback"
       else
         set_upstream "$cur"
-        echo "el público no respondió con $cand: rollback automático a $cur"; exit 1
+        echo "public did not answer from $cand: automatic rollback to $cur"; exit 1
       fi
     else
-      echo "candidato $cand no pasó health en ${HEALTH_TIMEOUT}s; tráfico intacto en $cur"
+      echo "candidate $cand failed health in ${HEALTH_TIMEOUT}s; traffic untouched on $cur"
       "${COMPOSE[@]}" logs --tail 30 "dashboard-$cand" || true
       exit 1
     fi
     ;;
   rollback)
     cur=$(active); back=$(other)
-    wait_health "$(slot_url "$back")" 30 || { echo "slot $back no está arriba; no hay a dónde volver"; exit 1; }
+    wait_health "$(slot_url "$back")" 30 || { echo "slot $back is not up; nowhere to fall back to"; exit 1; }
     set_upstream "$back"
     echo "$back" > "$STATE_FILE"
     echo "rollback: activo $back"
     ;;
   status)
-    echo "activo: $(active) · público ${PROXY_PORT}: $(public_health)"
+    echo "active: $(active) · public ${PROXY_PORT}: $(public_health)"
     printf '  slot a %s: %s\n  slot b %s: %s\n' \
       "${SLOT_A_PORT:-8511}" "$(health "$(slot_url a)")" \
       "${SLOT_B_PORT:-8512}" "$(health "$(slot_url b)")"

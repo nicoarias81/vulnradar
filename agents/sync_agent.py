@@ -104,7 +104,7 @@ def clone_or_pull(cve_list_path: Path) -> dict:
     try:
         delta_files = git_diff_cve_files(cve_list_path, old, remote)
     except subprocess.CalledProcessError as exc:
-        print(f"Aviso: no se pudo diff {short_sha(old)}..{short_sha(remote)} ({exc}).")
+        print(f"Warning: could not diff {short_sha(old)}..{short_sha(remote)} ({exc}).")
 
     # --ff-only si se puede; si origin reescribió historia (forced update /
     # unrelated histories) alineamos el mirror al tip remoto. El diff ya se
